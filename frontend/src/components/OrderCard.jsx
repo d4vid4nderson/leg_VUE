@@ -1,0 +1,1 @@
+import React from 'react';const OrderCard=({order,isExpanded,onToggle})=>(<div className="bg-white border rounded-md shadow-sm"><div className="p-4 flex justify-between items-center"><h3 className="font-medium">{order.executive_order_number} - {order.title}</h3><button onClick={onToggle} className=

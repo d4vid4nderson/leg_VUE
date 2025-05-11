@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "politicalvue-backend"
+version = "0.1.0"
+description = "Backend API for PoliticalVue"
+authors = ["David Anderson <david.anderson@moregroup-inc.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.95.1"
+uvicorn = "^0.23.1"
+pydantic = "^2.0"
+httpx = "^0.24.0"
+azure-core = "^1.30.0"
+azure-ai-openai = "^1.0.0"
+
+[tool.poetry.dev-dependencies]
+# Add tests or linters here
