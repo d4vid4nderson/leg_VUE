@@ -1,0 +1,102 @@
+/* Add this to your index.css file or create a new AiContent.css file */
+
+/* AI Content Styling - Updated to preserve violet color */
+.ai-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.6;
+  /* Removed the color property to inherit from parent */
+}
+
+.ai-content h1, 
+.ai-content h2, 
+.ai-content h3, 
+.ai-content h4,
+.ai-content h5,
+.ai-content h6 {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  /* Inherit color from parent */
+}
+
+.ai-content h4 {
+  font-size: 1.1em;
+}
+
+.ai-content p {
+  margin-bottom: 1em;
+}
+
+.ai-content ul {
+  margin-left: 0;
+  margin-bottom: 1em;
+  list-style: none;
+  padding-left: 0;
+}
+
+.ai-content ul li {
+  margin-bottom: 0.5em;
+  position: relative;
+  padding-left: 1.5em;
+}
+
+.ai-content ul li:before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: currentColor; /* Uses the parent's color */
+  font-weight: bold;
+  font-size: 1.2em;
+}
+
+.ai-content ol {
+  margin-left: 0;
+  margin-bottom: 1em;
+  counter-reset: item;
+  padding-left: 0;
+}
+
+.ai-content ol li {
+  margin-bottom: 0.5em;
+  position: relative;
+  padding-left: 2em;
+  counter-increment: item;
+}
+
+.ai-content ol li:before {
+  content: counter(item) ".";
+  position: absolute;
+  left: 0;
+  color: currentColor; /* Uses the parent's color */
+  font-weight: bold;
+}
+
+.ai-content strong {
+  font-weight: 600;
+  /* Inherit color from parent */
+}
+
+.ai-content em {
+  font-style: italic;
+}
+
+/* Remove any weird spacing or formatting */
+.ai-content * {
+  max-width: 100%;
+  word-wrap: break-word;
+}
+
+/* Clean up spacing */
+.ai-content > *:first-child {
+  margin-top: 0;
+}
+
+.ai-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Specific selector to ensure violet color is preserved */
+.text-violet-900 .ai-content,
+.text-violet-900 .ai-content * {
+  color: inherit;
+}

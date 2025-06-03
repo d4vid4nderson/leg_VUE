@@ -1,1 +1,78 @@
 @tailwind base;@tailwind components;@tailwind utilities;
+
+@keyframes sparkle {
+  0% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1) rotate(180deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+.animate-sparkle {
+  animation: sparkle 1.5s ease-out infinite;
+}
+
+/* Add these styles to your index.css or OrderCard.css */
+
+.ai-numbered-list {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+    list-style-type: decimal;
+}
+.ai-bullet-list {
+    margin: 0.5em 0 0.5em 0;
+    padding-left: 1.5em;
+    list-style-type: disc;
+}
+.ai-numbered-list > li {
+    margin-bottom: 1em;
+    line-height: 1.5;
+}
+.ai-bullet-list > li {
+    margin-bottom: 0.25em;
+    line-height: 1.4;
+}
+.ai-numbered-list strong {
+    font-weight: 600;
+}
+.ai-content p {
+    margin: 0.5em 0;
+}
+
+/* Ensure proper spacing in AI content */
+.ai-content p {
+  margin-bottom: 0.5em;
+}
+
+.ai-content ol,
+.ai-content ul {
+  margin-bottom: 1em;
+}
+
+/* Specific styling for Key Points */
+.ai-content .ai-numbered-list:not(:has(.ai-bullet-list)) > li {
+  padding-left: 2em;
+  margin-bottom: 0.5em;
+}
+
+/* Ensure violet color is preserved in lists */
+.text-violet-900 .ai-numbered-list li::before,
+.text-violet-900 .ai-bullet-list li::before {
+  color: #4C1D95; /* Darker violet for contrast */
+}
+ol {
+  padding-left: 20px; /* Reduces the overall list indentation */
+}
+
+ol li {
+  margin-left: 0; /* Removes any extra margin on list items */
+  padding-left: 5px; /* Adds a small space after the number */
+}
+
