@@ -624,12 +624,16 @@ class LegiScanAPI:
                 "query": query,
                 "bills_analyzed": 0
             }
-    
+   
     def _process_bill_for_database(self, detailed_bill: Dict, state: str, bill_num: int) -> Optional[Dict]:
         """
         Process a detailed bill into the format expected by the database
         """
         try:
+            print(f"\n🔍 DEBUG: RECEIVING bill {bill_num} for processing:")
+            print(f"   - Bill ID: {detailed_bill.get('bill_id')}")
+            print(f"   - Title: {detailed_bill.get('title', 'No title')[:50]}...")
+            
             # Extract basic information
             title = self._safe_string(detailed_bill.get('title'), f"title_bill_{bill_num}")
             description = self._safe_string(detailed_bill.get('description'), f"desc_bill_{bill_num}")
@@ -643,6 +647,13 @@ class LegiScanAPI:
             
             # Extract dates
             status_date = detailed_bill.get('status_date', '')
+            introduced_date = detailed_bill.get('introduced_date', '')
+            last_action_date = detailed_bill.get('last_action_date', '')
+            
+            print(f"🔍 DEBUG: Original date values:")
+            print(f"   - Status date: '{status_date}'")
+            print(f"   - Introduced date: '{introduced_date}'")
+            print(f"   - Last action date: '{last_action_date}'")
             
             # Extract session info
             session_info = detailed_bill.get('session', {})
@@ -657,18 +668,50 @@ class LegiScanAPI:
             # Generate AI analysis
             ai_analysis = self._generate_ai_analysis(title, description, category, bill_num)
             
+            # State abbreviation mapping
+            state_abbr_map = {
+                "CA": "California",
+                "CO": "Colorado",
+                "KY": "Kentucky",
+                "NV": "Nevada",
+                "SC": "South Carolina",
+                "TX": "Texas",
+            }
+            
+            # Reverse the mapping for state full name to abbreviation
+            abbr_state_map = {v: k for k, v in state_abbr_map.items()}
+            
+            # Determine state_abbr based on state input
+            state_abbr = state
+            state_full = state
+            
+            # If state is an abbreviation, get full name
+            if state in state_abbr_map:
+                state_full = state_abbr_map[state]
+                state_abbr = state
+            # If state is a full name, get abbreviation
+            elif state in abbr_state_map:
+                state_abbr = abbr_state_map[state]
+                state_full = state
+            
+            print(f"🔍 DEBUG: State processing for bill {bill_num}:")
+            print(f"   - Input state: '{state}'")
+            print(f"   - Resolved state_full: '{state_full}'")
+            print(f"   - Resolved state_abbr: '{state_abbr}'")
+            
             # Create processed bill object
             processed_bill = {
                 'bill_id': str(bill_id) if bill_id else f"unknown_{bill_num}",
                 'bill_number': bill_number or f"BILL{bill_num}",
                 'title': title or "Untitled Bill",
                 'description': description or "No description available",
-                'state': state,
+                'state': state_full,  # Always use full state name
+                'state_abbr': state_abbr,  # Always include abbreviation
                 'session': session_name,
                 'status': detailed_bill.get('status', 0),
                 'status_date': status_date,
-                'introduced_date': detailed_bill.get('introduced_date', ''),
-                'last_action_date': detailed_bill.get('last_action_date', status_date),
+                'introduced_date': introduced_date,
+                'last_action_date': last_action_date or status_date,
                 'legiscan_url': state_link,
                 'category': category,
                 'ai_summary': ai_analysis.get('summary', ''),
@@ -680,13 +723,21 @@ class LegiScanAPI:
                 'last_updated': datetime.now().isoformat()
             }
             
-            return processed_bill
+            print(f"✅ DEBUG: PROCESSED bill {bill_num}:")
+            print(f"   - Bill ID: {processed_bill['bill_id']}")
+            print(f"   - Processed introduced_date: '{processed_bill['introduced_date']}'")
+            print(f"   - Processed last_action_date: '{processed_bill['last_action_date']}'")
+            print(f"   - Processed created_at: '{processed_bill['created_at']}'")
+            print(f"   - Processed last_updated: '{processed_bill['last_updated']}'")
+            print(f"   - State: '{processed_bill['state']}'")
+            print(f"   - State abbr: '{processed_bill['state_abbr']}'")
             
+            return processed_bill
+                
         except Exception as e:
             print(f"❌ DEBUG: Error processing bill for database: {e}")
             return None
-    
-    # COMPATIBILITY METHODS FOR EXISTING CODE
+
     
     def bulk_download_states(self, states: List[str], output_dir: str = 'data', bills_per_state: int = 10) -> Dict:
         """

@@ -1176,7 +1176,7 @@ const Header = ({ showDropdown, setShowDropdown, dropdownRef, currentPage }) => 
                       {index + 1}. {order?.title || 'Untitled'}
                     </h3>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-600">
-                      <span className="font-medium">Executive Order #{order?.executive_order_number}</span>
+                    <span className="font-medium">Executive Order #{getExecutiveOrderNumber(order)}</span>
                       <span>{order?.signing_date ? new Date(order.signing_date).toLocaleDateString() : 'No date'}</span>
                       <CategoryTag category={order?.category} />
                       {(() => {
@@ -1551,6 +1551,42 @@ const ExecutiveOrdersPage = ({
     "Making final preparations and formatting..."
   ];
 
+
+    const getExecutiveOrderNumber = (order) => {
+  if (!order) return 'N/A';
+  
+  const possibleFields = [
+    'executive_order_number',
+    'eo_number', 
+    'order_number',
+    'document_number'
+  ];
+  
+  for (const field of possibleFields) {
+    const value = order[field];
+    if (value && value !== '' && value !== null && value !== undefined) {
+      // Clean up the value
+      const cleanValue = String(value).trim();
+      if (cleanValue && cleanValue !== '0') {
+        console.log(`🎯 Found EO number in field '${field}': ${cleanValue}`);
+        return cleanValue;
+      }
+    }
+  }
+  
+  // If no explicit number found, try to extract from title
+  const title = order.title || '';
+  const titleMatch = title.match(/(?:executive\s+order\s+(?:no\.?\s+)?|eo\s+)(\d+)/i);
+  if (titleMatch) {
+    console.log(`🎯 Extracted EO number from title: ${titleMatch[1]}`);
+    return titleMatch[1];
+  }
+  
+  console.log('⚠️ No executive order number found for order:', order);
+  return 'N/A';
+}; // ← Only ONE closing bracket here
+
+
   return (
     <div className="pt-6">
       <div className="mb-8">
@@ -1887,7 +1923,7 @@ const ExecutiveOrdersPage = ({
           {index + 1}. {order?.title || 'Untitled'}
         </h3>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-600">
-          <span className="font-medium">Executive Order #{order?.executive_order_number}</span>
+        <span className="font-medium">Executive Order #{getExecutiveOrderNumber(order)}</span>
           <span>{order?.signing_date ? new Date(order.signing_date).toLocaleDateString() : 'No date'}</span>
           <CategoryTag category={order?.category} />
         </div>
