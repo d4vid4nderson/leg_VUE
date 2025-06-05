@@ -34,7 +34,7 @@ cd frontend
 npm install
 npm run dev
 ```
-
+  
 ## Environment Variables
 
 ### Backend (.env)
