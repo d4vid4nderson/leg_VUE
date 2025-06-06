@@ -9,9 +9,18 @@ export default defineConfig({
     postcss: './postcss.config.cjs', // Updated extension here
   },
   server: {
-    port: 5173,
+    port: 80,
     strictPort: false,
-    open: true,
+    open: false, // Explicitly disable auto-opening browser
+    proxy: {
+      '/api': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+      }
+    },
+    watch: {
+      usePolling: true,
+    },
   },
   publicDir: 'public',
 });
