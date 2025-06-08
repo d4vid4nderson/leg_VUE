@@ -1,4 +1,4 @@
-# ai.py - Clean version with LegiScan integration and Azure SQL integration
+# ai.py - Enhanced version with distinct AI content generation
 import os
 import re
 import asyncio
@@ -107,72 +107,70 @@ client = AsyncAzureOpenAI(
     api_version="2024-12-01-preview"
 )
 
-# Prompt templates
+# ENHANCED prompt templates for distinct content generation
 PROMPTS = {
     PromptType.EXECUTIVE_SUMMARY: """
-    Write a concise summary of this legislative content in 3-5 simple sentences. 
-    - Use straightforward, easy-to-understand language
-    - Focus only on the most important aspects
-    - Avoid technical jargon 
-    - Do NOT use bullet points or lists
-    - Make it direct and to the point
-    - Consider the business and policy implications
+    Write a concise executive summary of this legislative content in 2-4 sentences. 
+    Focus on:
+    - What the legislation does (main purpose)
+    - Who it affects (target audience/stakeholders)
+    - Key changes or requirements it establishes
+    
+    Use clear, professional language suitable for executives and decision-makers.
+    Do NOT use bullet points or lists - write in paragraph form.
     
     Legislative Content: {text}
     """,
         
     PromptType.KEY_TALKING_POINTS: """
-    Output EXACTLY 5 key talking points about this legislative content in this format:
+    Create exactly 5 distinct talking points for stakeholder discussions about this legislation.
+    Each point should be ONE complete sentence and focus on different aspects:
 
-1. [First key point] - should be concise and important
-2. [Second key point] - should be concise and important  
-3. [Third key point] - should be concise and important
-4. [Fourth key point] - should be concise and important
-5. [Fifth key point] - should be concise and important
+    1. [Main purpose/goal of the legislation]
+    2. [Key stakeholders or groups affected]  
+    3. [Most significant change or requirement]
+    4. [Implementation timeline or process]
+    5. [Expected outcomes or benefits]
 
-    CRITICAL RULES:
-    - Each point should be ONE sentence only
-    - Make each point clear and easy to understand
-    - Use bold for important terms by surrounding them with **double asterisks**
-    - NO extra numbering or bullets
-    - EXACTLY 5 points, numbered 1-5
-    - Focus on actionable insights and key implications
+    Format as numbered list exactly as shown above.
+    Make each point actionable for conversations with colleagues, clients, or stakeholders.
+    Use bold formatting for important terms: **term**
     
     Legislative Content: {text}
     """,
     
     PromptType.BUSINESS_IMPACT: """
-    Analyze the business impact of this legislative content using EXACTLY this structure:
+    Analyze the business impact using this specific structure and focus on concrete business implications:
 
-1. Risk: [Brief description of primary business risk]
-   • [First specific impact of this risk on businesses]
-   • [Second specific impact of this risk on operations]
+    **Risk Assessment:**
+    • [Specific compliance risk or regulatory burden]
+    • [Operational risk or process change required]
 
-2. Opportunity: [Brief description of main business opportunity]
-   • [First specific benefit businesses can capture]
-   • [Second specific advantage this creates]
+    **Market Opportunity:**
+    • [New business opportunity created by this legislation]
+    • [Competitive advantage or market positioning benefit]
 
-3. Market Change: [Brief description of market/industry shift]
-   • [First specific market change expected]
-   • [Second specific industry transformation]
+    **Implementation Requirements:**
+    • [Specific action businesses must take by when]
+    • [Resources, systems, or processes that need updating]
 
-    CRITICAL FORMATTING RULES:
-    - Use EXACTLY the structure above with numbered sections 1-3
-    - Create each bullet point with a SINGLE bullet character •
-    - DO NOT use any other bullet characters or markers (no *, -, additional •, etc.)
-    - Format bullet points with EXACTLY ONE bullet character • per point
-    - Make all text clear and business-focused
-    - Bold section headers by using **Risk:** **Opportunity:** and **Market Change:**
+    Focus on:
+    - Concrete actions businesses need to take
+    - Financial implications (costs, savings, revenue opportunities)
+    - Competitive implications
+    - Timeline pressures
+
+    Use bullet points with • character only. Be specific and actionable.
     
     Legislative Content: {text}
     """
 }
 
-# System messages
+# Enhanced system messages for each type
 SYSTEM_MESSAGES = {
-    PromptType.EXECUTIVE_SUMMARY: "You are an expert policy analyst specializing in executive orders and state legislation. Provide clear, actionable summaries for business leaders and policy makers.",
-    PromptType.KEY_TALKING_POINTS: "You are a communications expert helping leaders understand and discuss policy implications. Focus on the most important points for stakeholder discussions.",
-    PromptType.BUSINESS_IMPACT: "You are a business strategy consultant analyzing how government policies affect companies and markets. Focus on practical business implications.",
+    PromptType.EXECUTIVE_SUMMARY: "You are a senior policy analyst who writes clear, concise executive summaries for C-level executives. Focus on the big picture and strategic implications.",
+    PromptType.KEY_TALKING_POINTS: "You are a communications strategist helping leaders discuss policy changes. Create talking points that are memorable, accurate, and useful for stakeholder conversations.",
+    PromptType.BUSINESS_IMPACT: "You are a business strategy consultant analyzing regulatory impact. Focus on concrete business implications, compliance requirements, and strategic opportunities.",
 }
 
 # Enums and classes
@@ -194,6 +192,125 @@ class BillCategory(Enum):
     FINANCE = "finance"
     LABOR = "labor"
     NOT_APPLICABLE = "not_applicable"
+
+# Enhanced formatting functions for distinct content types
+def clean_summary_format(text: str) -> str:
+    """Clean and format executive summary"""
+    if not text:
+        return "<p>No summary available</p>"
+    
+    # Remove any bullet points or numbering that might have crept in
+    text = re.sub(r'^\s*[•\-\*]\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
+    
+    # Split into sentences and rejoin as paragraphs
+    sentences = text.strip().split('. ')
+    
+    # Group sentences into 1-2 paragraphs
+    if len(sentences) <= 3:
+        return f"<p>{'. '.join(sentences)}</p>"
+    else:
+        mid = len(sentences) // 2
+        para1 = '. '.join(sentences[:mid]) + '.'
+        para2 = '. '.join(sentences[mid:])
+        return f"<p>{para1}</p><p>{para2}</p>"
+
+def format_talking_points(text: str) -> str:
+    """Format talking points as proper numbered list"""
+    if not text:
+        return "<p>No talking points available</p>"
+    
+    # Extract numbered points
+    lines = text.strip().split('\n')
+    points = []
+    
+    for line in lines:
+        line = line.strip()
+        if re.match(r'^\d+\.', line):
+            # Extract content after number
+            content = re.sub(r'^\d+\.\s*', '', line)
+            if content:
+                points.append(content)
+    
+    # Ensure we have exactly 5 points
+    if len(points) < 5:
+        # Add generic points if needed
+        while len(points) < 5:
+            points.append("Additional analysis point to be determined based on further review.")
+    
+    # Take only first 5
+    points = points[:5]
+    
+    # Format as HTML list
+    html_points = []
+    for i, point in enumerate(points, 1):
+        # Add bold formatting for key terms
+        point = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', point)
+        html_points.append(f"<li><strong>{i}.</strong> {point}</li>")
+    
+    return f"<ol class='talking-points'>{' '.join(html_points)}</ol>"
+
+def format_business_impact(text: str) -> str:
+    """Format business impact with specific structure"""
+    if not text:
+        return "<p>No business impact analysis available</p>"
+    
+    # Look for the three main sections
+    sections = {
+        'risk': [],
+        'opportunity': [],
+        'implementation': []
+    }
+    
+    current_section = None
+    lines = text.strip().split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Detect section headers
+        if any(keyword in line.lower() for keyword in ['risk', 'compliance']):
+            current_section = 'risk'
+            continue
+        elif any(keyword in line.lower() for keyword in ['opportunity', 'market', 'benefit']):
+            current_section = 'opportunity'
+            continue
+        elif any(keyword in line.lower() for keyword in ['implementation', 'requirement', 'action']):
+            current_section = 'implementation'
+            continue
+        
+        # Extract bullet points
+        if line.startswith('•') or line.startswith('-') or line.startswith('*'):
+            bullet_content = line[1:].strip()
+            if bullet_content and current_section:
+                sections[current_section].append(bullet_content)
+    
+    # Build HTML output
+    html_parts = []
+    
+    section_configs = [
+        ('risk', 'Risk Assessment', 'bg-red-50 border-red-200 text-red-800'),
+        ('opportunity', 'Market Opportunity', 'bg-green-50 border-green-200 text-green-800'),
+        ('implementation', 'Implementation Requirements', 'bg-blue-50 border-blue-200 text-blue-800')
+    ]
+    
+    for section_key, section_title, css_class in section_configs:
+        items = sections[section_key]
+        if not items:
+            # Add placeholder if no items found
+            items = [f"{section_title.lower()} assessment to be determined based on detailed analysis."]
+        
+        html_parts.append(f'<div class="business-impact-section {css_class}">')
+        html_parts.append(f'<h4><strong>{section_title}:</strong></h4>')
+        html_parts.append('<ul>')
+        for item in items[:2]:  # Max 2 items per section
+            html_parts.append(f'<li>• {item}</li>')
+        html_parts.append('</ul>')
+        html_parts.append('</div>')
+    
+    return ''.join(html_parts)
 
 class LegiScanClient:
     """Enhanced LegiScan API client with caching and error handling"""
@@ -363,9 +480,9 @@ def categorize_bill(title: str, description: str) -> BillCategory:
     else:
         return BillCategory.NOT_APPLICABLE
 
-# Core AI processing functions
+# Core AI processing functions - ENHANCED with distinct content generation
 async def process_with_ai(text: str, prompt_type: PromptType, temperature: float = 0.1, context: str = "") -> str:
-    """Process text with AI and format as HTML"""
+    """Enhanced AI processing with distinct prompts and formatting"""
     try:
         max_input_length = 4000
         if len(text) > max_input_length:
@@ -390,21 +507,44 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
 
         print(f"🤖 Calling AI for: {prompt_type.value} (with context: {context})")
         
+        # Adjust parameters based on content type for more distinct outputs
+        if prompt_type == PromptType.EXECUTIVE_SUMMARY:
+            max_tokens = 300
+            temperature = 0.1
+        elif prompt_type == PromptType.KEY_TALKING_POINTS:
+            max_tokens = 400
+            temperature = 0.2
+        elif prompt_type == PromptType.BUSINESS_IMPACT:
+            max_tokens = 500
+            temperature = 0.15
+        
         response = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=messages,
             temperature=temperature,
-            max_tokens=600,
+            max_tokens=max_tokens,
             top_p=0.95,
             frequency_penalty=0.3,
-            presence_penalty=0.1,
-            stop=["6.", "7.", "8.", "9."]
+            presence_penalty=0.2,
+            stop=["6.", "7.", "8.", "9."] if prompt_type == PromptType.KEY_TALKING_POINTS else None
         )
 
         raw_response = response.choices[0].message.content
         print(f"Raw AI response ({prompt_type.value}):\n---\n{raw_response[:200]}...\n---")
 
-        formatted_response = format_text_as_html(raw_response, prompt_type)
+        # Enhanced formatting for each type
+        if prompt_type == PromptType.EXECUTIVE_SUMMARY:
+            # Keep as paragraph, clean up any unwanted formatting
+            formatted_response = clean_summary_format(raw_response)
+        elif prompt_type == PromptType.KEY_TALKING_POINTS:
+            # Ensure proper numbered list format
+            formatted_response = format_talking_points(raw_response)
+        elif prompt_type == PromptType.BUSINESS_IMPACT:
+            # Ensure proper business impact structure
+            formatted_response = format_business_impact(raw_response)
+        else:
+            formatted_response = format_text_as_html(raw_response, prompt_type)
+
         return formatted_response
 
     except Exception as e:
@@ -420,9 +560,9 @@ async def get_key_talking_points(text: str, context: str = "") -> str:
 async def get_business_impact(text: str, context: str = "") -> str:
     return await process_with_ai(text, PromptType.BUSINESS_IMPACT, context=context)
 
-# Main analysis functions
+# Main analysis functions - ENHANCED
 async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) -> Dict[str, str]:
-    """Comprehensive AI analysis of a LegiScan bill"""
+    """Comprehensive AI analysis of a LegiScan bill with distinct content for each section"""
     try:
         # Extract bill information
         title = bill_data.get('title', '')
@@ -433,18 +573,10 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         session_name = session.get('session_name', '') if isinstance(session, dict) else ''
         sponsors = bill_data.get('sponsors', [])
         
-        # Build context
-        context_parts = []
-        if state:
-            context_parts.append(f"{state} State")
-        if bill_number:
-            context_parts.append(f"Bill {bill_number}")
-        if session_name:
-            context_parts.append(f"Session: {session_name}")
+        # Build enhanced context for each analysis type
+        base_context = f"{state} {bill_number}" if state and bill_number else "State Legislation"
         
-        context = " | ".join(context_parts) if context_parts else "State Legislation"
-        
-        # Build content
+        # Build comprehensive content for analysis
         content_parts = []
         if title:
             content_parts.append(f"Title: {title}")
@@ -454,6 +586,8 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
             content_parts.append(f"Bill Number: {bill_number}")
         if description:
             content_parts.append(f"Description: {description}")
+        if session_name:
+            content_parts.append(f"Legislative Session: {session_name}")
         if sponsors and len(sponsors) > 0:
             sponsor_names = []
             for sponsor in sponsors[:3]:
@@ -471,11 +605,11 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         # Categorize the bill
         category = categorize_bill(title, description)
         
-        # Run AI analysis tasks
+        # Run AI analysis tasks with different contexts for each type
         try:
-            summary_task = get_executive_summary(content, context)
-            talking_points_task = get_key_talking_points(content, context)
-            business_impact_task = get_business_impact(content, context)
+            summary_task = get_executive_summary(content, f"Executive Summary - {base_context}")
+            talking_points_task = get_key_talking_points(content, f"Stakeholder Discussion - {base_context}")
+            business_impact_task = get_business_impact(content, f"Business Analysis - {base_context}")
             
             summary_result, talking_points_result, business_impact_result = await asyncio.gather(
                 summary_task, talking_points_task, business_impact_task, return_exceptions=True
@@ -495,7 +629,7 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
             talking_points_result = f"<p>Error generating talking points: {str(e)}</p>"
             business_impact_result = f"<p>Error generating business impact: {str(e)}</p>"
         
-        # Return results
+        # Return results with both old and new field names for compatibility
         return {
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
@@ -504,7 +638,7 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
             'ai_business_impact': business_impact_result,
             'ai_potential_impact': business_impact_result,
             'category': category.value,
-            'ai_version': 'azure_openai_legiscan_v3',
+            'ai_version': 'azure_openai_enhanced_v1',
             'analysis_timestamp': datetime.now().isoformat()
         }
         
@@ -617,9 +751,9 @@ async def process_bills_for_state(state: str, limit: int = 50, session_id: Optio
             "timestamp": datetime.now().isoformat()
         }
 
-# Legacy compatibility functions
+# Legacy compatibility functions with enhanced AI
 async def analyze_executive_order(title: str, abstract: str = "", order_number: str = "") -> Dict[str, str]:
-    """Comprehensive analysis for executive orders"""
+    """Comprehensive analysis for executive orders with distinct content"""
     try:
         context = f"Executive Order {order_number}" if order_number else "Executive Order"
         content = f"Title: {title}"
@@ -628,10 +762,11 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
         
         print(f"🔍 Analyzing executive order: {title[:50]}...")
         
+        # Run enhanced AI analysis with different contexts
         summary_result, talking_points_result, business_impact_result = await asyncio.gather(
-            get_executive_summary(content, context),
-            get_key_talking_points(content, context),
-            get_business_impact(content, context),
+            get_executive_summary(content, f"Executive Summary - {context}"),
+            get_key_talking_points(content, f"Policy Discussion - {context}"),
+            get_business_impact(content, f"Regulatory Impact - {context}"),
             return_exceptions=True
         )
         
@@ -649,7 +784,7 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
             'ai_key_points': talking_points_result,
             'ai_business_impact': business_impact_result,
             'ai_potential_impact': business_impact_result,
-            'ai_version': 'azure_openai_v3'
+            'ai_version': 'azure_openai_enhanced_v1'
         }
         
     except Exception as e:
@@ -666,7 +801,7 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
         }
 
 async def analyze_state_legislation(title: str, description: str = "", state: str = "", bill_number: str = "") -> Dict[str, str]:
-    """Comprehensive analysis for state legislation"""
+    """Comprehensive analysis for state legislation with distinct content"""
     try:
         context = f"{state} {bill_number}" if state and bill_number else f"{state} Legislation" if state else "State Legislation"
         content = f"Title: {title}"
@@ -679,10 +814,11 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
         
         print(f"🔍 Analyzing {state} legislation: {title[:50]}...")
         
+        # Run enhanced AI analysis with different contexts
         summary_result, talking_points_result, business_impact_result = await asyncio.gather(
-            get_executive_summary(content, context),
-            get_key_talking_points(content, context),
-            get_business_impact(content, context),
+            get_executive_summary(content, f"Legislative Summary - {context}"),
+            get_key_talking_points(content, f"Legislative Discussion - {context}"),
+            get_business_impact(content, f"Legislative Impact - {context}"),
             return_exceptions=True
         )
         
@@ -700,7 +836,7 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
             'ai_key_points': talking_points_result,
             'ai_business_impact': business_impact_result,
             'ai_potential_impact': business_impact_result,
-            'ai_version': 'azure_openai_v3'
+            'ai_version': 'azure_openai_enhanced_v1'
         }
         
     except Exception as e:
@@ -715,6 +851,7 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
             'ai_potential_impact': error_msg,
             'ai_version': 'error'
         }
+
 async def bulk_process_states(states: List[str], bills_per_state: int = 50) -> Dict:
     """Process multiple states with LegiScan + AI analysis"""
     try:
@@ -928,162 +1065,29 @@ async def test_legiscan_integration() -> bool:
         print(f"❌ LegiScan integration test failed: {e}")
         return False
 
-# Add the LegiScanClient class that was missing
-class LegiScanAPIError(Exception):
-    """Custom exception for LegiScan API errors"""
-    pass
-
-class LegiScanClient:
-    """Enhanced LegiScan API client with caching and error handling"""
-    
-    def __init__(self, api_key: str = None, rate_limit_delay: float = 0.5):
-        self.api_key = api_key or os.getenv('LEGISCAN_API_KEY')
-        self.rate_limit_delay = rate_limit_delay
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'LegislationVue/3.0-AI-Enhanced',
-            'Accept': 'application/json'
-        })
-        
-        if not self.api_key:
-            raise LegiScanAPIError("LegiScan API key is required")
-        
-        print(f"✅ LegiScan client initialized with key: {self.api_key[:4]}***")
-    
-    def _build_url(self, operation: str, params: Optional[Dict] = None) -> str:
-        """Build LegiScan API URL"""
-        if params is None:
-            params = {}
-        
-        param_str = '&'.join([f"{k}={v}" for k, v in params.items()])
-        LEGISCAN_BASE_URL = "https://api.legiscan.com/?key={0}&op={1}&{2}"
-        return LEGISCAN_BASE_URL.format(self.api_key, operation, param_str)
-    
-    def _api_request(self, url: str) -> Dict[str, Any]:
-        """Make API request with error handling"""
-        try:
-            print("🔍 Making LegiScan API request...")
-            
-            response = self.session.get(url)
-            response.raise_for_status()
-            
-            data = response.json()
-            
-            if data.get('status') == "ERROR":
-                error_msg = data.get('alert', {}).get('message', 'Unknown API error')
-                raise LegiScanAPIError(f"LegiScan API Error: {error_msg}")
-            
-            time.sleep(self.rate_limit_delay)
-            return data
-            
-        except Exception as e:
-            print(f"❌ LegiScan API request failed: {e}")
-            raise LegiScanAPIError(f"API request failed: {str(e)}")
-    
-    def get_session_list(self, state: str) -> List[Dict]:
-        """Get available sessions for a state"""
-        try:
-            url = self._build_url('getSessionList', {'state': state})
-            data = self._api_request(url)
-            sessions = data.get('sessions', [])
-            print(f"📋 Found {len(sessions)} sessions for {state}")
-            return sessions
-        except Exception as e:
-            print(f"❌ Error fetching sessions for {state}: {e}")
-            return []
-    
-    def get_master_list(self, state: str, session_id: Optional[int] = None) -> Dict:
-        """Get master list of bills for a state"""
-        try:
-            params = {'state': state}
-            if session_id:
-                params['session_id'] = session_id
-            
-            url = self._build_url('getMasterList', params)
-            data = self._api_request(url)
-            
-            master_list = data.get('masterlist', {})
-            if master_list:
-                bill_count = len(master_list.get('bill', {}))
-                session_name = master_list.get('session', {}).get('session_name', 'Current')
-                print(f"📋 Found {bill_count} bills for {state} in session: {session_name}")
-            
-            return master_list
-        except Exception as e:
-            print(f"❌ Error fetching master list for {state}: {e}")
-            return {}
-    
-    def get_bill(self, bill_id: Optional[int] = None, 
-                state: Optional[str] = None, 
-                bill_number: Optional[str] = None) -> Dict:
-        """Get detailed bill information"""
-        try:
-            if bill_id:
-                params = {'id': bill_id}
-                identifier = f"bill ID {bill_id}"
-            elif state and bill_number:
-                params = {'state': state, 'bill': bill_number}
-                identifier = f"bill {state} {bill_number}"
-            else:
-                raise ValueError("Either bill_id OR (state AND bill_number) must be provided")
-            
-            url = self._build_url('getBill', params)
-            data = self._api_request(url)
-            
-            bill = data.get('bill', {})
-            if bill:
-                print(f"✅ Successfully fetched {identifier}")
-            
-            return bill
-        except Exception as e:
-            print(f"❌ Error fetching bill: {e}")
-            return {}
-    
-    def search_bills(self, 
-                    state: Optional[str] = None,
-                    query: Optional[str] = None,
-                    year: int = 2,
-                    page: int = 1) -> Dict:
-        """Search for bills"""
-        try:
-            if not query:
-                raise ValueError("Query is required for search")
-            
-            params = {'query': query, 'year': year, 'page': page}
-            if state:
-                params['state'] = state
-            
-            url = self._build_url('search', params)
-            data = self._api_request(url).get('searchresult', {})
-            
-            summary = data.pop('summary', {})
-            results = [data[key] for key in data if key != 'summary']
-            
-            print(f"🔍 Search found {summary.get('count', 0)} results")
-            
-            return {
-                'summary': summary,
-                'results': results
-            }
-        except Exception as e:
-            print(f"❌ Error searching bills: {e}")
-            return {'summary': {}, 'results': []}
-
-# Add missing test_ai_integration if it's not in your file
+# Test AI integration
 async def test_ai_integration() -> bool:
-    """Test the AI integration with a simple request"""
+    """Test the AI integration with distinct content generation"""
     try:
-        print("🧪 Testing AI integration...")
+        print("🧪 Testing enhanced AI integration...")
         
-        test_text = "Test legislation: This bill addresses important policy matters."
+        test_text = "This bill establishes comprehensive data protection requirements for businesses processing personal information. It requires explicit consent for data collection and provides users with deletion rights."
         
-        result = await get_executive_summary(test_text, "Test")
+        # Test all three content types
+        summary = await get_executive_summary(test_text, "Test Legislation")
+        talking_points = await get_key_talking_points(test_text, "Test Legislation")
+        business_impact = await get_business_impact(test_text, "Test Legislation")
         
-        if result and not result.startswith("<p>Error"):
-            print("✅ AI integration test successful!")
+        # Check that we got different content
+        if (summary and talking_points and business_impact and 
+            summary != talking_points and 
+            summary != business_impact and 
+            talking_points != business_impact):
+            print("✅ Enhanced AI integration test successful!")
+            print(f"   Generated distinct content for all sections")
             return True
         else:
-            print("❌ AI integration test failed - no valid response")
+            print("❌ AI integration test failed - content appears similar")
             return False
             
     except Exception as e:

@@ -1,4 +1,4 @@
-# main.py - Updated with Fixed Azure SQL Integration
+# main.py - Updated with Azure AI Federal Register Integration
 from fastapi import FastAPI, HTTPException, Query, Path, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from datetime import datetime
 import os
 import logging
+import asyncio
 from contextlib import asynccontextmanager
+import aiohttp
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +25,12 @@ class LegiScanSearchRequest(BaseModel):
     state: str
     limit: int = 20
     save_to_db: bool = True
+
+class ExecutiveOrderFetchRequest(BaseModel):
+    start_date: Optional[str] = "2025-01-20"
+    end_date: Optional[str] = None
+    per_page: Optional[int] = 1000
+    save_to_db: Optional[bool] = True
 
 # CORRECTED: Import the fixed Azure SQL database functions
 try:
@@ -63,7 +71,7 @@ from executive_orders_db import (
     test_executive_orders_db
 )
 
-# Import Federal Register API
+# Import UPDATED Federal Register API with Azure AI
 from federal_register_api import FederalRegisterAPI
 
 # Import AI functions for state legislation
@@ -86,8 +94,8 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown with Azure SQL testing"""
-    print("🔄 Starting LegislationVue API with Azure SQL...")
+    """Startup and shutdown with Azure SQL and Azure AI testing"""
+    print("🔄 Starting LegislationVue API with Azure SQL and Azure AI...")
     
     # Test Azure SQL connection first
     if AZURE_SQL_AVAILABLE:
@@ -124,6 +132,18 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"⚠️ LegiScan test failed: {e}")
     
+    # Test Federal Register with Azure AI integration
+    try:
+        from federal_register_api import test_azure_ai_integration
+        print("🔍 Testing Federal Register Azure AI integration...")
+        ai_integration_working = await test_azure_ai_integration()
+        if ai_integration_working:
+            print("✅ Federal Register Azure AI integration ready")
+        else:
+            print("⚠️ Federal Register Azure AI integration issues")
+    except Exception as e:
+        print(f"⚠️ Federal Register Azure AI test failed: {e}")
+    
     # Initialize executive orders database
     eo_init_result = init_executive_orders_db()
     eo_db_result = test_executive_orders_db()
@@ -137,9 +157,9 @@ async def lifespan(app: FastAPI):
     # Shutdown
 
 app = FastAPI(
-    title="LegislationVue API - Azure SQL Edition",
-    description="API for Executive Orders and State Legislation with Azure SQL Database",
-    version="9.1.0-Azure",
+    title="LegislationVue API - Azure AI Enhanced Edition",
+    description="API for Executive Orders and State Legislation with Azure AI Analysis",
+    version="10.0.0-Azure-AI",
     lifespan=lifespan
 )
 
@@ -192,7 +212,7 @@ def convert_state_param(state_param: str) -> str:
 
 @app.get("/")
 async def root():
-    """Health check endpoint with Azure SQL status"""
+    """Health check endpoint with Azure AI status"""
     
     # Test database connections
     if AZURE_SQL_AVAILABLE:
@@ -212,6 +232,7 @@ async def root():
     # Test AI integration status
     ai_status = "unknown"
     legiscan_status = "unknown"
+    federal_register_ai_status = "unknown"
     
     if AI_AVAILABLE:
         try:
@@ -226,6 +247,14 @@ async def root():
         except Exception as e:
             legiscan_status = f"error: {str(e)[:50]}"
     
+    # Test Federal Register Azure AI
+    try:
+        from federal_register_api import test_azure_ai_integration
+        fr_ai_working = await test_azure_ai_integration()
+        federal_register_ai_status = "connected" if fr_ai_working else "configuration_issue"
+    except Exception as e:
+        federal_register_ai_status = f"error: {str(e)[:50]}"
+    
     # Get stats
     stats = None
     eo_stats = None
@@ -238,9 +267,9 @@ async def root():
             eo_stats = {"total_orders": 0}
     
     return {
-        "message": "LegislationVue API with Azure SQL Database",
+        "message": "LegislationVue API with Azure AI Enhancement",
         "status": "healthy",
-        "version": "9.1.0-Azure",
+        "version": "10.0.0-Azure-AI",
         "timestamp": datetime.now().isoformat(),
         "database": {
             "status": "connected" if db_working else "issues",
@@ -251,16 +280,17 @@ async def root():
         },
         "integrations": {
             "federal_register": "available",
+            "federal_register_ai": federal_register_ai_status,
             "legiscan": legiscan_status,
             "ai_analysis": ai_status,
             "azure_sql": "connected" if (AZURE_SQL_AVAILABLE and db_working) else "not_configured"
         },
         "features": {
-            "executive_orders": True,
-            "state_legislation": legiscan_status == "connected",
-            "ai_analysis": ai_status == "connected",
-            "multi_state_processing": legiscan_status == "connected",
-            "azure_sql_database": AZURE_SQL_AVAILABLE and db_working
+            "executive_orders": "Real Federal Register Integration with Azure AI",
+            "state_legislation": "LegiScan Integration with AI" if legiscan_status == "connected" else "Configuration Required",
+            "ai_analysis": "Azure AI Integration" if ai_status == "connected" else "Configuration Required",
+            "azure_sql_database": "Connected & Working" if (AZURE_SQL_AVAILABLE and db_working) else "Not Available",
+            "dynamic_ai_analysis": "Azure AI Enhanced" if federal_register_ai_status == "connected" else "Basic Templates"
         },
         "supported_states": list(SUPPORTED_STATES.keys()),
         "executive_order_categories": EXECUTIVE_ORDER_CATEGORIES,
@@ -363,6 +393,157 @@ async def test_save_bill_azure():
         raise HTTPException(
             status_code=500,
             detail=f"Test save failed: {str(e)}"
+        )
+
+# ===============================
+# ENHANCED EXECUTIVE ORDERS ENDPOINTS WITH AZURE AI
+# ===============================
+
+@app.get("/api/executive-orders")
+async def get_executive_orders(
+    category: Optional[str] = Query(None, description="Executive order category filter"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(25, ge=1, le=100, description="Items per page"),
+    search: Optional[str] = Query(None, description="Search term"),
+    sort_by: str = Query("signing_date", description="Sort field"),
+    sort_order: str = Query("desc", description="Sort order (asc, desc)")
+):
+    """Get executive orders with filtering and pagination"""
+    
+    if category and category not in EXECUTIVE_ORDER_CATEGORIES and category != 'not-applicable':
+        raise HTTPException(
+            status_code=400,
+            detail=f"Category '{category}' not supported. Supported: {EXECUTIVE_ORDER_CATEGORIES}"
+        )
+    
+    try:
+        result = get_executive_orders_from_db(
+            category=category,
+            search=search,
+            page=page,
+            per_page=per_page,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving executive orders: {str(e)}")
+
+@app.post("/api/executive-orders/fetch")
+async def fetch_executive_orders_with_azure_ai(
+    request: ExecutiveOrderFetchRequest,
+    background_tasks: BackgroundTasks
+):
+    """Fetch executive orders from Federal Register with Azure AI analysis"""
+
+    try:
+        # Initialize the ENHANCED Federal Register API with Azure AI
+        api = FederalRegisterAPI()
+        
+        # Set default end_date if not provided
+        end_date = request.end_date or datetime.now().strftime('%Y-%m-%d')
+        
+        # Validate dates
+        if request.start_date:
+            try:
+                datetime.strptime(request.start_date, '%Y-%m-%d')
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
+        
+        if end_date:
+            try:
+                datetime.strptime(end_date, '%Y-%m-%d')
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
+        
+        logger.info(f"🚀 Fetching executive orders from Federal Register with Azure AI")
+        logger.info(f"📊 Date range: {request.start_date} to {end_date}")
+        logger.info(f"🤖 Azure AI Analysis: Enabled")
+        
+        # Call the ENHANCED API with Azure AI
+        result = await api.fetch_trump_2025_executive_orders(
+            start_date=request.start_date,
+            end_date=end_date,
+            per_page=request.per_page
+        )
+        
+        orders = result.get('results', [])
+        
+        if not orders:
+            return {
+                "success": True,
+                "message": "No executive orders found for the specified date range",
+                "orders_fetched": 0,
+                "orders_saved": 0,
+                "ai_analysis_enabled": result.get('ai_analysis_enabled', False),
+                "timestamp": datetime.now().isoformat(),
+                "orders": []
+            }
+        
+        # Log AI analysis status
+        ai_enabled = result.get('ai_analysis_enabled', False)
+        logger.info(f"🤖 Azure AI Analysis: {'✅ Enabled' if ai_enabled else '❌ Fallback Mode'}")
+        
+        # Save to database if requested
+        saved_count = 0
+        if request.save_to_db:
+            try:
+                db_result = save_executive_orders_to_db(orders)
+                if isinstance(db_result, dict):
+                    saved_count = db_result.get('total_processed', 0)
+                else:
+                    saved_count = db_result
+                logger.info(f"✅ Saved {saved_count} orders to database with Azure AI analysis")
+            except Exception as e:
+                logger.error(f"❌ Database save failed: {e}")
+                # Don't fail the whole request if database save fails
+                logger.warning("Continuing without database save...")
+
+        return {
+            "success": True,
+            "message": f"Successfully processed {len(orders)} executive orders with Azure AI analysis",
+            "orders_fetched": len(orders),
+            "orders_saved": saved_count if isinstance(saved_count, int) else saved_count.get('total_processed', 0) if isinstance(saved_count, dict) else 0,
+            "ai_analysis_enabled": ai_enabled,
+            "ai_version": "azure_openai_federal_register_v1.0",
+            "timestamp": datetime.now().isoformat(),
+            "orders": orders,  # Include the actual orders with Azure AI analysis
+            "search_strategies": result.get('search_strategies', []),
+            "date_range_days": result.get('date_range_days', 0)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Executive order fetch failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch executive orders: {str(e)}")
+
+@app.get("/api/executive-orders/{order_number}")
+async def get_executive_order_by_id(order_number: str):
+    """Get a specific executive order by number"""
+    
+    try:
+        order = get_executive_order_by_number(order_number)
+        
+        if not order:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Executive order {order_number} not found"
+            )
+        
+        return {
+            "success": True,
+            "order": order
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error retrieving executive order: {str(e)}"
         )
 
 # ===============================
@@ -619,129 +800,12 @@ async def search_and_analyze_legislation(request: LegiScanSearchRequest):
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # ===============================
-# EXECUTIVE ORDERS ENDPOINTS (Keep existing)
-# ===============================
-
-@app.get("/api/executive-orders")
-async def get_executive_orders(
-    category: Optional[str] = Query(None, description="Executive order category filter"),
-    page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(25, ge=1, le=100, description="Items per page"),
-    search: Optional[str] = Query(None, description="Search term"),
-    sort_by: str = Query("signing_date", description="Sort field"),
-    sort_order: str = Query("desc", description="Sort order (asc, desc)")
-):
-    """Get executive orders with filtering and pagination"""
-    
-    if category and category not in EXECUTIVE_ORDER_CATEGORIES and category != 'not-applicable':
-        raise HTTPException(
-            status_code=400,
-            detail=f"Category '{category}' not supported. Supported: {EXECUTIVE_ORDER_CATEGORIES}"
-        )
-    
-    try:
-        result = get_executive_orders_from_db(
-            category=category,
-            search=search,
-            page=page,
-            per_page=per_page,
-            sort_by=sort_by,
-            sort_order=sort_order
-        )
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving executive orders: {str(e)}")
-
-@app.post("/api/executive-orders/fetch")
-async def fetch_executive_orders_post(
-    start_date: Optional[str] = Query("2025-01-20", description="Start date in YYYY-MM-DD format"),
-    end_date: Optional[str] = Query(None, description="End date in YYYY-MM-DD format"),
-    per_page: Optional[int] = Query(1000, description="Maximum number of orders to fetch"),
-    save_to_db: Optional[bool] = Query(True, description="Whether to save results to database")
-):
-    """Fetch executive orders from Federal Register"""
-
-    try:
-        # Initialize the Federal Register API
-        api = FederalRegisterAPI()
-        
-        # Set default end_date if not provided
-        if not end_date:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-        
-        # Validate dates
-        if start_date:
-            try:
-                datetime.strptime(start_date, '%Y-%m-%d')
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
-        
-        if end_date:
-            try:
-                datetime.strptime(end_date, '%Y-%m-%d')
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
-        
-        logger.info(f"🚀 Fetching executive orders from Federal Register")
-        
-        # Call the API
-        result = api.fetch_trump_2025_executive_orders(
-            start_date=start_date,
-            end_date=end_date,
-            per_page=per_page
-        )
-        
-        orders = result.get('results', [])
-        
-        if not orders:
-            return {
-                "success": True,
-                "message": "No executive orders found for the specified date range",
-                "orders_fetched": 0,
-                "orders_saved": 0,
-                "timestamp": datetime.now().isoformat(),
-                "orders": []
-            }
-        
-        # Save to database if requested
-        saved_count = 0
-        if save_to_db:
-            try:
-                db_result = save_executive_orders_to_db(orders)
-                if isinstance(db_result, dict):
-                    saved_count = db_result.get('total_processed', 0)
-                else:
-                    saved_count = db_result
-                logger.info(f"✅ Saved {saved_count} orders to database")
-            except Exception as e:
-                logger.error(f"❌ Database save failed: {e}")
-                # Don't fail the whole request if database save fails
-                logger.warning("Continuing without database save...")
-
-        return {
-            "success": True,
-            "message": f"Successfully processed {len(orders)} executive orders",
-            "orders_fetched": len(orders),
-            "orders_saved": saved_count if isinstance(saved_count, int) else saved_count.get('total_processed', 0) if isinstance(saved_count, dict) else 0,
-            "timestamp": datetime.now().isoformat(),
-            "orders": orders  # Include the actual orders in the response
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Executive order fetch failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch executive orders: {str(e)}")
-
-# ===============================
-# UTILITY ENDPOINTS (Updated for Azure SQL)
+# UTILITY ENDPOINTS (Updated for Azure AI)
 # ===============================
 
 @app.get("/api/status")
 async def get_status():
-    """System status endpoint with Azure SQL information"""
+    """System status endpoint with Azure AI information"""
     
     # Test database connections
     if AZURE_SQL_AVAILABLE:
@@ -761,6 +825,7 @@ async def get_status():
     # Test integration status
     ai_status = "unknown"
     legiscan_status = "unknown"
+    federal_register_ai_status = "unknown"
     
     if AI_AVAILABLE:
         try:
@@ -775,6 +840,14 @@ async def get_status():
         except Exception as e:
             legiscan_status = f"error: {str(e)[:50]}"
     
+    # Test Federal Register Azure AI
+    try:
+        from federal_register_api import test_azure_ai_integration
+        fr_ai_working = await test_azure_ai_integration()
+        federal_register_ai_status = "connected" if fr_ai_working else "configuration_issue"
+    except Exception as e:
+        federal_register_ai_status = f"error: {str(e)[:50]}"
+    
     # Get statistics
     stats = None
     eo_stats = None
@@ -788,7 +861,7 @@ async def get_status():
     
     return {
         "environment": os.getenv("ENVIRONMENT", "development"),
-        "app_version": "9.1.0-Azure - Executive Orders & State Legislation",
+        "app_version": "10.0.0-Azure-AI - Executive Orders & State Legislation",
         "database": {
             "status": "connected" if db_working else "connection_issues",
             "type": db_type,
@@ -798,24 +871,67 @@ async def get_status():
         },
         "integrations": {
             "federal_register": "available",
+            "federal_register_ai": federal_register_ai_status,
             "legiscan": legiscan_status,
             "ai_analysis": ai_status,
             "azure_sql": "connected" if (AZURE_SQL_AVAILABLE and db_working) else "not_configured"
         },
         "features": {
-            "executive_orders": "Real Federal Register Integration",
+            "executive_orders": "Real Federal Register Integration with Azure AI" if federal_register_ai_status == "connected" else "Basic Federal Register Integration",
             "state_legislation": "LegiScan Integration with AI" if legiscan_status == "connected" else "Configuration Required",
             "ai_analysis": "Azure AI Integration" if ai_status == "connected" else "Configuration Required",
-            "azure_sql_database": "Connected & Working" if (AZURE_SQL_AVAILABLE and db_working) else "Not Available"
+            "azure_sql_database": "Connected & Working" if (AZURE_SQL_AVAILABLE and db_working) else "Not Available",
+            "dynamic_executive_order_ai": "Azure AI Enhanced" if federal_register_ai_status == "connected" else "Template Based"
         },
         "supported_states": list(SUPPORTED_STATES.keys()),
         "api_keys_configured": {
             "legiscan": bool(os.getenv('LEGISCAN_API_KEY')),
             "azure_ai": bool(os.getenv('AZURE_KEY')),
-            "azure_sql": AZURE_SQL_AVAILABLE
+            "azure_sql": AZURE_SQL_AVAILABLE,
+            "azure_endpoint": bool(os.getenv('AZURE_ENDPOINT'))
+        },
+        "azure_ai_config": {
+            "endpoint": os.getenv('AZURE_ENDPOINT', 'Not Set')[:50] + "..." if os.getenv('AZURE_ENDPOINT') else 'Not Set',
+            "model_name": os.getenv('AZURE_MODEL_NAME', 'Not Set'),
+            "key_configured": bool(os.getenv('AZURE_KEY'))
         },
         "timestamp": datetime.now().isoformat()
     }
+
+@app.get("/api/test-azure-ai")
+async def test_azure_ai_endpoint():
+    """Test Azure AI integration for Federal Register"""
+    
+    try:
+        from federal_register_api import test_azure_ai_integration
+        
+        logger.info("🧪 Testing Azure AI integration for Federal Register...")
+        
+        # Run the Azure AI test
+        test_result = await test_azure_ai_integration()
+        
+        if test_result:
+            return {
+                "success": True,
+                "message": "Azure AI integration is working correctly for Federal Register",
+                "ai_endpoint": os.getenv('AZURE_ENDPOINT', 'Not Set')[:50] + "..." if os.getenv('AZURE_ENDPOINT') else 'Not Set',
+                "ai_model": os.getenv('AZURE_MODEL_NAME', 'Not Set'),
+                "test_passed": True,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Azure AI integration test failed",
+                "test_passed": False,
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Azure AI test failed: {str(e)}"
+        )
 
 @app.post("/api/database/clear-all")
 async def clear_all_database_data():
@@ -860,14 +976,139 @@ async def clear_all_database_data():
             status_code=500,
             detail=f"Error clearing database: {str(e)}"
         )
+    
+# ===============================
+# HEALTH CHECK ENDPOINTS
+# ===============================
+
+async def check_service_health(service_name: str, check_func) -> dict:
+    """Generic health check wrapper"""
+    try:
+        start_time = datetime.now()
+        result = await check_func()
+        end_time = datetime.now()
+        response_time = (end_time - start_time).total_seconds() * 1000  # ms
+        
+        return {
+            "service": service_name,
+            "status": "healthy" if result else "unhealthy",
+            "message": "Service is operational" if result else "Service is not responding",
+            "response_time_ms": round(response_time, 2),
+            "checked_at": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed for {service_name}: {str(e)}")
+        return {
+            "service": service_name,
+            "status": "error", 
+            "message": str(e),
+            "response_time_ms": None,
+            "checked_at": datetime.now().isoformat()
+        }
+
+async def health_check_database() -> bool:
+    """Check database connectivity using existing functions"""
+    try:
+        if AZURE_SQL_AVAILABLE:
+            return test_azure_sql_connection()
+        else:
+            db_status = test_connections()
+            return db_status.get("legislation", False)
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return False
+
+async def health_check_legiscan() -> bool:
+    """Check LegiScan API using existing test function"""
+    try:
+        if AI_AVAILABLE:
+            return await test_legiscan_integration()
+        return False
+    except Exception as e:
+        logger.error(f"LegiScan health check failed: {e}")
+        return False
+
+async def health_check_azure_ai() -> bool:
+    """Check Azure AI using existing test function"""
+    try:
+        from federal_register_api import test_azure_ai_integration
+        return await test_azure_ai_integration()
+    except Exception as e:
+        logger.error(f"Azure AI health check failed: {e}")
+        return False
+
+async def health_check_federal_register() -> bool:
+    """Check Federal Register API connectivity"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = "https://www.federalregister.gov/api/v1/agencies"
+            async with session.get(url, timeout=10) as response:
+                return response.status == 200
+    except Exception as e:
+        logger.error(f"Federal Register health check failed: {e}")
+        return False
+
+# Health check endpoints - add these after your existing endpoints
+
+@app.get("/api/health/database")
+async def health_endpoint_database():
+    """Database health check endpoint"""
+    return await check_service_health("database", health_check_database)
+
+@app.get("/api/health/legiscan")
+async def health_endpoint_legiscan():
+    """LegiScan API health check endpoint"""
+    return await check_service_health("legiscan", health_check_legiscan)
+
+@app.get("/api/health/azure-ai")
+async def health_endpoint_azure_ai():
+    """Azure AI health check endpoint"""
+    return await check_service_health("azure-ai", health_check_azure_ai)
+
+@app.get("/api/health/federal-register")
+async def health_endpoint_federal_register():
+    """Federal Register API health check endpoint"""
+    return await check_service_health("federal-register", health_check_federal_register)
+
+@app.get("/api/health/all")
+async def health_check_all_services():
+    """Check all services at once"""
+    try:
+        # Run all checks concurrently
+        results = await asyncio.gather(
+            check_service_health("database", health_check_database),
+            check_service_health("legiscan", health_check_legiscan),
+            check_service_health("azure-ai", health_check_azure_ai),
+            check_service_health("federal-register", health_check_federal_register),
+            return_exceptions=True
+        )
+        
+        # Calculate overall health
+        healthy_count = sum(1 for result in results if isinstance(result, dict) and result.get('status') == 'healthy')
+        total_count = len(results)
+        
+        return {
+            "overall_status": "healthy" if healthy_count == total_count else "degraded" if healthy_count > 0 else "unhealthy",
+            "healthy_services": healthy_count,
+            "total_services": total_count,
+            "services": results,
+            "database_type": "Azure SQL" if AZURE_SQL_AVAILABLE else "SQLite Fallback",
+            "ai_available": AI_AVAILABLE,
+            "checked_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check all failed: {e}")
+        raise HTTPException(status_code=500, detail="Health check failed")
 
 if __name__ == "__main__":
     import uvicorn
-    print("🌐 Starting LegislationVue API v9.1.0-Azure")
-    print("=" * 60)
-    print("📋 Executive Orders endpoints:")
+    print("🌐 Starting LegislationVue API v10.0.0-Azure-AI")
+    print("=" * 70)
+    print("📋 Executive Orders endpoints (With Azure AI):")
     print("   • GET  /api/executive-orders")
-    print("   • POST /api/executive-orders/fetch")
+    print("   • POST /api/executive-orders/fetch  (🤖 Azure AI Enhanced)")
+    print("   • GET  /api/executive-orders/{order_number}")
     print("")
     print("🏛️ State Legislation endpoints (Azure SQL):")
     print("   • GET  /api/state-legislation")
@@ -878,6 +1119,9 @@ if __name__ == "__main__":
     print("   • GET  /api/test-azure-sql")
     print("   • POST /api/test-save-bill-azure")
     print("")
+    print("🤖 Azure AI specific endpoints:")
+    print("   • GET  /api/test-azure-ai")
+    print("")
     print("🔧 Utility endpoints:")
     print("   • GET  /api/status")
     print("   • POST /api/database/clear-all")
@@ -885,11 +1129,19 @@ if __name__ == "__main__":
     
     azure_sql_configured = AZURE_SQL_AVAILABLE
     legiscan_configured = bool(os.getenv('LEGISCAN_API_KEY'))
-    azure_ai_configured = bool(os.getenv('AZURE_KEY'))
+    azure_ai_configured = bool(os.getenv('AZURE_KEY')) and bool(os.getenv('AZURE_ENDPOINT'))
     
     print(f"🎯 Configuration Status:")
     print(f"   • AZURE_SQL: {'✅ Configured' if azure_sql_configured else '❌ Missing'}")
     print(f"   • LEGISCAN_API_KEY: {'✅ Configured' if legiscan_configured else '❌ Missing'}")
-    print(f"   • AZURE_AI_KEY: {'✅ Configured' if azure_ai_configured else '❌ Missing'}")
+    print(f"   • AZURE_AI (Key + Endpoint): {'✅ Configured' if azure_ai_configured else '❌ Missing'}")
+    
+    if azure_ai_configured:
+        print(f"🤖 Azure AI Configuration:")
+        print(f"   • Endpoint: {os.getenv('AZURE_ENDPOINT', 'Not Set')[:50]}...")
+        print(f"   • Model: {os.getenv('AZURE_MODEL_NAME', 'summarize-gpt-4.1')}")
+        print(f"   • Dynamic Executive Order Analysis: ✅ Enabled")
+    else:
+        print(f"⚠️  Azure AI not configured - Executive Orders will use template analysis")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)

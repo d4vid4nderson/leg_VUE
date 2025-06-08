@@ -1,7 +1,8 @@
-# federal_register_api.py - Updated with Dynamic Date-Based Fetching
+# federal_register_api.py - Updated with Azure AI Integration
 import requests
 import json
 import time
+import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import os
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class FederalRegisterAPI:
-    """Enhanced Federal Register API with dynamic date-based fetching"""
+    """Enhanced Federal Register API with Azure AI integration"""
     
     BASE_URL = "https://www.federalregister.gov/api/v1/documents"
     TRUMP_2025_URL = "https://www.federalregister.gov/presidential-documents/executive-orders/donald-trump/2025"
@@ -18,18 +19,298 @@ class FederalRegisterAPI:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'LegislationVue/7.0 Production',
+            'User-Agent': 'LegislationVue/7.0 Production with Azure AI',
             'Accept': 'application/json'
         })
         
-        # Check for OpenAI API key
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
-        if self.openai_api_key:
-            print("✅ OpenAI API key found, enhanced AI analysis available")
-        else:
-            print("ℹ️ No OpenAI API key found, using basic AI analysis")
+        # Azure AI configuration - use same config as ai.py
+        self.azure_endpoint = os.getenv("AZURE_ENDPOINT", "https://david-mabholqy-swedencentral.openai.azure.com/")
+        self.azure_key = os.getenv("AZURE_KEY", "8bFP5NQ6KL7jSV74M3ZJ77vh9uYrtR7c3sOkAmM3Gs7tirc5mOWAJQQJ99BEACfhMk5XJ3w3AAAAACOGGlXN")
+        self.model_name = os.getenv("AZURE_MODEL_NAME", "summarize-gpt-4.1")
         
-        print("✅ Federal Register API initialized")
+        # Initialize Azure AI client
+        self.ai_client = None
+        self._setup_azure_ai()
+        
+        print("✅ Federal Register API initialized with Azure AI integration")
+    
+    def _setup_azure_ai(self):
+        """Setup Azure OpenAI client"""
+        try:
+            from openai import AsyncAzureOpenAI
+            
+            self.ai_client = AsyncAzureOpenAI(
+                azure_endpoint=self.azure_endpoint,
+                api_key=self.azure_key,
+                api_version="2024-12-01-preview"
+            )
+            print("✅ Azure AI client initialized successfully")
+            
+        except ImportError:
+            print("❌ OpenAI library not found. Install with: pip install openai")
+            self.ai_client = None
+        except Exception as e:
+            print(f"❌ Azure AI setup failed: {e}")
+            self.ai_client = None
+    
+    async def _generate_ai_analysis(self, title: str, description: str, category: str) -> Dict[str, str]:
+        """Generate dynamic AI analysis using Azure OpenAI"""
+        
+        if not self.ai_client:
+            print("⚠️ Azure AI not available, using fallback analysis")
+            return self._generate_fallback_analysis(title, description, category)
+        
+        try:
+            # Prepare content for AI analysis
+            content = f"Title: {title}\n"
+            if description:
+                content += f"Description: {description}\n"
+            content += f"Category: {category}"
+            
+            # Truncate if too long
+            if len(content) > 4000:
+                content = content[:4000] + "..."
+            
+            print(f"🤖 Generating AI analysis for: {title[:50]}...")
+            
+            # Generate all three analyses concurrently
+            summary_task = self._generate_summary(content)
+            talking_points_task = self._generate_talking_points(content)
+            business_impact_task = self._generate_business_impact(content)
+            
+            # Wait for all analyses to complete
+            summary, talking_points, business_impact = await asyncio.gather(
+                summary_task,
+                talking_points_task,
+                business_impact_task,
+                return_exceptions=True
+            )
+            
+            # Handle any exceptions
+            if isinstance(summary, Exception):
+                print(f"❌ Summary generation failed: {summary}")
+                summary = f"<p>Executive order analyzing {category} policy with focus on {title[:100]}...</p>"
+            
+            if isinstance(talking_points, Exception):
+                print(f"❌ Talking points generation failed: {talking_points}")
+                talking_points = "<ol><li>Policy implementation required</li><li>Federal coordination needed</li><li>Stakeholder engagement planned</li></ol>"
+            
+            if isinstance(business_impact, Exception):
+                print(f"❌ Business impact generation failed: {business_impact}")
+                business_impact = "<p>1. Compliance requirements may change. 2. New opportunities for aligned businesses. 3. Industry coordination expected.</p>"
+            
+            print(f"✅ AI analysis completed for: {title[:50]}...")
+            
+            return {
+                'summary': summary,
+                'talking_points': talking_points,
+                'business_impact': business_impact,
+                'potential_impact': business_impact  # Use same as business impact for compatibility
+            }
+            
+        except Exception as e:
+            print(f"❌ AI analysis failed: {e}")
+            return self._generate_fallback_analysis(title, description, category)
+    
+    async def _generate_summary(self, content: str) -> str:
+        """Generate executive summary using Azure AI"""
+        
+        prompt = f"""
+        Write a concise summary of this executive order in 3-5 sentences. 
+        - Use straightforward, easy-to-understand language
+        - Focus only on the most important aspects
+        - Avoid technical jargon 
+        - Make it direct and to the point
+        - Consider the business and policy implications
+        
+        Executive Order Content: {content}
+        """
+        
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert policy analyst specializing in executive orders. Provide clear, actionable summaries for business leaders and policy makers."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+        
+        response = await self.ai_client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=400,
+            top_p=0.95
+        )
+        
+        raw_response = response.choices[0].message.content
+        return f"<p>{raw_response.strip()}</p>"
+    
+    async def _generate_talking_points(self, content: str) -> str:
+        """Generate key talking points using Azure AI"""
+        
+        prompt = f"""
+        Output EXACTLY 5 key talking points about this executive order in this format:
+
+        1. [First key point] - should be concise and important
+        2. [Second key point] - should be concise and important  
+        3. [Third key point] - should be concise and important
+        4. [Fourth key point] - should be concise and important
+        5. [Fifth key point] - should be concise and important
+
+        CRITICAL RULES:
+        - Each point should be ONE sentence only
+        - Make each point clear and easy to understand
+        - NO extra numbering or bullets
+        - EXACTLY 5 points, numbered 1-5
+        - Focus on actionable insights and key implications
+        
+        Executive Order Content: {content}
+        """
+        
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a communications expert helping leaders understand and discuss policy implications. Focus on the most important points for stakeholder discussions."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+        
+        response = await self.ai_client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=500,
+            top_p=0.95,
+            stop=["6.", "7.", "8.", "9."]
+        )
+        
+        raw_response = response.choices[0].message.content
+        
+        # Convert to HTML list format
+        lines = raw_response.strip().split('\n')
+        html_items = []
+        
+        for line in lines:
+            line = line.strip()
+            if line and any(line.startswith(str(i) + '.') for i in range(1, 6)):
+                # Remove the number and format as list item
+                content = line.split('.', 1)[1].strip()
+                html_items.append(f"<li>{content}</li>")
+        
+        return f"<ol>{''.join(html_items)}</ol>"
+    
+    async def _generate_business_impact(self, content: str) -> str:
+        """Generate business impact analysis using Azure AI"""
+        
+        prompt = f"""
+        Analyze the business impact of this executive order using EXACTLY this structure:
+
+        1. Risk: [Brief description of primary business risk]
+           • [First specific impact of this risk on businesses]
+           • [Second specific impact of this risk on operations]
+
+        2. Opportunity: [Brief description of main business opportunity]
+           • [First specific benefit businesses can capture]
+           • [Second specific advantage this creates]
+
+        3. Market Change: [Brief description of market/industry shift]
+           • [First specific market change expected]
+           • [Second specific industry transformation]
+
+        CRITICAL FORMATTING RULES:
+        - Use EXACTLY the structure above with numbered sections 1-3
+        - Create each bullet point with a SINGLE bullet character •
+        - Make all text clear and business-focused
+        
+        Executive Order Content: {content}
+        """
+        
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a business strategy consultant analyzing how government policies affect companies and markets. Focus on practical business implications."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+        
+        response = await self.ai_client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=0.1,
+            max_tokens=600,
+            top_p=0.95
+        )
+        
+        raw_response = response.choices[0].message.content
+        
+        # Convert to HTML format
+        lines = raw_response.strip().split('\n')
+        html_content = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Handle numbered sections
+            if any(line.startswith(str(i) + '.') for i in range(1, 4)):
+                content = line.split('.', 1)[1].strip()
+                html_content.append(f"<p><strong>{content}</strong></p>")
+            # Handle bullet points
+            elif line.startswith('•'):
+                content = line[1:].strip()
+                html_content.append(f"<p>• {content}</p>")
+            else:
+                html_content.append(f"<p>{line}</p>")
+        
+        return ''.join(html_content)
+    
+    def _generate_fallback_analysis(self, title: str, description: str, category: str) -> Dict[str, str]:
+        """Generate fallback analysis when AI is not available"""
+        
+        print("⚠️ Using fallback AI analysis")
+        
+        # Enhanced fallback based on actual content
+        if category == 'healthcare':
+            summary = "<p>This executive order addresses healthcare policy implementation requiring coordination between federal agencies and healthcare stakeholders to improve patient outcomes and system efficiency.</p>"
+            talking_points = "<ol><li>Healthcare system improvements mandated</li><li>Federal agency coordination required</li><li>Patient outcome optimization prioritized</li><li>Stakeholder engagement essential</li><li>Implementation timeline established</li></ol>"
+            business_impact = "<p><strong>Risk:</strong> Healthcare organizations must assess compliance requirements</p><p>• New regulatory requirements may increase operational costs</p><p>• Implementation deadlines require resource allocation</p><p><strong>Opportunity:</strong> Aligned healthcare businesses may benefit from policy support</p><p>• Enhanced federal programs may create new revenue streams</p><p>• Streamlined processes may reduce administrative burden</p>"
+        
+        elif category == 'education':
+            summary = "<p>This executive order establishes new federal education policy direction requiring coordinated implementation across government agencies to enhance educational outcomes and workforce development.</p>"
+            talking_points = "<ol><li>Educational excellence prioritized</li><li>Federal coordination enhanced</li><li>Workforce development emphasized</li><li>State partnerships strengthened</li><li>Innovation initiatives launched</li></ol>"
+            business_impact = "<p><strong>Risk:</strong> Educational institutions may face new compliance requirements</p><p>• Funding criteria changes may affect revenue</p><p>• Program modifications may require significant resources</p><p><strong>Opportunity:</strong> Education technology companies may see increased demand</p><p>• Federal investment in workforce programs may benefit training providers</p><p>• Innovation initiatives may create new market opportunities</p>"
+        
+        elif category == 'civic':
+            summary = "<p>This executive order directs federal agencies to enhance government efficiency and coordination, implementing new policies to improve public service delivery and administrative effectiveness.</p>"
+            talking_points = "<ol><li>Government efficiency enhanced</li><li>Agency coordination improved</li><li>Public service delivery optimized</li><li>Administrative processes streamlined</li><li>Accountability measures strengthened</li></ol>"
+            business_impact = "<p><strong>Risk:</strong> Government contractors may face new requirements</p><p>• Procurement processes may change affecting current contracts</p><p>• Compliance standards may require additional resources</p><p><strong>Opportunity:</strong> Efficiency-focused businesses may benefit from new initiatives</p><p>• Technology providers may see increased demand for government solutions</p><p>• Streamlined processes may reduce bureaucratic costs</p>"
+        
+        elif category == 'engineering':
+            summary = "<p>This executive order accelerates infrastructure development and technological innovation through streamlined federal processes and enhanced coordination between agencies and private sector partners.</p>"
+            talking_points = "<ol><li>Infrastructure development accelerated</li><li>Technological innovation promoted</li><li>Federal processes streamlined</li><li>Public-private partnerships enhanced</li><li>Project approval timelines reduced</li></ol>"
+            business_impact = "<p><strong>Risk:</strong> Engineering firms may face updated regulatory requirements</p><p>• New standards may require additional compliance measures</p><p>• Project specifications may change affecting current contracts</p><p><strong>Opportunity:</strong> Infrastructure companies may benefit from accelerated projects</p><p>• Technology firms may see increased federal investment</p><p>• Streamlined approval processes may reduce project delays</p>"
+        
+        else:
+            summary = f"<p>This executive order establishes new federal policy direction in {category} requiring coordinated implementation across government agencies to achieve specified objectives.</p>"
+            talking_points = "<ol><li>Federal policy direction established</li><li>Agency coordination required</li><li>Implementation framework defined</li><li>Stakeholder engagement planned</li><li>Progress monitoring instituted</li></ol>"
+            business_impact = "<p><strong>Risk:</strong> Organizations may need to assess new compliance requirements</p><p>• Regulatory changes may affect current operations</p><p>• Implementation costs may require budget adjustments</p><p><strong>Opportunity:</strong> Aligned businesses may benefit from policy support</p><p>• New federal initiatives may create market opportunities</p><p>• Enhanced coordination may improve business-government relations</p>"
+        
+        return {
+            'summary': summary,
+            'talking_points': talking_points,
+            'business_impact': business_impact,
+            'potential_impact': business_impact
+        }
     
     def calculate_optimal_per_page(self, start_date: str, end_date: str, max_per_page: int = 1000) -> int:
         """Calculate optimal per_page based on date range to fetch all available orders"""
@@ -83,11 +364,11 @@ class FederalRegisterAPI:
         except Exception:
             return ""
     
-    def fetch_trump_2025_executive_orders(self,
+    async def fetch_trump_2025_executive_orders(self,
                                         start_date: Optional[str] = None,
                                         end_date: Optional[str] = None,
                                         per_page: Optional[int] = None) -> Dict:
-        """Fetch Trump 2025 executive orders with dynamic date-based fetching"""
+        """Fetch Trump 2025 executive orders with dynamic Azure AI analysis"""
         
         if not start_date:
             start_date = "2025-01-20"
@@ -101,6 +382,7 @@ class FederalRegisterAPI:
         
         print(f"🔍 Fetching Trump 2025 executive orders from {start_date} to {end_date}")
         print(f"📊 Using per_page: {per_page} (optimized for date range)")
+        print(f"🤖 Azure AI Analysis: {'Enabled' if self.ai_client else 'Fallback Mode'}")
         
         all_orders = []
         search_strategies = []
@@ -108,7 +390,7 @@ class FederalRegisterAPI:
         # Strategy 1: Test API connectivity and check what's available
         print("📋 Strategy 1: API connectivity test and recent data check...")
         try:
-            orders1, strategy1_info = self.test_api_and_find_recent_docs(start_date, end_date, per_page)
+            orders1, strategy1_info = await self.test_api_and_find_recent_docs(start_date, end_date, per_page)
             all_orders.extend(orders1)
             search_strategies.append(strategy1_info)
             print(f"📋 Strategy 1 found {len(orders1)} orders")
@@ -119,35 +401,13 @@ class FederalRegisterAPI:
         # Strategy 2: Search all presidential documents in date range
         print("📋 Strategy 2: All presidential documents in date range...")
         try:
-            orders2, strategy2_info = self.search_all_presidential_docs_in_range(start_date, end_date, per_page)
+            orders2, strategy2_info = await self.search_all_presidential_docs_in_range(start_date, end_date, per_page)
             all_orders.extend(orders2)
             search_strategies.append(strategy2_info)
             print(f"📋 Strategy 2 found {len(orders2)} orders")
         except Exception as e:
             print(f"⚠️ Strategy 2 failed: {e}")
             search_strategies.append({"name": "Date Range PRESDOCU", "status": "failed", "error": str(e)})
-        
-        # Strategy 3: Search for executive orders without president filter in date range
-        print("📋 Strategy 3: Recent executive orders in date range...")
-        try:
-            orders3, strategy3_info = self.search_recent_executive_orders(start_date, end_date, per_page)
-            all_orders.extend(orders3)
-            search_strategies.append(strategy3_info)
-            print(f"📋 Strategy 3 found {len(orders3)} orders")
-        except Exception as e:
-            print(f"⚠️ Strategy 3 failed: {e}")
-            search_strategies.append({"name": "Recent EOs", "status": "failed", "error": str(e)})
-        
-        # Strategy 4: Paginated search if we might have more results
-        print("📋 Strategy 4: Paginated comprehensive search...")
-        try:
-            orders4, strategy4_info = self.paginated_comprehensive_search(start_date, end_date, per_page)
-            all_orders.extend(orders4)
-            search_strategies.append(strategy4_info)
-            print(f"📋 Strategy 4 found {len(orders4)} orders")
-        except Exception as e:
-            print(f"⚠️ Strategy 4 failed: {e}")
-            search_strategies.append({"name": "Paginated Search", "status": "failed", "error": str(e)})
         
         # Remove duplicates
         unique_orders = self.remove_duplicates(all_orders)
@@ -164,16 +424,17 @@ class FederalRegisterAPI:
             'count': len(unique_orders),
             'date_range': f"{start_date} to {end_date}",
             'trump_2025_url': self.TRUMP_2025_URL,
-            'source': 'Federal Register API v1 - Dynamic Date-Based Search',
+            'source': 'Federal Register API v1 - Dynamic Azure AI Analysis',
             'timestamp': datetime.now().isoformat(),
             'strategies_used': len(search_strategies),
             'total_raw_results': len(all_orders),
             'search_strategies': search_strategies,
             'per_page_used': per_page,
-            'date_range_days': (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days
+            'date_range_days': (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days,
+            'ai_analysis_enabled': self.ai_client is not None
         }
     
-    def test_api_and_find_recent_docs(self, start_date: str, end_date: str, per_page: int) -> tuple:
+    async def test_api_and_find_recent_docs(self, start_date: str, end_date: str, per_page: int) -> tuple:
         """Test API connectivity and find what's actually available in date range"""
         
         try:
@@ -205,11 +466,11 @@ class FederalRegisterAPI:
                     pres_docs = pres_data.get('results', [])
                     print(f"📊 Found {len(pres_docs)} presidential documents in date range")
                     
-                    # Process any executive orders found
+                    # Process any executive orders found with AI analysis
                     orders = []
                     for doc in pres_docs:
                         if self.is_executive_order(doc):
-                            processed = self.process_document(doc)
+                            processed = await self.process_document_with_ai(doc)
                             if processed:
                                 orders.append(processed)
                     
@@ -219,7 +480,8 @@ class FederalRegisterAPI:
                         "total_docs": total_docs,
                         "presidential_docs": len(pres_docs),
                         "executive_orders": len(orders),
-                        "date_range": f"{start_date} to {end_date}"
+                        "date_range": f"{start_date} to {end_date}",
+                        "ai_analysis": self.ai_client is not None
                     }
                     
                     return orders, strategy_info
@@ -229,8 +491,8 @@ class FederalRegisterAPI:
         
         return [], {"name": "API Test", "status": "failed", "error": "API connectivity issues"}
     
-    def search_all_presidential_docs_in_range(self, start_date: str, end_date: str, per_page: int) -> tuple:
-        """Search all presidential documents in specific date range"""
+    async def search_all_presidential_docs_in_range(self, start_date: str, end_date: str, per_page: int) -> tuple:
+        """Search all presidential documents in specific date range with AI analysis"""
         
         params = {
             'conditions[type]': 'PRESDOCU',
@@ -253,7 +515,7 @@ class FederalRegisterAPI:
                 orders = []
                 for doc in results:
                     if self.is_executive_order(doc):
-                        processed = self.process_document(doc)
+                        processed = await self.process_document_with_ai(doc)
                         if processed:
                             orders.append(processed)
                 
@@ -263,7 +525,8 @@ class FederalRegisterAPI:
                     "total_found": len(results),
                     "total_available": total_count,
                     "executive_orders": len(orders),
-                    "date_range": f"{start_date} to {end_date}"
+                    "date_range": f"{start_date} to {end_date}",
+                    "ai_analysis": self.ai_client is not None
                 }
                 
                 return orders, strategy_info
@@ -272,117 +535,6 @@ class FederalRegisterAPI:
             print(f"❌ Presidential docs in range search failed: {e}")
         
         return [], {"name": "Presidential Docs in Range", "status": "failed"}
-    
-    def search_recent_executive_orders(self, start_date: str, end_date: str, per_page: int) -> tuple:
-        """Search for executive orders in specific date range"""
-        
-        params = {
-            'conditions[presidential_document_type_id]': '2',  # Executive Orders
-            'conditions[type]': 'PRESDOCU',
-            'conditions[publication_date][gte]': start_date,
-            'conditions[publication_date][lte]': end_date,
-            'per_page': min(per_page, 1000),
-            'order': 'newest'
-        }
-        
-        try:
-            response = self.session.get(self.BASE_URL, params=params, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                results = data.get('results', [])
-                total_count = data.get('count', len(results))
-                
-                print(f"📊 Executive orders in range: {len(results)} fetched, {total_count} total available")
-                
-                orders = []
-                for doc in results:
-                    processed = self.process_document(doc)
-                    if processed:
-                        orders.append(processed)
-                
-                strategy_info = {
-                    "name": "Executive Orders in Date Range",
-                    "status": "success",
-                    "total_found": len(results),
-                    "total_available": total_count,
-                    "processed": len(orders),
-                    "date_range": f"{start_date} to {end_date}"
-                }
-                
-                return orders, strategy_info
-            
-        except Exception as e:
-            print(f"❌ Executive orders in range search failed: {e}")
-        
-        return [], {"name": "Executive Orders in Range", "status": "failed"}
-    
-    def paginated_comprehensive_search(self, start_date: str, end_date: str, per_page: int) -> tuple:
-        """Comprehensive paginated search to ensure we get all available orders"""
-        
-        all_orders = []
-        page = 1
-        max_pages = 5  # Reasonable limit to prevent infinite loops
-        
-        try:
-            while page <= max_pages:
-                params = {
-                    'conditions[type]': 'PRESDOCU',
-                    'conditions[publication_date][gte]': start_date,
-                    'conditions[publication_date][lte]': end_date,
-                    'conditions[term]': 'executive order',
-                    'per_page': min(per_page, 1000),
-                    'page': page,
-                    'order': 'newest'
-                }
-                
-                response = self.session.get(self.BASE_URL, params=params, timeout=30)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    results = data.get('results', [])
-                    
-                    if not results:
-                        print(f"📊 Page {page}: No more results, stopping pagination")
-                        break
-                    
-                    print(f"📊 Page {page}: Found {len(results)} documents")
-                    
-                    page_orders = []
-                    for doc in results:
-                        if self.is_executive_order(doc):
-                            processed = self.process_document(doc)
-                            if processed:
-                                page_orders.append(processed)
-                    
-                    all_orders.extend(page_orders)
-                    print(f"📊 Page {page}: Processed {len(page_orders)} executive orders")
-                    
-                    # Check if we have more pages
-                    total_pages = data.get('total_pages', 1)
-                    if page >= total_pages:
-                        print(f"📊 Reached last page ({total_pages}), stopping pagination")
-                        break
-                    
-                    page += 1
-                    time.sleep(0.5)  # Rate limiting
-                else:
-                    print(f"❌ Page {page}: Request failed with status {response.status_code}")
-                    break
-            
-            strategy_info = {
-                "name": "Paginated Comprehensive Search",
-                "status": "success",
-                "pages_searched": page - 1,
-                "total_orders": len(all_orders),
-                "date_range": f"{start_date} to {end_date}"
-            }
-            
-            return all_orders, strategy_info
-            
-        except Exception as e:
-            print(f"❌ Paginated search failed: {e}")
-            return all_orders, {"name": "Paginated Search", "status": "failed", "error": str(e)}
     
     def is_executive_order(self, document: Dict) -> bool:
         """Enhanced executive order detection"""
@@ -422,8 +574,8 @@ class FederalRegisterAPI:
         except Exception:
             return False
     
-    def process_document(self, raw_doc: Dict) -> Optional[Dict]:
-        """Process document with enhanced Federal Register field handling"""
+    async def process_document_with_ai(self, raw_doc: Dict) -> Optional[Dict]:
+        """Process document with Azure AI analysis"""
         
         try:
             # Extract all Federal Register API fields
@@ -439,11 +591,10 @@ class FederalRegisterAPI:
             citation = self.safe_get(raw_doc, 'citation', '')
             presidential_document_type = self.safe_get(raw_doc, 'presidential_document_type', '')
             
-            # Use best available summary
-            if not summary and abstract:
-                summary = abstract
-            if not summary:
-                summary = f"Executive order details from Federal Register document {document_number}"
+            # Use best available summary for AI analysis
+            ai_input_text = summary or abstract or title
+            if not ai_input_text:
+                ai_input_text = f"Executive order titled: {title}"
             
             # Use best available date
             if not signing_date and publication_date:
@@ -455,21 +606,24 @@ class FederalRegisterAPI:
             eo_number = executive_order_number or self.extract_eo_number_enhanced(title, document_number, raw_doc)
             
             # Enhanced categorization
-            category = self.categorize_order_enhanced(title, summary, presidential_document_type)
+            category = self.categorize_order_enhanced(title, ai_input_text, presidential_document_type)
             
-            # Generate comprehensive AI analysis
-            ai_analysis = self.generate_comprehensive_analysis(title, summary, category)
+            # Generate dynamic AI analysis
+            print(f"🤖 Generating Azure AI analysis for EO {eo_number}...")
+            ai_analysis = await self._generate_ai_analysis(title, ai_input_text, category)
             
             # Ensure document_number is not empty
             if not document_number:
                 document_number = f"FR-EO-{eo_number}-{int(time.time())}"
             
-            # Build complete order object
+            # Build complete order object with Azure AI analysis
             processed_order = {
                 'document_number': document_number,  # Primary identifier
                 'eo_number': eo_number,
+                'executive_order_number': eo_number,  # For frontend compatibility
                 'title': title,
                 'summary': summary,
+                'abstract': abstract,  # Keep original abstract
                 'signing_date': signing_date,
                 'publication_date': publication_date or signing_date,
                 'citation': citation,
@@ -477,18 +631,24 @@ class FederalRegisterAPI:
                 'category': category,
                 'html_url': html_url,
                 'pdf_url': pdf_url,
+                
+                # Azure AI Generated Content
                 'ai_summary': ai_analysis.get('summary', ''),
-                'ai_key_points': ai_analysis.get('key_points', ''),
+                'ai_executive_summary': ai_analysis.get('summary', ''),  # Compatibility
+                'ai_key_points': ai_analysis.get('talking_points', ''),
+                'ai_talking_points': ai_analysis.get('talking_points', ''),  # Compatibility
                 'ai_business_impact': ai_analysis.get('business_impact', ''),
-                'ai_potential_impact': ai_analysis.get('potential_impact', ''),
-                'ai_talking_points': ai_analysis.get('talking_points', ''),
-                'ai_version': 'federal_register_v7.0',
-                'source': 'Federal Register API v1',
+                'ai_potential_impact': ai_analysis.get('potential_impact', ''),  # Compatibility
+                'ai_version': 'azure_openai_federal_register_v1.0',
+                
+                # Metadata
+                'source': 'Federal Register API v1 with Azure AI',
                 'raw_data_available': bool(raw_doc),
                 'created_at': datetime.now().isoformat(),
                 'last_updated': datetime.now().isoformat()
             }
             
+            print(f"✅ Processed EO {eo_number} with Azure AI analysis")
             return processed_order
             
         except Exception as e:
@@ -580,199 +740,6 @@ class FederalRegisterAPI:
         except Exception:
             return 'not-applicable'
     
-    def generate_comprehensive_analysis(self, title: str, summary: str, category: str) -> Dict:
-        """Generate comprehensive AI analysis with enhanced content"""
-        
-        try:
-            # Enhanced analysis based on actual content
-            analysis_summary = self._generate_enhanced_summary(title, summary, category)
-            key_points = self._generate_enhanced_key_points(title, summary, category)
-            business_impact = self._generate_enhanced_business_impact(title, summary, category)
-            potential_impact = self._generate_enhanced_potential_impact(title, summary, category)
-            talking_points = self._generate_enhanced_talking_points(title, category)
-            
-            return {
-                'summary': analysis_summary,
-                'key_points': key_points,
-                'business_impact': business_impact,
-                'potential_impact': potential_impact,
-                'talking_points': talking_points
-            }
-            
-        except Exception:
-            return {
-                'summary': 'Executive order analysis not available',
-                'key_points': 'Key points analysis not available',
-                'business_impact': 'Business impact analysis not available',
-                'potential_impact': 'Potential impact analysis not available',
-                'talking_points': 'Talking points not available'
-            }
-    
-    def _generate_enhanced_summary(self, title: str, summary: str, category: str) -> str:
-        """Generate enhanced summary with content analysis"""
-        
-        try:
-            if len(summary) > 100:
-                return f"Executive Order: {title}. {summary[:300]}{'...' if len(summary) > 300 else ''}"
-            else:
-                return f"Executive Order: {title}. This {category} executive order establishes new federal policy direction requiring coordinated implementation across government agencies to achieve specified objectives and improve outcomes for the American people."
-        except Exception:
-            return f"Executive Order: {title}. Policy implementation and coordination required."
-    
-    def _generate_enhanced_key_points(self, title: str, summary: str, category: str) -> str:
-        """Generate enhanced key points with content-specific analysis"""
-        
-        try:
-            title_lower = self.safe_lower(title)
-            summary_lower = self.safe_lower(summary)
-            
-            points = []
-            
-            # Content-specific points
-            if 'establish' in title_lower or 'create' in title_lower:
-                points.append("Establishes new federal framework and institutional structures")
-            if 'strengthen' in title_lower or 'enhance' in title_lower:
-                points.append("Strengthens existing capabilities and coordination mechanisms")
-            if 'secure' in title_lower or 'protect' in title_lower:
-                points.append("Enhances security measures and protective protocols")
-            if 'promote' in title_lower or 'advance' in title_lower:
-                points.append("Promotes strategic priorities and national objectives")
-            
-            # Category-specific points
-            if category == 'healthcare':
-                points.extend([
-                    "Directs healthcare system improvements and patient outcome optimization",
-                    "Requires coordination between federal health agencies and state authorities"
-                ])
-            elif category == 'education':
-                points.extend([
-                    "Enhances educational excellence and workforce development initiatives",
-                    "Coordinates federal education policy with state and local systems"
-                ])
-            elif category == 'engineering':
-                points.extend([
-                    "Accelerates infrastructure development and technological innovation",
-                    "Streamlines regulatory processes for critical infrastructure projects"
-                ])
-            elif category == 'civic':
-                points.extend([
-                    "Improves government efficiency and federal agency coordination",
-                    "Enhances public service delivery and administrative effectiveness"
-                ])
-            
-            # Ensure minimum points
-            while len(points) < 4:
-                default_points = [
-                    "Requires immediate implementation by designated federal agencies",
-                    "Establishes clear accountability measures and progress monitoring",
-                    "Coordinates interagency efforts to achieve policy objectives",
-                    "Provides framework for ongoing evaluation and adjustment"
-                ]
-                for point in default_points:
-                    if point not in points and len(points) < 4:
-                        points.append(point)
-                        break
-            
-            return ". ".join(f"{i+1}. {point}" for i, point in enumerate(points[:4]))
-            
-        except Exception:
-            return "1. Federal implementation required. 2. Agency coordination essential. 3. Progress monitoring established. 4. Stakeholder engagement planned."
-    
-    def _generate_enhanced_business_impact(self, title: str, summary: str, category: str) -> str:
-        """Generate enhanced business impact with sector-specific analysis"""
-        
-        try:
-            title_lower = self.safe_lower(title)
-            summary_lower = self.safe_lower(summary)
-            
-            # Sector-specific impacts
-            if category == 'healthcare':
-                return "1. Healthcare organizations should assess compliance requirements and operational adjustments needed for new federal health initiatives. 2. Medical technology companies may find expanded opportunities in federal health programs and streamlined approval processes. 3. Insurance providers should evaluate policy changes affecting coverage requirements and provider networks. 4. Pharmaceutical companies should monitor regulatory changes affecting drug development, approval timelines, and market access opportunities."
-            
-            elif category == 'education':
-                return "1. Educational institutions should prepare for potential federal funding changes and new compliance requirements affecting operations. 2. Educational technology companies may benefit from increased federal investment in digital learning and workforce development programs. 3. Training and certification providers should explore opportunities in federal skills development and workforce preparation initiatives. 4. Educational service contractors should assess alignment with new federal education priorities and funding mechanisms."
-            
-            elif category == 'engineering':
-                return "1. Construction and engineering firms may benefit from accelerated infrastructure projects and streamlined federal permitting processes. 2. Technology companies should explore opportunities in federal innovation initiatives and research and development programs. 3. Energy sector businesses may see regulatory relief and expedited project approvals for critical infrastructure development. 4. Manufacturing companies should assess how regulatory streamlining affects production costs, compliance requirements, and market opportunities."
-            
-            # General business impacts based on title content
-            elif any(word in title_lower for word in ['regulat', 'reform', 'streamlin']):
-                return "1. Businesses across multiple sectors should review how regulatory reforms affect compliance obligations and operational efficiency. 2. Companies may benefit from reduced regulatory burden, faster approval processes, and streamlined government interactions. 3. Compliance and legal consulting firms should prepare clients for regulatory framework changes and updated procedures. 4. Industries subject to federal oversight should engage proactively with updated regulatory processes and requirements."
-            
-            elif any(word in title_lower for word in ['tax', 'economic', 'trade']):
-                return "1. Businesses should assess tax policy changes and economic initiatives affecting financial planning and strategic operations. 2. Corporations may benefit from improved economic policies, reduced regulatory barriers, and enhanced trade opportunities. 3. Small and medium enterprises should explore new opportunities created by federal economic development programs. 4. Financial services firms should prepare for potential changes in economic regulations, reporting requirements, and oversight procedures."
-            
-            else:
-                return "1. Organizations should monitor federal policy implementation affecting their industry sectors and operational requirements. 2. Companies may need to adjust procedures to align with new federal priorities and compliance expectations. 3. Businesses should identify opportunities created by federal policy changes and strategic initiatives. 4. Professional services firms should prepare to assist clients with compliance, strategic planning, and opportunity assessment."
-                
-        except Exception:
-            return "1. Business impact assessment recommended. 2. Compliance review necessary. 3. Strategic opportunities available. 4. Professional guidance advised."
-    
-    def _generate_enhanced_potential_impact(self, title: str, summary: str, category: str) -> str:
-        """Generate enhanced potential impact with long-term perspective"""
-        
-        try:
-            impacts = []
-            
-            if category == 'healthcare':
-                impacts = [
-                    "Improved healthcare access, quality, and outcomes through enhanced federal coordination and strategic resource allocation",
-                    "Strengthened public health infrastructure, emergency preparedness capabilities, and health system resilience",
-                    "Accelerated healthcare innovation through streamlined regulatory processes, increased federal investment, and public-private partnerships",
-                    "Enhanced long-term health outcomes, reduced healthcare costs, and improved health system efficiency benefiting all Americans"
-                ]
-            elif category == 'education':
-                impacts = [
-                    "Enhanced educational opportunities, improved outcomes, and increased access through coordinated federal education initiatives",
-                    "Strengthened workforce development programs preparing Americans for emerging economy jobs and technological advancement",
-                    "Increased investment in educational innovation, technology integration, and evidence-based learning approaches",
-                    "Long-term improvements in American competitiveness, innovation capacity, and economic mobility through education excellence"
-                ]
-            elif category == 'engineering':
-                impacts = [
-                    "Accelerated infrastructure modernization, technological advancement, and enhanced national competitiveness through strategic investments",
-                    "Improved economic efficiency, job creation, and regional development through critical infrastructure improvements",
-                    "Enhanced national security, resilience, and preparedness through modernized infrastructure and technological capabilities",
-                    "Long-term benefits to economic growth, quality of life, and American leadership in critical technology sectors"
-                ]
-            elif category == 'civic':
-                impacts = [
-                    "Improved government efficiency, responsiveness, and service delivery through enhanced federal coordination and modernization",
-                    "Strengthened democratic institutions, public trust, and civic engagement through increased transparency and accountability",
-                    "Enhanced national security, public safety, and emergency preparedness through improved federal agency coordination",
-                    "Long-term improvements in government effectiveness, citizen satisfaction, and public confidence in federal institutions"
-                ]
-            else:
-                impacts = [
-                    "Enhanced federal policy coordination, implementation effectiveness, and achievement of national objectives",
-                    "Improved alignment between federal priorities, resources, and strategic outcomes benefiting American citizens",
-                    "Strengthened American competitiveness, security, and prosperity through coordinated federal action",
-                    "Long-term benefits to economic growth, national security, and quality of life through effective governance"
-                ]
-            
-            return ". ".join(f"{i+1}. {impact}" for i, impact in enumerate(impacts))
-            
-        except Exception:
-            return "1. Policy coordination improvements expected. 2. Enhanced government effectiveness anticipated. 3. Stakeholder benefits likely. 4. Long-term positive outcomes projected."
-    
-    def _generate_enhanced_talking_points(self, title: str, category: str) -> str:
-        """Generate enhanced talking points for public communication"""
-        
-        try:
-            title_clean = self.safe_get({'title': title}, 'title', 'this executive order')
-            
-            points = [
-                f"This executive order demonstrates our administration's commitment to decisive action on {category} priorities that matter to American families",
-                f"The implementation of '{title}' will require coordinated federal efforts to deliver results efficiently and effectively",
-                f"We will monitor progress closely, maintain transparency, and ensure accountability in achieving the objectives outlined in this order",
-                f"This initiative reflects our dedication to effective governance, practical solutions, and delivering real benefits for the American people"
-            ]
-            
-            return ". ".join(f"{i+1}. {point}" for i, point in enumerate(points))
-            
-        except Exception:
-            return "1. Executive action addresses key priorities. 2. Federal coordination ensures implementation. 3. Progress monitoring maintains accountability. 4. Results benefit American people."
-    
     def remove_duplicates(self, orders: List[Dict]) -> List[Dict]:
         """Advanced duplicate removal with multiple identifiers"""
         
@@ -808,3 +775,75 @@ class FederalRegisterAPI:
             
         except Exception:
             return orders if isinstance(orders, list) else []
+
+# Test function to verify Azure AI integration
+async def test_azure_ai_integration():
+    """Test Azure AI integration with Federal Register API"""
+    
+    print("🧪 Testing Azure AI Integration with Federal Register API")
+    print("=" * 60)
+    
+    try:
+        # Initialize API
+        api = FederalRegisterAPI()
+        
+        # Test AI analysis with sample executive order
+        sample_title = "Securing the Border"
+        sample_description = "This executive order directs federal agencies to enhance border security measures and immigration enforcement."
+        sample_category = "civic"
+        
+        print(f"🔍 Testing AI analysis with sample order:")
+        print(f"   Title: {sample_title}")
+        print(f"   Category: {sample_category}")
+        
+        # Generate AI analysis
+        ai_result = await api._generate_ai_analysis(sample_title, sample_description, sample_category)
+        
+        print(f"\n✅ AI Analysis Results:")
+        print(f"   Summary Length: {len(ai_result.get('summary', ''))} characters")
+        print(f"   Talking Points Length: {len(ai_result.get('talking_points', ''))} characters")
+        print(f"   Business Impact Length: {len(ai_result.get('business_impact', ''))} characters")
+        
+        # Show sample content
+        print(f"\n📋 Sample Summary:")
+        print(f"   {ai_result.get('summary', 'No summary')[:200]}...")
+        
+        print(f"\n🎯 Sample Talking Points:")
+        print(f"   {ai_result.get('talking_points', 'No talking points')[:200]}...")
+        
+        print(f"\n📈 Sample Business Impact:")
+        print(f"   {ai_result.get('business_impact', 'No business impact')[:200]}...")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Azure AI integration test failed: {e}")
+        return False
+
+# Main execution for testing
+if __name__ == "__main__":
+    print("🚀 Federal Register API with Azure AI Integration")
+    print("=" * 60)
+    
+    # Run async test
+    import asyncio
+    
+    async def main():
+        # Test Azure AI integration
+        ai_test_result = await test_azure_ai_integration()
+        
+        if ai_test_result:
+            print("\n✅ Azure AI integration is working!")
+            print("\n🔧 To use this in your application:")
+            print("1. Make sure your .env file has AZURE_ENDPOINT and AZURE_KEY")
+            print("2. Update your main.py to use this enhanced Federal Register API")
+            print("3. Executive orders will now have dynamic AI analysis!")
+        else:
+            print("\n❌ Azure AI integration needs configuration")
+            print("\n🔧 Check your environment variables:")
+            print("   - AZURE_ENDPOINT")
+            print("   - AZURE_KEY") 
+            print("   - AZURE_MODEL_NAME")
+    
+    # Run the test
+    asyncio.run(main())

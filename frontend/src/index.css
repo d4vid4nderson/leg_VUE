@@ -76,3 +76,194 @@ ol li {
   padding-left: 5px; /* Adds a small space after the number */
 }
 
+
+/* Enhanced AI Content Styling - Add to index.css */
+
+/* Base AI content styling */
+.ai-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.6;
+}
+
+/* Executive Summary - Clean paragraph format */
+.ai-content p {
+  margin-bottom: 0.75em;
+  line-height: 1.5;
+}
+
+.ai-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Talking Points - Enhanced numbered list */
+.ai-content .talking-points,
+.ai-content ol {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: talking-point;
+}
+
+.ai-content .talking-points li,
+.ai-content ol li {
+  margin-bottom: 0.75em;
+  padding-left: 0;
+  counter-increment: talking-point;
+  position: relative;
+  line-height: 1.4;
+}
+
+.ai-content .talking-points li:last-child,
+.ai-content ol li:last-child {
+  margin-bottom: 0;
+}
+
+/* Remove the default strong numbering and use our custom counter */
+.ai-content .talking-points li strong,
+.ai-content ol li strong {
+  display: none;
+}
+
+.ai-content .talking-points li:before,
+.ai-content ol li:before {
+  content: counter(talking-point) ".";
+  font-weight: 600;
+  color: currentColor;
+  margin-right: 0.5em;
+}
+
+/* Business Impact Sections */
+.ai-content .business-impact-section {
+  margin-bottom: 1em;
+  padding: 0.75em;
+  border-radius: 0.375rem;
+  border: 1px solid;
+}
+
+.ai-content .business-impact-section:last-child {
+  margin-bottom: 0;
+}
+
+.ai-content .business-impact-section h4 {
+  margin: 0 0 0.5em 0;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.ai-content .business-impact-section ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.ai-content .business-impact-section li {
+  margin-bottom: 0.5em;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+}
+
+.ai-content .business-impact-section li:last-child {
+  margin-bottom: 0;
+}
+
+/* Ensure bullet points are preserved in business impact */
+.ai-content .business-impact-section li {
+  position: relative;
+}
+
+/* Color variants for business impact sections */
+.business-impact-section.bg-red-50 {
+  background-color: #fef2f2;
+}
+
+.business-impact-section.border-red-200 {
+  border-color: #fecaca;
+}
+
+.business-impact-section.text-red-800 {
+  color: #991b1b;
+}
+
+.business-impact-section.bg-green-50 {
+  background-color: #f0fdf4;
+}
+
+.business-impact-section.border-green-200 {
+  border-color: #bbf7d0;
+}
+
+.business-impact-section.text-green-800 {
+  color: #166534;
+}
+
+.business-impact-section.bg-blue-50 {
+  background-color: #eff6ff;
+}
+
+.business-impact-section.border-blue-200 {
+  border-color: #bfdbfe;
+}
+
+.business-impact-section.text-blue-800 {
+  color: #1e40af;
+}
+
+/* Strong text styling */
+.ai-content strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+/* Clean up any unwanted spacing */
+.ai-content * {
+  max-width: 100%;
+  word-wrap: break-word;
+}
+
+.ai-content > *:first-child {
+  margin-top: 0;
+}
+
+.ai-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Preserve violet color inheritance */
+.text-violet-900 .ai-content,
+.text-violet-900 .ai-content *,
+.text-blue-800 .ai-content,
+.text-blue-800 .ai-content *,
+.text-green-800 .ai-content,
+.text-green-800 .ai-content *,
+.text-orange-600 .ai-content,
+.text-orange-600 .ai-content * {
+  color: inherit;
+}
+
+/* Specific overrides for different content areas */
+.text-violet-800 .ai-content .business-impact-section.text-red-800 {
+  color: #991b1b !important;
+}
+
+.text-violet-800 .ai-content .business-impact-section.text-green-800 {
+  color: #166534 !important;
+}
+
+.text-violet-800 .ai-content .business-impact-section.text-blue-800 {
+  color: #1e40af !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .ai-content .business-impact-section {
+    padding: 0.5em;
+    margin-bottom: 0.75em;
+  }
+  
+  .ai-content .talking-points li,
+  .ai-content ol li {
+    margin-bottom: 0.5em;
+  }
+}
+
