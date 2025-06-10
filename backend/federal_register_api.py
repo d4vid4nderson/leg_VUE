@@ -1,4 +1,4 @@
-# federal_register_api.py - Updated with Azure AI Integration
+# federal_register_api.py - Enhanced with Improved Filtering and Azure AI Integration
 import requests
 import json
 import time
@@ -7,32 +7,49 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import os
 from dotenv import load_dotenv
+import re
+import logging
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 class FederalRegisterAPI:
-    """Enhanced Federal Register API with Azure AI integration"""
+    """Enhanced Federal Register API with improved filtering and Azure AI integration"""
     
     BASE_URL = "https://www.federalregister.gov/api/v1/documents"
     TRUMP_2025_URL = "https://www.federalregister.gov/presidential-documents/executive-orders/donald-trump/2025"
     
-    def __init__(self):
+    def __init__(self, debug_mode: bool = False):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'LegislationVue/7.0 Production with Azure AI',
             'Accept': 'application/json'
         })
+        self.debug_mode = debug_mode
         
-        # Azure AI configuration - use same config as ai.py
-        self.azure_endpoint = os.getenv("AZURE_ENDPOINT", "https://david-mabholqy-swedencentral.openai.azure.com/")
-        self.azure_key = os.getenv("AZURE_KEY", "8bFP5NQ6KL7jSV74M3ZJ77vh9uYrtR7c3sOkAmM3Gs7tirc5mOWAJQQJ99BEACfhMk5XJ3w3AAAAACOGGlXN")
+        # Azure AI configuration - load from .env file
+        self.azure_endpoint = os.getenv("AZURE_ENDPOINT")
+        self.azure_key = os.getenv("AZURE_KEY")
         self.model_name = os.getenv("AZURE_MODEL_NAME", "summarize-gpt-4.1")
+        
+        # Validate required Azure configuration
+        if not self.azure_endpoint:
+            print("⚠️ AZURE_ENDPOINT not found in .env file")
+        if not self.azure_key:
+            print("⚠️ AZURE_KEY not found in .env file")
+        
+        self.debug_log(f"Azure endpoint loaded: {self.azure_endpoint[:50] + '...' if self.azure_endpoint else 'None'}")
+        self.debug_log(f"Azure model: {self.model_name}")
+        self.debug_log(f"Azure key configured: {'Yes' if self.azure_key else 'No'}")
         
         # Initialize Azure AI client
         self.ai_client = None
         self._setup_azure_ai()
         
-        print("✅ Federal Register API initialized with Azure AI integration")
+        print("✅ Federal Register API initialized with enhanced filtering and Azure AI integration")
+        if self.debug_mode:
+            print("🐛 Debug mode enabled - will show detailed filtering information")
     
     def _setup_azure_ai(self):
         """Setup Azure OpenAI client"""
@@ -53,32 +70,652 @@ class FederalRegisterAPI:
             print(f"❌ Azure AI setup failed: {e}")
             self.ai_client = None
     
+    def debug_log(self, message: str):
+        """Log debug messages if debug mode is enabled"""
+        if self.debug_mode:
+            print(f"🐛 DEBUG: {message}")
+    
+    def safe_get(self, data, key, default=""):
+        """Ultra-safe data extraction"""
+        try:
+            if not isinstance(data, dict):
+                return default
+            value = data.get(key)
+            if value is None:
+                return default
+            if isinstance(value, str):
+                return value.strip()
+            return str(value).strip() if value else default
+        except Exception:
+            return default
+    
+    def safe_lower(self, text):
+        """Ultra-safe lowercase conversion"""
+        try:
+            if text is None:
+                return ""
+            if isinstance(text, str):
+                return text.lower().strip()
+            return str(text).lower().strip() if text else ""
+        except Exception:
+            return ""
+    
+    def is_executive_order(self, document: Dict) -> bool:
+        """Enhanced executive order detection with EXPANDED validation range"""
+        try:
+            title = self.safe_lower(self.safe_get(document, 'title', ''))
+            doc_type = self.safe_get(document, 'type', '')
+            eo_number = self.safe_get(document, 'executive_order_number', '')
+            document_number = self.safe_get(document, 'document_number', '')
+            
+            self.debug_log(f"Analyzing: {title[:60]}...")
+            
+            # Must be a Presidential Document
+            if doc_type != 'Presidential Document':
+                self.debug_log("❌ Not a Presidential Document")
+                return False
+            
+            # FIXED: Expanded range for 2025 Trump EOs
+            if eo_number:
+                try:
+                    eo_int = int(str(eo_number).strip())
+                    # EXPANDED: Much broader range to catch all 2025 EOs
+                    if 14000 <= eo_int <= 15000:  # EXPANDED from 14147-14400
+                        self.debug_log(f"✅ Valid EO number field: {eo_number}")
+                        return True
+                    else:
+                        self.debug_log(f"❌ EO number {eo_number} outside expanded range")
+                        return False
+                except:
+                    pass
+            
+            # Look for EO numbers in document text (EXPANDED range)
+            eo_patterns = [
+                r'executive\s+order\s+(?:no\.?\s+)?(14\d{3}|15\d{3})',  # 14XXX or 15XXX
+                r'eo\s+(?:no\.?\s+)?(14\d{3}|15\d{3})',                # EO 14XXX/15XXX
+                r'\b(14\d{3}|15\d{3})\b',                              # Standalone 14XXX/15XXX
+            ]
+            
+            full_text = f"{title} {document_number}"
+            for pattern in eo_patterns:
+                match = re.search(pattern, full_text, re.IGNORECASE)
+                if match:
+                    eo_num = match.group(1) if match.groups() else match.group(0)
+                    try:
+                        eo_int = int(eo_num)
+                        # EXPANDED: Much broader range
+                        if 14000 <= eo_int <= 15000:
+                            self.debug_log(f"✅ Found valid EO {eo_num} in text")
+                            return True
+                    except:
+                        pass
+            
+            # Must explicitly mention "executive order" to proceed
+            if 'executive order' not in title:
+                self.debug_log("❌ Does not mention 'executive order'")
+                return False
+            
+            # Additional validation for known Trump 2025 EO patterns
+            trump_eo_indicators = [
+                'rescissions',
+                'protecting the american people',
+                'securing the border',
+                'restoring',
+                'ending',
+                'unleashing',
+                'america first',
+                'department of government efficiency',
+                'withdrawal from',
+                'revocation of',
+                'eliminating',
+                'promoting',
+                'strengthening',
+                'clarifying',
+                'establishing'
+            ]
+            
+            for indicator in trump_eo_indicators:
+                if indicator in title:
+                    self.debug_log(f"✅ Trump EO pattern: '{indicator}'")
+                    return True
+            
+            self.debug_log("❌ Not identified as valid executive order")
+            return False
+            
+        except Exception as e:
+            self.debug_log(f"❌ Error in EO detection: {e}")
+            return False
+    
+    def is_actual_executive_order(self, document: Dict, eo_number: int) -> bool:
+        """Verify this is the actual executive order document, not a notice about it"""
+        try:
+            title = self.safe_lower(self.safe_get(document, 'title', ''))
+            doc_type = self.safe_get(document, 'type', '')
+            
+            # Must be Presidential Document
+            if doc_type != 'Presidential Document':
+                return False
+            
+            # Should contain the EO number
+            if str(eo_number) not in f"{title} {self.safe_get(document, 'document_number', '')}":
+                return False
+            
+            # Should not be a notice or correction
+            exclusion_terms = ['notice', 'correction', 'erratum', 'amendment']
+            if any(term in title for term in exclusion_terms):
+                return False
+            
+            return True
+            
+        except Exception:
+            return False
+    
+    def extract_eo_number_enhanced(self, title: str, document_number: str, raw_doc: Dict) -> str:
+        """Enhanced EO number extraction with EXPANDED 2025 range"""
+        try:
+            # Check all possible fields for EO numbers
+            sources = [
+                self.safe_get(raw_doc, 'executive_order_number', ''),
+                title,
+                document_number,
+                self.safe_get(raw_doc, 'citation', ''),
+                self.safe_get(raw_doc, 'presidential_document_type', ''),
+                self.safe_get(raw_doc, 'html_url', ''),
+                self.safe_get(raw_doc, 'abstract', ''),
+            ]
+            
+            # EXPANDED: 2025 Trump EO patterns (14000-15000 range)
+            patterns = [
+                r'(?:executive\s+order\s+(?:no\.?\s+)?)(14\d{3}|15\d{3})',  # Executive Order 14XXX/15XXX
+                r'(?:eo\s+(?:no\.?\s+)?)(14\d{3}|15\d{3})',                # EO 14XXX/15XXX
+                r'(?:e\.o\.\s*)(14\d{3}|15\d{3})',                         # E.O. 14XXX/15XXX
+                r'(?:order\s+(?:no\.?\s+)?)(14\d{3}|15\d{3})',            # Order 14XXX/15XXX
+                r'executive-order-(14\d{3}|15\d{3})',                      # URL format
+                r'/(14\d{3}|15\d{3})/',                                    # URL number
+                r'\b(14\d{3}|15\d{3})\b',                                 # Standalone 14xxx/15xxx
+            ]
+            
+            for source in sources:
+                if not source:
+                    continue
+                    
+                source_clean = str(source).strip()
+                
+                for pattern in patterns:
+                    matches = re.findall(pattern, source_clean, re.IGNORECASE)
+                    for match in matches:
+                        number = str(match).strip()
+                        if len(number) == 5 and number.isdigit():
+                            # EXPANDED: Validate it's in expanded 2025 range
+                            try:
+                                num_int = int(number)
+                                if 14000 <= num_int <= 15000:  # EXPANDED RANGE
+                                    self.debug_log(f"✅ Found valid 2025 EO: {number}")
+                                    return number
+                            except:
+                                pass
+            
+            # If no valid EO number found, this might not be an EO
+            self.debug_log("❌ No valid 2025 EO number found in expanded range")
+            return ""  # Return empty instead of generating fake numbers
+                    
+        except Exception as e:
+            self.debug_log(f"Error extracting EO number: {e}")
+            return ""
+    
+    def fetch_with_multiple_strategies(self, start_date: str, end_date: str, per_page: int) -> List[Dict]:
+        """Enhanced search strategies"""
+        all_results = []
+        
+        # Strategy 1: All Presidential Documents
+        print("📋 Strategy 1: All Presidential Documents...")
+        try:
+            params1 = {
+                'conditions[type]': 'Presidential Document',
+                'conditions[publication_date][gte]': start_date,
+                'conditions[publication_date][lte]': end_date,
+                'per_page': per_page,
+                'order': 'newest'
+            }
+            response1 = self.session.get(self.BASE_URL, params=params1, timeout=30)
+            if response1.status_code == 200:
+                data1 = response1.json()
+                results1 = data1.get('results', [])
+                print(f"   Found {len(results1)} presidential documents")
+                all_results.extend(results1)
+            else:
+                print(f"   Strategy 1 failed with status: {response1.status_code}")
+        except Exception as e:
+            print(f"   Strategy 1 failed: {e}")
+        
+        # Strategy 2: Search for "executive order"
+        print("📋 Strategy 2: Documents mentioning 'executive order'...")
+        try:
+            params2 = {
+                'conditions[term]': 'executive order',
+                'conditions[publication_date][gte]': start_date,
+                'conditions[publication_date][lte]': end_date,
+                'per_page': min(per_page // 2, 500),
+                'order': 'newest'
+            }
+            response2 = self.session.get(self.BASE_URL, params=params2, timeout=30)
+            if response2.status_code == 200:
+                data2 = response2.json()
+                results2 = data2.get('results', [])
+                filtered_results2 = [doc for doc in results2 
+                                   if self.safe_get(doc, 'type', '') == 'Presidential Document']
+                print(f"   Found {len(results2)} total, {len(filtered_results2)} presidential documents")
+                all_results.extend(filtered_results2)
+            else:
+                print(f"   Strategy 2 failed with status: {response2.status_code}")
+        except Exception as e:
+            print(f"   Strategy 2 failed: {e}")
+        
+        # Strategy 3: Trump policy terms
+        print("📋 Strategy 3: Trump administration policy terms...")
+        try:
+            trump_policy_terms = ['restoring', 'securing', 'protecting', 'ending', 'unleashing']
+            for term in trump_policy_terms:
+                params3 = {
+                    'conditions[term]': term,
+                    'conditions[type]': 'Presidential Document',
+                    'conditions[publication_date][gte]': start_date,
+                    'conditions[publication_date][lte]': end_date,
+                    'per_page': min(per_page // len(trump_policy_terms), 100),
+                    'order': 'newest'
+                }
+                response3 = self.session.get(self.BASE_URL, params=params3, timeout=30)
+                if response3.status_code == 200:
+                    data3 = response3.json()
+                    results3 = data3.get('results', [])
+                    print(f"   '{term}': {len(results3)} documents")
+                    all_results.extend(results3)
+                time.sleep(0.1)  # Be nice to the API
+        except Exception as e:
+            print(f"   Strategy 3 failed: {e}")
+        
+        print(f"📊 Total raw documents from strategies: {len(all_results)}")
+        return all_results
+    
+    async def fetch_trump_2025_executive_orders(self,
+                                        start_date: Optional[str] = None,
+                                        end_date: Optional[str] = None,
+                                        per_page: Optional[int] = None,
+                                        debug: Optional[bool] = None) -> Dict:
+        """Enhanced fetch with EO number-based search and improved filtering"""
+        
+        if not start_date:
+            start_date = "2025-01-01"  # EXPANDED: Start from beginning of year
+        
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        if per_page is None:
+            per_page = self.calculate_optimal_per_page(start_date, end_date)
+        
+        # Enable debug mode if requested
+        if debug is not None:
+            original_debug = self.debug_mode
+            self.debug_mode = debug
+        
+        print(f"🚀 ENHANCED: Fetching Trump 2025 executive orders")
+        print(f"📅 Date range: {start_date} to {end_date}")
+        print(f"🔧 Using EO number-based search to overcome API publication delays")
+        print(f"🤖 Azure AI Analysis: {'Enabled' if self.ai_client else 'Fallback Mode'}")
+        
+        all_orders = []
+        found_eo_numbers = set()
+        
+        # Strategy 1: Search by EO numbers (most effective for recent EOs)
+        print(f"\n📋 Strategy 1: EO number-based search...")
+        try:
+            # FIXED: Dramatically expanded range to catch all 2025 EOs
+            # Original was too narrow: range(14146, 14350) - only 204 numbers
+            # New range covers all possible 2025 Trump EOs: 14000-15000
+            for eo_num in range(14000, 15000):  # MUCH BROADER RANGE
+                
+                # Search patterns for this EO number
+                search_patterns = [
+                    str(eo_num),              # "14146"
+                    f"EO {eo_num}",           # "EO 14146"
+                    f"Executive Order {eo_num}", # "Executive Order 14146"
+                    f"E.O. {eo_num}",         # "E.O. 14146"
+                    f"Order {eo_num}",        # "Order 14146"
+                ]
+                
+                for pattern in search_patterns:
+                    if eo_num in found_eo_numbers:
+                        break  # Skip if we already found this EO
+                    
+                    try:
+                        params = {
+                            'conditions[term]': pattern,
+                            'conditions[publication_date][gte]': start_date,
+                            'conditions[publication_date][lte]': end_date,
+                            'per_page': 50,
+                            'order': 'newest'
+                        }
+                        
+                        response = self.session.get(self.BASE_URL, params=params, timeout=30)
+                        if response.status_code == 200:
+                            data = response.json()
+                            results = data.get('results', [])
+                            
+                            # Look for the actual EO document
+                            for doc in results:
+                                if self.is_actual_executive_order(doc, eo_num):
+                                    processed = await self.process_document_with_ai(doc)
+                                    if processed:
+                                        all_orders.append(processed)
+                                        found_eo_numbers.add(eo_num)
+                                        print(f"   ✅ Found EO {eo_num}: {processed.get('title', '')[:60]}...")
+                                        break  # Found it, move to next EO
+                        
+                        # Small delay to be nice to the API
+                        time.sleep(0.02)  # Reduced delay for faster searching
+                        
+                    except Exception as e:
+                        self.debug_log(f"Error searching for EO {eo_num}: {e}")
+            
+            print(f"   Found {len(found_eo_numbers)} EOs via number search")
+            
+        except Exception as e:
+            print(f"   ❌ EO number search failed: {e}")
+        
+        # Strategy 2: Original document-based search (for any we missed)
+        print(f"\n📋 Strategy 2: Document-based search...")
+        try:
+            doc_based_results = self.fetch_with_multiple_strategies(start_date, end_date, per_page)
+            doc_based_count = 0
+            
+            for doc in doc_based_results:
+                if self.is_executive_order(doc):
+                    # Check if we already have this EO
+                    eo_num = self.extract_eo_number_enhanced(
+                        self.safe_get(doc, 'title', ''),
+                        self.safe_get(doc, 'document_number', ''),
+                        doc
+                    )
+                    
+                    if eo_num:  # Only process if we found a valid EO number
+                        try:
+                            eo_num_int = int(eo_num)
+                            if eo_num_int not in found_eo_numbers:
+                                processed = await self.process_document_with_ai(doc)
+                                if processed:
+                                    all_orders.append(processed)
+                                    found_eo_numbers.add(eo_num_int)
+                                    doc_based_count += 1
+                                    print(f"   ✅ Additional EO {eo_num}: {processed.get('title', '')[:60]}...")
+                        except ValueError:
+                            pass  # Skip if EO number isn't valid
+            
+            print(f"   Found {doc_based_count} additional EOs via document search")
+            
+        except Exception as e:
+            print(f"   ❌ Document-based search failed: {e}")
+        
+        # Strategy 3: Comprehensive term-based search
+        print("📋 Strategy 3: Comprehensive term-based search...")
+        try:
+            comprehensive_terms = [
+                'presidential documents',
+                'trump',
+                'biden transition',  # Include transition period
+                'executive action',
+                'presidential memorandum',
+                'proclamation',
+                'administrative order',
+                'federal agencies',
+                'department of',
+                'revoke',
+                'establish',
+                'directing',
+                'implementing'
+            ]
+            
+            comprehensive_count = 0
+            for term in comprehensive_terms:
+                try:
+                    params4 = {
+                        'conditions[term]': term,
+                        'conditions[type]': 'Presidential Document',
+                        'conditions[publication_date][gte]': "2025-01-01",  # Broader date range
+                        'conditions[publication_date][lte]': end_date,
+                        'per_page': 100,
+                        'order': 'newest'
+                    }
+                    response4 = self.session.get(self.BASE_URL, params=params4, timeout=30)
+                    if response4.status_code == 200:
+                        data4 = response4.json()
+                        results4 = data4.get('results', [])
+                        
+                        for doc in results4:
+                            if self.is_executive_order(doc):
+                                eo_num = self.extract_eo_number_enhanced(
+                                    self.safe_get(doc, 'title', ''),
+                                    self.safe_get(doc, 'document_number', ''),
+                                    doc
+                                )
+                                
+                                if eo_num:
+                                    try:
+                                        eo_num_int = int(eo_num)
+                                        if eo_num_int not in found_eo_numbers:
+                                            processed = await self.process_document_with_ai(doc)
+                                            if processed:
+                                                all_orders.append(processed)
+                                                found_eo_numbers.add(eo_num_int)
+                                                comprehensive_count += 1
+                                                print(f"   ✅ Comprehensive search found EO {eo_num}: {processed.get('title', '')[:60]}...")
+                                    except ValueError:
+                                        pass
+                        
+                        print(f"   '{term}': {len(results4)} documents checked")
+                    
+                    time.sleep(0.1)  # Be nice to the API
+                except Exception as e:
+                    print(f"   Error with term '{term}': {e}")
+            
+            print(f"   Found {comprehensive_count} additional EOs via comprehensive search")
+                    
+        except Exception as e:
+            print(f"   ❌ Comprehensive search failed: {e}")
+        
+        # Remove duplicates and sort
+        unique_orders = self.remove_duplicates(all_orders)
+        
+        # Sort by EO number
+        try:
+            unique_orders.sort(key=lambda x: int(self.safe_get(x, 'eo_number', '0')))
+        except:
+            pass  # Keep original order if sorting fails
+        
+        # Restore original debug mode if it was temporarily changed
+        if debug is not None:
+            self.debug_mode = original_debug
+        
+        print(f"\n✅ Final Results:")
+        print(f"   Total found: {len(unique_orders)}")
+        
+        return {
+            'results': unique_orders,
+            'count': len(unique_orders),
+            'date_range': f"{start_date} to {end_date}",
+            'trump_2025_url': self.TRUMP_2025_URL,
+            'source': 'Federal Register API v1 - Enhanced with EO Number Search',
+            'timestamp': datetime.now().isoformat(),
+            'strategies_used': 3,
+            'total_eo_numbers_searched': len(range(14000, 15000)),
+            'found_via_number_search': len(found_eo_numbers),
+            'ai_analysis_enabled': self.ai_client is not None,
+        }
+    
+    def calculate_optimal_per_page(self, start_date: str, end_date: str, max_per_page: int = 1000) -> int:
+        """Calculate optimal per_page based on date range"""
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            days_diff = (end_dt - start_dt).days
+            
+            # Estimate orders per day
+            if days_diff <= 7:
+                estimated_orders = days_diff * 2
+            elif days_diff <= 30:
+                estimated_orders = days_diff * 1.5
+            elif days_diff <= 90:
+                estimated_orders = days_diff * 1
+            else:
+                estimated_orders = days_diff * 0.5
+            
+            optimal_per_page = min(max(int(estimated_orders * 2), 50), max_per_page)
+            
+            self.debug_log(f"Date range: {days_diff} days, estimated orders: {int(estimated_orders)}, fetching: {optimal_per_page}")
+            return optimal_per_page
+            
+        except Exception as e:
+            self.debug_log(f"Error calculating optimal per_page: {e}")
+            return 100
+    
+    async def process_document_with_ai(self, raw_doc: Dict) -> Optional[Dict]:
+        """Process document with proper EO number and date formatting"""
+        try:
+            # Extract basic fields
+            title = self.safe_get(raw_doc, 'title', 'Executive Order')
+            summary = self.safe_get(raw_doc, 'summary', '')
+            abstract = self.safe_get(raw_doc, 'abstract', '')
+            document_number = self.safe_get(raw_doc, 'document_number', '')
+            publication_date = self.safe_get(raw_doc, 'publication_date', '')
+            signing_date = self.safe_get(raw_doc, 'signing_date', '')
+            html_url = self.safe_get(raw_doc, 'html_url', '')
+            pdf_url = self.safe_get(raw_doc, 'pdf_url', '')
+            executive_order_number = self.safe_get(raw_doc, 'executive_order_number', '')
+            citation = self.safe_get(raw_doc, 'citation', '')
+            presidential_document_type = self.safe_get(raw_doc, 'presidential_document_type', '')
+            
+            # Extract EO number with validation
+            eo_number = executive_order_number or self.extract_eo_number_enhanced(title, document_number, raw_doc)
+            
+            # Skip if no valid EO number found
+            if not eo_number:
+                self.debug_log("❌ Skipping - no valid EO number")
+                return None
+            
+            # Validate EO number is in correct range
+            try:
+                eo_int = int(eo_number)
+                # EXPANDED: Much broader range for 2025 Trump EOs
+                if not (14000 <= eo_int <= 15000):  # EXPANDED from 14147-14400
+                    self.debug_log(f"❌ Skipping - EO {eo_number} outside expanded valid range")
+                    return None
+            except:
+                self.debug_log(f"❌ Skipping - invalid EO number format: {eo_number}")
+                return None
+            
+            # Use best available date
+            if not signing_date and publication_date:
+                signing_date = publication_date
+            if not publication_date and signing_date:
+                publication_date = signing_date
+            
+            # Skip if no valid dates
+            if not signing_date and not publication_date:
+                self.debug_log("❌ Skipping - no valid dates")
+                return None
+            
+            # Use best available summary for AI analysis
+            ai_input_text = summary or abstract or title
+            if not ai_input_text:
+                ai_input_text = f"Executive order titled: {title}"
+            
+            # Enhanced categorization
+            category = self.categorize_order_enhanced(title, ai_input_text, presidential_document_type)
+            
+            # Generate AI analysis
+            self.debug_log(f"Generating AI analysis for EO {eo_number}...")
+            ai_analysis = await self._generate_ai_analysis(title, ai_input_text, category)
+            
+            # Format publication date for display
+            formatted_pub_date = ""
+            if publication_date:
+                try:
+                    date_obj = datetime.strptime(publication_date[:10], '%Y-%m-%d')
+                    formatted_pub_date = date_obj.strftime('%m/%d/%Y')
+                except:
+                    formatted_pub_date = publication_date
+            
+            # Format signing date for display
+            formatted_signing_date = ""
+            if signing_date:
+                try:
+                    date_obj = datetime.strptime(signing_date[:10], '%Y-%m-%d')
+                    formatted_signing_date = date_obj.strftime('%m/%d/%Y')
+                except:
+                    formatted_signing_date = signing_date
+            
+            # Build order object with proper formatting
+            processed_order = {
+                'document_number': document_number or f"FR-EO-{eo_number}",
+                'eo_number': eo_number,
+                'executive_order_number': eo_number,
+                'title': title,
+                'summary': summary,
+                'abstract': abstract,
+                'signing_date': signing_date,
+                'publication_date': publication_date,
+                'formatted_publication_date': formatted_pub_date,  # For UI display
+                'formatted_signing_date': formatted_signing_date,  # For UI display
+                'citation': citation,
+                'presidential_document_type': presidential_document_type,
+                'category': category,
+                'html_url': html_url,
+                'pdf_url': pdf_url,
+                
+                # Azure AI Generated Content
+                'ai_summary': ai_analysis.get('summary', ''),
+                'ai_executive_summary': ai_analysis.get('summary', ''),
+                'ai_key_points': ai_analysis.get('talking_points', ''),
+                'ai_talking_points': ai_analysis.get('talking_points', ''),
+                'ai_business_impact': ai_analysis.get('business_impact', ''),
+                'ai_potential_impact': ai_analysis.get('potential_impact', ''),
+                'ai_version': 'azure_openai_federal_register_v1.0',
+                
+                # Metadata
+                'source': 'Federal Register API v1 with Azure AI',
+                'raw_data_available': bool(raw_doc),
+                'created_at': datetime.now().isoformat(),
+                'last_updated': datetime.now().isoformat()
+            }
+            
+            self.debug_log(f"✅ Successfully processed EO {eo_number}")
+            return processed_order
+            
+        except Exception as e:
+            self.debug_log(f"❌ Error processing document: {e}")
+            return None
+    
     async def _generate_ai_analysis(self, title: str, description: str, category: str) -> Dict[str, str]:
         """Generate dynamic AI analysis using Azure OpenAI"""
-        
         if not self.ai_client:
             print("⚠️ Azure AI not available, using fallback analysis")
             return self._generate_fallback_analysis(title, description, category)
         
         try:
-            # Prepare content for AI analysis
             content = f"Title: {title}\n"
             if description:
                 content += f"Description: {description}\n"
             content += f"Category: {category}"
             
-            # Truncate if too long
             if len(content) > 4000:
                 content = content[:4000] + "..."
             
             print(f"🤖 Generating AI analysis for: {title[:50]}...")
             
-            # Generate all three analyses concurrently
+            # Generate all analyses concurrently
             summary_task = self._generate_summary(content)
             talking_points_task = self._generate_talking_points(content)
             business_impact_task = self._generate_business_impact(content)
             
-            # Wait for all analyses to complete
             summary, talking_points, business_impact = await asyncio.gather(
                 summary_task,
                 talking_points_task,
@@ -86,7 +723,7 @@ class FederalRegisterAPI:
                 return_exceptions=True
             )
             
-            # Handle any exceptions
+            # Handle exceptions
             if isinstance(summary, Exception):
                 print(f"❌ Summary generation failed: {summary}")
                 summary = f"<p>Executive order analyzing {category} policy with focus on {title[:100]}...</p>"
@@ -105,7 +742,7 @@ class FederalRegisterAPI:
                 'summary': summary,
                 'talking_points': talking_points,
                 'business_impact': business_impact,
-                'potential_impact': business_impact  # Use same as business impact for compatibility
+                'potential_impact': business_impact
             }
             
         except Exception as e:
@@ -114,7 +751,6 @@ class FederalRegisterAPI:
     
     async def _generate_summary(self, content: str) -> str:
         """Generate executive summary using Azure AI"""
-        
         prompt = f"""
         Write a concise summary of this executive order in 3-5 sentences. 
         - Use straightforward, easy-to-understand language
@@ -150,7 +786,6 @@ class FederalRegisterAPI:
     
     async def _generate_talking_points(self, content: str) -> str:
         """Generate key talking points using Azure AI"""
-        
         prompt = f"""
         Output EXACTLY 5 key talking points about this executive order in this format:
 
@@ -207,7 +842,6 @@ class FederalRegisterAPI:
     
     async def _generate_business_impact(self, content: str) -> str:
         """Generate business impact analysis using Azure AI"""
-        
         prompt = f"""
         Analyze the business impact of this executive order using EXACTLY this structure:
 
@@ -276,7 +910,6 @@ class FederalRegisterAPI:
     
     def _generate_fallback_analysis(self, title: str, description: str, category: str) -> Dict[str, str]:
         """Generate fallback analysis when AI is not available"""
-        
         print("⚠️ Using fallback AI analysis")
         
         # Enhanced fallback based on actual content
@@ -312,399 +945,8 @@ class FederalRegisterAPI:
             'potential_impact': business_impact
         }
     
-    def calculate_optimal_per_page(self, start_date: str, end_date: str, max_per_page: int = 1000) -> int:
-        """Calculate optimal per_page based on date range to fetch all available orders"""
-        try:
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            days_diff = (end_dt - start_dt).days
-            
-            # Estimate orders per day (conservative estimate: 1-3 orders per day during active periods)
-            if days_diff <= 7:  # Week or less
-                estimated_orders = days_diff * 2
-            elif days_diff <= 30:  # Month or less
-                estimated_orders = days_diff * 1.5
-            elif days_diff <= 90:  # Quarter or less
-                estimated_orders = days_diff * 1
-            else:  # Longer periods
-                estimated_orders = days_diff * 0.5
-            
-            # Ensure we have a reasonable buffer and don't exceed API limits
-            optimal_per_page = min(max(int(estimated_orders * 2), 50), max_per_page)
-            
-            print(f"📊 Date range: {days_diff} days, estimated orders: {int(estimated_orders)}, fetching: {optimal_per_page}")
-            return optimal_per_page
-            
-        except Exception as e:
-            print(f"❌ Error calculating optimal per_page: {e}")
-            return 100  # Safe fallback
-    
-    def safe_get(self, data, key, default=""):
-        """Ultra-safe data extraction"""
-        try:
-            if not isinstance(data, dict):
-                return default
-            value = data.get(key)
-            if value is None:
-                return default
-            if isinstance(value, str):
-                return value.strip()
-            return str(value).strip() if value else default
-        except Exception:
-            return default
-    
-    def safe_lower(self, text):
-        """Ultra-safe lowercase conversion"""
-        try:
-            if text is None:
-                return ""
-            if isinstance(text, str):
-                return text.lower().strip()
-            return str(text).lower().strip() if text else ""
-        except Exception:
-            return ""
-    
-    async def fetch_trump_2025_executive_orders(self,
-                                        start_date: Optional[str] = None,
-                                        end_date: Optional[str] = None,
-                                        per_page: Optional[int] = None) -> Dict:
-        """Fetch Trump 2025 executive orders with dynamic Azure AI analysis"""
-        
-        if not start_date:
-            start_date = "2025-01-20"
-        
-        if not end_date:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-        
-        # Calculate optimal per_page if not provided
-        if per_page is None:
-            per_page = self.calculate_optimal_per_page(start_date, end_date)
-        
-        print(f"🔍 Fetching Trump 2025 executive orders from {start_date} to {end_date}")
-        print(f"📊 Using per_page: {per_page} (optimized for date range)")
-        print(f"🤖 Azure AI Analysis: {'Enabled' if self.ai_client else 'Fallback Mode'}")
-        
-        all_orders = []
-        search_strategies = []
-        
-        # Strategy 1: Test API connectivity and check what's available
-        print("📋 Strategy 1: API connectivity test and recent data check...")
-        try:
-            orders1, strategy1_info = await self.test_api_and_find_recent_docs(start_date, end_date, per_page)
-            all_orders.extend(orders1)
-            search_strategies.append(strategy1_info)
-            print(f"📋 Strategy 1 found {len(orders1)} orders")
-        except Exception as e:
-            print(f"⚠️ Strategy 1 failed: {e}")
-            search_strategies.append({"name": "API Test", "status": "failed", "error": str(e)})
-        
-        # Strategy 2: Search all presidential documents in date range
-        print("📋 Strategy 2: All presidential documents in date range...")
-        try:
-            orders2, strategy2_info = await self.search_all_presidential_docs_in_range(start_date, end_date, per_page)
-            all_orders.extend(orders2)
-            search_strategies.append(strategy2_info)
-            print(f"📋 Strategy 2 found {len(orders2)} orders")
-        except Exception as e:
-            print(f"⚠️ Strategy 2 failed: {e}")
-            search_strategies.append({"name": "Date Range PRESDOCU", "status": "failed", "error": str(e)})
-        
-        # Remove duplicates
-        unique_orders = self.remove_duplicates(all_orders)
-        print(f"📋 Total unique orders found: {len(unique_orders)}")
-        
-        # If we found orders, show what we got
-        if unique_orders:
-            print("🎯 Found executive orders:")
-            for order in unique_orders[:5]:  # Show first 5
-                print(f"   • EO {order.get('eo_number')}: {order.get('title', 'No title')[:60]}...")
-        
-        return {
-            'results': unique_orders,
-            'count': len(unique_orders),
-            'date_range': f"{start_date} to {end_date}",
-            'trump_2025_url': self.TRUMP_2025_URL,
-            'source': 'Federal Register API v1 - Dynamic Azure AI Analysis',
-            'timestamp': datetime.now().isoformat(),
-            'strategies_used': len(search_strategies),
-            'total_raw_results': len(all_orders),
-            'search_strategies': search_strategies,
-            'per_page_used': per_page,
-            'date_range_days': (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days,
-            'ai_analysis_enabled': self.ai_client is not None
-        }
-    
-    async def test_api_and_find_recent_docs(self, start_date: str, end_date: str, per_page: int) -> tuple:
-        """Test API connectivity and find what's actually available in date range"""
-        
-        try:
-            test_params = {
-                'conditions[publication_date][gte]': start_date,
-                'conditions[publication_date][lte]': end_date,
-                'per_page': min(per_page, 1000)
-            }
-            
-            response = self.session.get(self.BASE_URL, params=test_params, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                total_docs = data.get('count', 0)
-                print(f"📊 API Test: Found {total_docs} total documents in date range")
-                
-                # Now search specifically for presidential documents in date range
-                pres_params = {
-                    'conditions[type]': 'PRESDOCU',
-                    'conditions[publication_date][gte]': start_date,
-                    'conditions[publication_date][lte]': end_date,
-                    'per_page': min(per_page, 1000)
-                }
-                
-                pres_response = self.session.get(self.BASE_URL, params=pres_params, timeout=30)
-                
-                if pres_response.status_code == 200:
-                    pres_data = pres_response.json()
-                    pres_docs = pres_data.get('results', [])
-                    print(f"📊 Found {len(pres_docs)} presidential documents in date range")
-                    
-                    # Process any executive orders found with AI analysis
-                    orders = []
-                    for doc in pres_docs:
-                        if self.is_executive_order(doc):
-                            processed = await self.process_document_with_ai(doc)
-                            if processed:
-                                orders.append(processed)
-                    
-                    strategy_info = {
-                        "name": "API Test & PRESDOCU in Date Range",
-                        "status": "success",
-                        "total_docs": total_docs,
-                        "presidential_docs": len(pres_docs),
-                        "executive_orders": len(orders),
-                        "date_range": f"{start_date} to {end_date}",
-                        "ai_analysis": self.ai_client is not None
-                    }
-                    
-                    return orders, strategy_info
-            
-        except Exception as e:
-            print(f"❌ API test failed: {e}")
-        
-        return [], {"name": "API Test", "status": "failed", "error": "API connectivity issues"}
-    
-    async def search_all_presidential_docs_in_range(self, start_date: str, end_date: str, per_page: int) -> tuple:
-        """Search all presidential documents in specific date range with AI analysis"""
-        
-        params = {
-            'conditions[type]': 'PRESDOCU',
-            'conditions[publication_date][gte]': start_date,
-            'conditions[publication_date][lte]': end_date,
-            'per_page': min(per_page, 1000),
-            'order': 'newest'
-        }
-        
-        try:
-            response = self.session.get(self.BASE_URL, params=params, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                results = data.get('results', [])
-                total_count = data.get('count', len(results))
-                
-                print(f"📊 Presidential docs in range: {len(results)} fetched, {total_count} total available")
-                
-                orders = []
-                for doc in results:
-                    if self.is_executive_order(doc):
-                        processed = await self.process_document_with_ai(doc)
-                        if processed:
-                            orders.append(processed)
-                
-                strategy_info = {
-                    "name": "Presidential Docs in Date Range",
-                    "status": "success",
-                    "total_found": len(results),
-                    "total_available": total_count,
-                    "executive_orders": len(orders),
-                    "date_range": f"{start_date} to {end_date}",
-                    "ai_analysis": self.ai_client is not None
-                }
-                
-                return orders, strategy_info
-            
-        except Exception as e:
-            print(f"❌ Presidential docs in range search failed: {e}")
-        
-        return [], {"name": "Presidential Docs in Range", "status": "failed"}
-    
-    def is_executive_order(self, document: Dict) -> bool:
-        """Enhanced executive order detection"""
-        
-        try:
-            title = self.safe_lower(self.safe_get(document, 'title', ''))
-            doc_type = self.safe_get(document, 'type', '')
-            presidential_doc_type = self.safe_get(document, 'presidential_document_type', '')
-            eo_number = self.safe_get(document, 'executive_order_number', '')
-            
-            # Strong indicators
-            if eo_number:
-                return True
-            
-            if 'executive order' in title:
-                return True
-            
-            # Check for EO patterns
-            eo_patterns = ['eo ', 'e.o.', 'executive order no', 'order no.', 'order number']
-            if any(pattern in title for pattern in eo_patterns):
-                return True
-            
-            # Check presidential document type
-            if 'executive order' in self.safe_lower(presidential_doc_type):
-                return True
-            
-            # For PRESDOCU, check if it has ordering language
-            if doc_type == 'PRESDOCU':
-                ordering_words = ['order', 'directing', 'establishing', 'requiring', 'ordering']
-                if any(word in title for word in ordering_words):
-                    # Additional check - avoid proclamations
-                    if 'proclamation' not in title:
-                        return True
-            
-            return False
-            
-        except Exception:
-            return False
-    
-    async def process_document_with_ai(self, raw_doc: Dict) -> Optional[Dict]:
-        """Process document with Azure AI analysis"""
-        
-        try:
-            # Extract all Federal Register API fields
-            title = self.safe_get(raw_doc, 'title', 'Executive Order')
-            summary = self.safe_get(raw_doc, 'summary', '')
-            abstract = self.safe_get(raw_doc, 'abstract', '')
-            document_number = self.safe_get(raw_doc, 'document_number', '')
-            publication_date = self.safe_get(raw_doc, 'publication_date', '')
-            signing_date = self.safe_get(raw_doc, 'signing_date', '')
-            html_url = self.safe_get(raw_doc, 'html_url', '')
-            pdf_url = self.safe_get(raw_doc, 'pdf_url', '')
-            executive_order_number = self.safe_get(raw_doc, 'executive_order_number', '')
-            citation = self.safe_get(raw_doc, 'citation', '')
-            presidential_document_type = self.safe_get(raw_doc, 'presidential_document_type', '')
-            
-            # Use best available summary for AI analysis
-            ai_input_text = summary or abstract or title
-            if not ai_input_text:
-                ai_input_text = f"Executive order titled: {title}"
-            
-            # Use best available date
-            if not signing_date and publication_date:
-                signing_date = publication_date
-            if not signing_date:
-                signing_date = datetime.now().strftime('%Y-%m-%d')
-            
-            # Extract/generate EO number
-            eo_number = executive_order_number or self.extract_eo_number_enhanced(title, document_number, raw_doc)
-            
-            # Enhanced categorization
-            category = self.categorize_order_enhanced(title, ai_input_text, presidential_document_type)
-            
-            # Generate dynamic AI analysis
-            print(f"🤖 Generating Azure AI analysis for EO {eo_number}...")
-            ai_analysis = await self._generate_ai_analysis(title, ai_input_text, category)
-            
-            # Ensure document_number is not empty
-            if not document_number:
-                document_number = f"FR-EO-{eo_number}-{int(time.time())}"
-            
-            # Build complete order object with Azure AI analysis
-            processed_order = {
-                'document_number': document_number,  # Primary identifier
-                'eo_number': eo_number,
-                'executive_order_number': eo_number,  # For frontend compatibility
-                'title': title,
-                'summary': summary,
-                'abstract': abstract,  # Keep original abstract
-                'signing_date': signing_date,
-                'publication_date': publication_date or signing_date,
-                'citation': citation,
-                'presidential_document_type': presidential_document_type,
-                'category': category,
-                'html_url': html_url,
-                'pdf_url': pdf_url,
-                
-                # Azure AI Generated Content
-                'ai_summary': ai_analysis.get('summary', ''),
-                'ai_executive_summary': ai_analysis.get('summary', ''),  # Compatibility
-                'ai_key_points': ai_analysis.get('talking_points', ''),
-                'ai_talking_points': ai_analysis.get('talking_points', ''),  # Compatibility
-                'ai_business_impact': ai_analysis.get('business_impact', ''),
-                'ai_potential_impact': ai_analysis.get('potential_impact', ''),  # Compatibility
-                'ai_version': 'azure_openai_federal_register_v1.0',
-                
-                # Metadata
-                'source': 'Federal Register API v1 with Azure AI',
-                'raw_data_available': bool(raw_doc),
-                'created_at': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
-            }
-            
-            print(f"✅ Processed EO {eo_number} with Azure AI analysis")
-            return processed_order
-            
-        except Exception as e:
-            print(f"⚠️ Error processing document: {e}")
-            return None
-    
-    def extract_eo_number_enhanced(self, title: str, document_number: str, raw_doc: Dict) -> str:
-        """Enhanced EO number extraction with multiple fallbacks"""
-        
-        try:
-            import re
-            
-            # Check all possible fields for EO numbers
-            sources = [
-                self.safe_get(raw_doc, 'executive_order_number', ''),
-                title,
-                document_number,
-                self.safe_get(raw_doc, 'citation', ''),
-                self.safe_get(raw_doc, 'presidential_document_type', '')
-            ]
-            
-            # EO number patterns (most specific to least specific)
-            patterns = [
-                r'(?:executive\s+order\s+(?:no\.?\s+)?)(\d{4,5})',  # EO 14295
-                r'(?:eo\s+(?:no\.?\s+)?)(\d{4,5})',                # EO 14295
-                r'(?:e\.o\.\s*)(\d{4,5})',                         # E.O. 14295
-                r'(?:order\s+(?:no\.?\s+)?)(\d{4,5})',            # Order 14295
-                r'\b(14\d{3})\b',                                  # 14295 (2025 pattern)
-                r'\b(15\d{3})\b',                                  # 15xxx (future pattern)
-                r'2025-(\d+)',                                     # Document number format
-                r'(\d{4,5})'                                       # Any 4-5 digit number
-            ]
-            
-            for source in sources:
-                if not source:
-                    continue
-                    
-                source_lower = self.safe_lower(source)
-                
-                for pattern in patterns:
-                    match = re.search(pattern, source_lower)
-                    if match:
-                        number = match.group(1)
-                        # Validate it looks like an EO number
-                        if len(number) >= 4 and number.isdigit():
-                            return number
-            
-            # Final fallback - generate based on timestamp
-            return f"2025{int(time.time()) % 10000}"
-            
-        except Exception:
-            return f"2025{int(time.time()) % 10000}"
-    
     def categorize_order_enhanced(self, title: str, summary: str, doc_type: str) -> str:
         """Enhanced categorization with document type consideration"""
-        
         try:
             content_parts = [
                 self.safe_lower(title),
@@ -742,7 +984,6 @@ class FederalRegisterAPI:
     
     def remove_duplicates(self, orders: List[Dict]) -> List[Dict]:
         """Advanced duplicate removal with multiple identifiers"""
-        
         try:
             seen = set()
             unique = []
@@ -770,80 +1011,371 @@ class FederalRegisterAPI:
                     for id in valid_identifiers:
                         seen.add(id)
                     unique.append(order)
+                else:
+                    self.debug_log(f"Removing duplicate: {order.get('title', 'Unknown')[:50]}")
             
             return unique
             
         except Exception:
             return orders if isinstance(orders, list) else []
 
-# Test function to verify Azure AI integration
-async def test_azure_ai_integration():
-    """Test Azure AI integration with Federal Register API"""
-    
-    print("🧪 Testing Azure AI Integration with Federal Register API")
+    # NEW: Azure AI Test Function
+    async def test_azure_ai_integration(self) -> bool:
+        """Test Azure AI integration with a sample executive order"""
+        print("🧪 Testing Azure AI Integration")
+        print("=" * 50)
+        
+        try:
+            # Test 1: Check AI client initialization
+            print("\n1. Testing AI client initialization...")
+            if not self.ai_client:
+                print("❌ Azure AI client not initialized")
+                return False
+            print("✅ Azure AI client initialized successfully")
+            
+            # Test 2: Test summary generation
+            print("\n2. Testing summary generation...")
+            test_content = """
+            Title: Protecting the American People From Foreign Adversary Controlled Applications Act
+            Description: This executive order addresses national security concerns related to applications controlled by foreign adversaries and implements protective measures for American users.
+            Category: civic
+            """
+            
+            try:
+                summary = await self._generate_summary(test_content)
+                if summary and len(summary) > 20:
+                    print("✅ Summary generation working")
+                    print(f"   Sample: {summary[:100]}...")
+                else:
+                    print("❌ Summary generation failed")
+                    return False
+            except Exception as e:
+                print(f"❌ Summary generation error: {e}")
+                return False
+            
+            # Test 3: Test talking points generation
+            print("\n3. Testing talking points generation...")
+            try:
+                talking_points = await self._generate_talking_points(test_content)
+                if talking_points and "<ol>" in talking_points:
+                    print("✅ Talking points generation working")
+                    print(f"   Sample: {talking_points[:100]}...")
+                else:
+                    print("❌ Talking points generation failed")
+                    return False
+            except Exception as e:
+                print(f"❌ Talking points generation error: {e}")
+                return False
+            
+            # Test 4: Test business impact generation
+            print("\n4. Testing business impact generation...")
+            try:
+                business_impact = await self._generate_business_impact(test_content)
+                if business_impact and len(business_impact) > 20:
+                    print("✅ Business impact generation working")
+                    print(f"   Sample: {business_impact[:100]}...")
+                else:
+                    print("❌ Business impact generation failed")
+                    return False
+            except Exception as e:
+                print(f"❌ Business impact generation error: {e}")
+                return False
+            
+            # Test 5: Test full AI analysis
+            print("\n5. Testing full AI analysis integration...")
+            try:
+                full_analysis = await self._generate_ai_analysis(
+                    "Test Executive Order",
+                    "This is a test executive order for Azure AI integration testing",
+                    "civic"
+                )
+                
+                required_keys = ['summary', 'talking_points', 'business_impact', 'potential_impact']
+                if all(key in full_analysis for key in required_keys):
+                    print("✅ Full AI analysis integration working")
+                    print(f"   Generated {len(full_analysis)} analysis components")
+                else:
+                    print("❌ Full AI analysis integration failed")
+                    return False
+            except Exception as e:
+                print(f"❌ Full AI analysis error: {e}")
+                return False
+            
+            print("\n✅ All Azure AI tests passed!")
+            print(f"   Azure Endpoint: {self.azure_endpoint[:50]}...")
+            print(f"   Model: {self.model_name}")
+            print(f"   API Key: {'✅ Configured' if self.azure_key else '❌ Missing'}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Azure AI test failed: {e}")
+            return False
+
+    # NEW: Comprehensive API Test Function
+    async def test_comprehensive_api_functionality(self) -> bool:
+        """Test all API functionality including Azure AI"""
+        print("🧪 Comprehensive Federal Register API Test")
+        print("=" * 60)
+        
+        test_results = {
+            'connection': False,
+            'eo_detection': False,
+            'data_processing': False,
+            'azure_ai': False,
+            'full_fetch': False
+        }
+        
+        try:
+            # Test 1: Basic API connection
+            print("\n1. Testing API connection...")
+            try:
+                response = self.session.get(f"{self.BASE_URL}?per_page=1", timeout=10)
+                if response.status_code == 200:
+                    print("✅ Federal Register API connection successful")
+                    test_results['connection'] = True
+                else:
+                    print(f"❌ API connection failed with status: {response.status_code}")
+            except Exception as e:
+                print(f"❌ API connection error: {e}")
+            
+            # Test 2: Executive order detection
+            print("\n2. Testing executive order detection...")
+            try:
+                test_doc = {
+                    'title': 'Executive Order 14150: Test Order',
+                    'type': 'Presidential Document',
+                    'executive_order_number': '14150',
+                    'document_number': '2025-12345'
+                }
+                
+                if self.is_executive_order(test_doc):
+                    print("✅ Executive order detection working")
+                    test_results['eo_detection'] = True
+                else:
+                    print("❌ Executive order detection failed")
+            except Exception as e:
+                print(f"❌ EO detection error: {e}")
+            
+            # Test 3: Document processing
+            print("\n3. Testing document processing...")
+            try:
+                test_doc = {
+                    'title': 'Executive Order 14200: Test Executive Order for Processing',
+                    'summary': 'This is a test summary for document processing',
+                    'type': 'Presidential Document',
+                    'executive_order_number': '14200',
+                    'document_number': '2025-99999',
+                    'publication_date': '2025-06-09',
+                    'signing_date': '2025-06-09'
+                }
+                
+                processed = await self.process_document_with_ai(test_doc)
+                if processed and 'eo_number' in processed:
+                    print("✅ Document processing working")
+                    print(f"   Processed EO: {processed.get('eo_number')}")
+                    test_results['data_processing'] = True
+                else:
+                    print("❌ Document processing failed")
+            except Exception as e:
+                print(f"❌ Document processing error: {e}")
+            
+            # Test 4: Azure AI integration
+            print("\n4. Testing Azure AI integration...")
+            azure_test_result = await self.test_azure_ai_integration()
+            test_results['azure_ai'] = azure_test_result
+            
+            # Test 5: Full fetch functionality (limited test)
+            print("\n5. Testing full fetch functionality...")
+            try:
+                # Test with a small date range
+                result = await self.fetch_trump_2025_executive_orders(
+                    start_date="2025-06-01",
+                    end_date="2025-06-09",
+                    per_page=10,
+                    debug=False
+                )
+                
+                if 'results' in result and 'count' in result:
+                    print(f"✅ Full fetch working - found {result['count']} orders")
+                    test_results['full_fetch'] = True
+                else:
+                    print("❌ Full fetch failed")
+            except Exception as e:
+                print(f"❌ Full fetch error: {e}")
+            
+            # Summary
+            print(f"\n📊 Test Results Summary:")
+            print(f"=" * 30)
+            total_tests = len(test_results)
+            passed_tests = sum(test_results.values())
+            
+            for test_name, passed in test_results.items():
+                status = "✅ PASS" if passed else "❌ FAIL"
+                print(f"   {test_name.replace('_', ' ').title()}: {status}")
+            
+            print(f"\n📈 Overall: {passed_tests}/{total_tests} tests passed")
+            
+            if passed_tests == total_tests:
+                print("🎉 All tests passed! API is fully functional.")
+                return True
+            elif passed_tests >= 3:
+                print("⚠️ Most tests passed. API is mostly functional.")
+                return True
+            else:
+                print("❌ Multiple tests failed. Check configuration.")
+                return False
+            
+        except Exception as e:
+            print(f"❌ Comprehensive test failed: {e}")
+            return False
+
+
+# Test function to verify enhanced filtering
+async def test_enhanced_filtering():
+    """Test the enhanced filtering with debug output"""
+    print("🧪 Testing Enhanced Federal Register API Filtering")
     print("=" * 60)
     
     try:
-        # Initialize API
-        api = FederalRegisterAPI()
+        # Initialize API with debug mode
+        api = FederalRegisterAPI(debug_mode=True)
         
-        # Test AI analysis with sample executive order
-        sample_title = "Securing the Border"
-        sample_description = "This executive order directs federal agencies to enhance border security measures and immigration enforcement."
-        sample_category = "civic"
+        print(f"🔍 Testing enhanced filtering for recent executive orders...")
         
-        print(f"🔍 Testing AI analysis with sample order:")
-        print(f"   Title: {sample_title}")
-        print(f"   Category: {sample_category}")
+        # Fetch with debug enabled
+        result = await api.fetch_trump_2025_executive_orders(
+            start_date="2025-01-20",
+            end_date=datetime.now().strftime('%Y-%m-%d'),
+            per_page=500,
+            debug=True
+        )
         
-        # Generate AI analysis
-        ai_result = await api._generate_ai_analysis(sample_title, sample_description, sample_category)
+        print(f"\n✅ Enhanced Filtering Test Results:")
+        print(f"   Total EO Numbers Searched: {result.get('total_eo_numbers_searched', 0)}")
+        print(f"   Found via Number Search: {result.get('found_via_number_search', 0)}")
+        print(f"   Final Count: {result.get('count', 0)}")
         
-        print(f"\n✅ AI Analysis Results:")
-        print(f"   Summary Length: {len(ai_result.get('summary', ''))} characters")
-        print(f"   Talking Points Length: {len(ai_result.get('talking_points', ''))} characters")
-        print(f"   Business Impact Length: {len(ai_result.get('business_impact', ''))} characters")
+        # Show found orders
+        orders = result.get('results', [])
+        if orders:
+            print(f"\n🎯 Found Executive Orders:")
+            for i, order in enumerate(orders, 1):
+                print(f"   {i}. EO {order.get('eo_number')}: {order.get('title', 'No title')}")
+                print(f"      Category: {order.get('category', 'Unknown')}")
+                print(f"      Date: {order.get('signing_date', 'Unknown')}")
+                print()
+        else:
+            print(f"\n⚠️ No executive orders found")
         
-        # Show sample content
-        print(f"\n📋 Sample Summary:")
-        print(f"   {ai_result.get('summary', 'No summary')[:200]}...")
-        
-        print(f"\n🎯 Sample Talking Points:")
-        print(f"   {ai_result.get('talking_points', 'No talking points')[:200]}...")
-        
-        print(f"\n📈 Sample Business Impact:")
-        print(f"   {ai_result.get('business_impact', 'No business impact')[:200]}...")
-        
-        return True
+        return len(orders) > 0
         
     except Exception as e:
-        print(f"❌ Azure AI integration test failed: {e}")
+        print(f"❌ Enhanced filtering test failed: {e}")
         return False
+
+
+# ==========================================
+# STANDALONE WRAPPER FUNCTIONS FOR IMPORTS
+# ==========================================
+
+async def test_azure_ai_integration() -> bool:
+    """Standalone wrapper for Azure AI testing"""
+    try:
+        api = FederalRegisterAPI(debug_mode=False)
+        return await api.test_azure_ai_integration()
+    except Exception as e:
+        print(f"❌ Standalone Azure AI test failed: {e}")
+        return False
+
+async def test_comprehensive_api_functionality() -> bool:
+    """Standalone wrapper for comprehensive testing"""
+    try:
+        api = FederalRegisterAPI(debug_mode=False)
+        return await api.test_comprehensive_api_functionality()
+    except Exception as e:
+        print(f"❌ Standalone comprehensive test failed: {e}")
+        return False
+
+def test_azure_ai_integration_sync() -> bool:
+    """Synchronous wrapper for Azure AI testing"""
+    try:
+        return asyncio.run(test_azure_ai_integration())
+    except Exception as e:
+        print(f"❌ Synchronous Azure AI test failed: {e}")
+        return False
+
+def test_comprehensive_api_functionality_sync() -> bool:
+    """Synchronous wrapper for comprehensive testing"""
+    try:
+        return asyncio.run(test_comprehensive_api_functionality())
+    except Exception as e:
+        print(f"❌ Synchronous comprehensive test failed: {e}")
+        return False
+
+async def fetch_trump_2025_executive_orders_standalone(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    per_page: Optional[int] = None,
+    debug: Optional[bool] = None
+) -> Dict:
+    """Standalone wrapper for fetching executive orders"""
+    try:
+        api = FederalRegisterAPI(debug_mode=debug or False)
+        return await api.fetch_trump_2025_executive_orders(start_date, end_date, per_page, debug)
+    except Exception as e:
+        print(f"❌ Standalone fetch failed: {e}")
+        return {
+            'results': [],
+            'count': 0,
+            'error': str(e)
+        }
+
+def fetch_trump_2025_executive_orders_sync(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    per_page: Optional[int] = None,
+    debug: Optional[bool] = None
+) -> Dict:
+    """Synchronous wrapper for fetching executive orders"""
+    try:
+        return asyncio.run(fetch_trump_2025_executive_orders_standalone(start_date, end_date, per_page, debug))
+    except Exception as e:
+        print(f"❌ Synchronous fetch failed: {e}")
+        return {
+            'results': [],
+            'count': 0,
+            'error': str(e)
+        }
+
 
 # Main execution for testing
 if __name__ == "__main__":
-    print("🚀 Federal Register API with Azure AI Integration")
+    print("🚀 Enhanced Federal Register API with Azure AI Integration")
     print("=" * 60)
     
     # Run async test
-    import asyncio
-    
     async def main():
-        # Test Azure AI integration
-        ai_test_result = await test_azure_ai_integration()
+        # Initialize API
+        api = FederalRegisterAPI(debug_mode=False)
         
-        if ai_test_result:
-            print("\n✅ Azure AI integration is working!")
-            print("\n🔧 To use this in your application:")
-            print("1. Make sure your .env file has AZURE_ENDPOINT and AZURE_KEY")
-            print("2. Update your main.py to use this enhanced Federal Register API")
-            print("3. Executive orders will now have dynamic AI analysis!")
+        # Run comprehensive test
+        print("\n🧪 Running comprehensive API test...")
+        comprehensive_test_result = await api.test_comprehensive_api_functionality()
+        
+        if comprehensive_test_result:
+            print("\n✅ API is working correctly!")
+            print("\n🔧 Integration ready:")
+            print("1. Replace your existing FederalRegisterAPI class with this enhanced version")
+            print("2. Azure AI integration is working and will generate dynamic content")
+            print("3. Enhanced filtering should find more executive orders")
+            print("4. Use test_azure_ai_integration() to verify AI functionality")
         else:
-            print("\n❌ Azure AI integration needs configuration")
-            print("\n🔧 Check your environment variables:")
-            print("   - AZURE_ENDPOINT")
-            print("   - AZURE_KEY") 
-            print("   - AZURE_MODEL_NAME")
+            print("\n⚠️ Some tests failed. Check configuration:")
+            print("1. Verify .env file has AZURE_ENDPOINT, AZURE_KEY, AZURE_MODEL_NAME")
+            print("2. Check internet connection for Federal Register API")
+            print("3. Ensure OpenAI library is installed: pip install openai")
+            print("4. Review error messages above for specific issues")
     
     # Run the test
     asyncio.run(main())

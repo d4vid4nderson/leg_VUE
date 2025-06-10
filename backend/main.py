@@ -1,4 +1,4 @@
-# main.py - Updated with Azure AI Federal Register Integration
+# main.py - Updated with Azure AI Federal Register Integration + Highlights API + EO Validation
 from fastapi import FastAPI, HTTPException, Query, Path, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
@@ -31,6 +31,23 @@ class ExecutiveOrderFetchRequest(BaseModel):
     end_date: Optional[str] = None
     per_page: Optional[int] = 1000
     save_to_db: Optional[bool] = True
+
+# NEW: Highlights request models
+class HighlightCreateRequest(BaseModel):
+    user_id: int
+    order_id: str
+    order_type: str  # 'executive_order' or 'state_legislation'
+    notes: Optional[str] = None
+    priority_level: Optional[int] = 1
+    tags: Optional[str] = None
+    is_archived: Optional[bool] = False
+
+class HighlightUpdateRequest(BaseModel):
+    user_id: int
+    notes: Optional[str] = None
+    priority_level: Optional[int] = None
+    tags: Optional[str] = None
+    is_archived: Optional[bool] = None
 
 # CORRECTED: Import the fixed Azure SQL database functions
 try:
@@ -89,8 +106,113 @@ except ImportError as e:
     print(f"⚠️ AI integration not available: {e}")
     AI_AVAILABLE = False
 
+# NEW: Import highlights database functions
+try:
+    if AZURE_SQL_AVAILABLE:
+        # Try to import Azure SQL highlights functions
+        from database_azure_fixed import (
+            get_user_highlights,
+            add_user_highlight,
+            remove_user_highlight,
+            clear_user_highlights,
+            update_user_highlight
+        )
+        print("✅ Using Azure SQL for highlights")
+        HIGHLIGHTS_DB_AVAILABLE = True
+    else:
+        # Fallback to SQLite or other database
+        raise ImportError("Azure SQL not available for highlights")
+except ImportError as e:
+    print(f"⚠️ Highlights database functions not available: {e}")
+    HIGHLIGHTS_DB_AVAILABLE = False
+
 from dotenv import load_dotenv
 load_dotenv()
+
+# NEW: EO Validation Functions
+def validate_eo_number(eo_number: str) -> bool:
+    """Validate that EO number is in the correct Trump 2025 range"""
+    try:
+        eo_int = int(str(eo_number).strip())
+        return 14147 <= eo_int <= 14400  # Trump 2025 range
+    except (ValueError, TypeError):
+        return False
+
+def validate_and_filter_executive_orders(orders: List[dict]) -> List[dict]:
+    """Filter out executive orders with invalid numbers or missing data"""
+    valid_orders = []
+    filtered_count = 0
+    
+    for order in orders:
+        eo_number = order.get('eo_number') or order.get('executive_order_number', '')
+        
+        # Skip if no EO number
+        if not eo_number:
+            logger.warning(f"Filtered out order with no EO number: {order.get('title', 'Unknown')[:50]}")
+            filtered_count += 1
+            continue
+        
+        # Skip if invalid EO number
+        if not validate_eo_number(eo_number):
+            logger.warning(f"Filtered out invalid EO number {eo_number}: {order.get('title', 'Unknown')[:50]}")
+            filtered_count += 1
+            continue
+        
+        # Skip if no title
+        if not order.get('title'):
+            logger.warning(f"Filtered out EO {eo_number} with no title")
+            filtered_count += 1
+            continue
+        
+        # Skip if no valid dates
+        signing_date = order.get('signing_date')
+        publication_date = order.get('publication_date')
+        if not signing_date and not publication_date:
+            logger.warning(f"Filtered out EO {eo_number} with no valid dates")
+            filtered_count += 1
+            continue
+        
+        valid_orders.append(order)
+    
+    if filtered_count > 0:
+        logger.info(f"✅ Filtered out {filtered_count} invalid orders, kept {len(valid_orders)} valid orders")
+    
+    return valid_orders
+
+def format_date_for_display(date_str: str) -> str:
+    """Format date string for UI display (MM/DD/YYYY)"""
+    if not date_str:
+        return ""
+    
+    try:
+        # Handle both full datetime and date-only strings
+        date_part = date_str[:10] if len(date_str) > 10 else date_str
+        date_obj = datetime.strptime(date_part, '%Y-%m-%d')
+        return date_obj.strftime('%m/%d/%Y')
+    except (ValueError, TypeError):
+        return date_str  # Return original if parsing fails
+
+def enrich_executive_order_with_formatting(order: dict) -> dict:
+    """Add formatted dates and ensure proper structure for frontend"""
+    enriched_order = order.copy()
+    
+    # Add formatted dates
+    enriched_order['formatted_publication_date'] = format_date_for_display(order.get('publication_date', ''))
+    enriched_order['formatted_signing_date'] = format_date_for_display(order.get('signing_date', ''))
+    
+    # Ensure EO number is properly set
+    eo_number = order.get('eo_number') or order.get('executive_order_number', '')
+    enriched_order['eo_number'] = eo_number
+    enriched_order['executive_order_number'] = eo_number
+    
+    # Ensure category is set
+    if not enriched_order.get('category'):
+        enriched_order['category'] = 'not-applicable'
+    
+    # Add validation flag
+    enriched_order['is_valid_eo'] = validate_eo_number(eo_number)
+    
+    return enriched_order
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -151,15 +273,21 @@ async def lifespan(app: FastAPI):
     if eo_init_result and eo_db_result:
         print("✅ Executive orders database ready")
     
+    # Test highlights database
+    if HIGHLIGHTS_DB_AVAILABLE:
+        print("✅ Highlights database ready")
+    else:
+        print("⚠️ Highlights database not available - create table manually")
+    
     print("🎯 API startup complete!")
     
     yield
     # Shutdown
 
 app = FastAPI(
-    title="LegislationVue API - Azure AI Enhanced Edition",
-    description="API for Executive Orders and State Legislation with Azure AI Analysis",
-    version="10.0.0-Azure-AI",
+    title="LegislationVue API - Azure AI Enhanced Edition with Highlights & EO Validation",
+    description="API for Executive Orders and State Legislation with Azure AI Analysis, EO Validation, and Persistent Highlights",
+    version="10.2.0-Azure-AI-Highlights-Validated",
     lifespan=lifespan
 )
 
@@ -267,35 +395,283 @@ async def root():
             eo_stats = {"total_orders": 0}
     
     return {
-        "message": "LegislationVue API with Azure AI Enhancement",
+        "message": "LegislationVue API with Azure AI Enhancement + Highlights + EO Validation",
         "status": "healthy",
-        "version": "10.0.0-Azure-AI",
+        "version": "10.2.0-Azure-AI-Highlights-Validated",
         "timestamp": datetime.now().isoformat(),
         "database": {
             "status": "connected" if db_working else "issues",
             "type": db_type,
             "azure_sql_available": AZURE_SQL_AVAILABLE,
             "total_bills": stats["total_bills"] if stats else 0,
-            "total_executive_orders": eo_stats["total_orders"] if eo_stats else 0
+            "total_executive_orders": eo_stats["total_orders"] if eo_stats else 0,
+            "highlights_available": HIGHLIGHTS_DB_AVAILABLE
         },
         "integrations": {
             "federal_register": "available",
             "federal_register_ai": federal_register_ai_status,
             "legiscan": legiscan_status,
             "ai_analysis": ai_status,
-            "azure_sql": "connected" if (AZURE_SQL_AVAILABLE and db_working) else "not_configured"
+            "azure_sql": "connected" if (AZURE_SQL_AVAILABLE and db_working) else "not_configured",
+            "highlights": "available" if HIGHLIGHTS_DB_AVAILABLE else "table_needed"
         },
         "features": {
-            "executive_orders": "Real Federal Register Integration with Azure AI",
+            "executive_orders": "Real Federal Register Integration with Azure AI + Validation",
+            "eo_validation": "Trump 2025 Range (14147-14400) + Date Formatting",
             "state_legislation": "LegiScan Integration with AI" if legiscan_status == "connected" else "Configuration Required",
             "ai_analysis": "Azure AI Integration" if ai_status == "connected" else "Configuration Required",
             "azure_sql_database": "Connected & Working" if (AZURE_SQL_AVAILABLE and db_working) else "Not Available",
-            "dynamic_ai_analysis": "Azure AI Enhanced" if federal_register_ai_status == "connected" else "Basic Templates"
+            "dynamic_ai_analysis": "Azure AI Enhanced" if federal_register_ai_status == "connected" else "Basic Templates",
+            "persistent_highlights": "Available" if HIGHLIGHTS_DB_AVAILABLE else "Database Setup Required"
         },
         "supported_states": list(SUPPORTED_STATES.keys()),
         "executive_order_categories": EXECUTIVE_ORDER_CATEGORIES,
-        "bill_categories": BILL_CATEGORIES
+        "bill_categories": BILL_CATEGORIES,
+        "eo_validation": {
+            "valid_range": "14147-14400",
+            "description": "Trump 2025 Executive Orders",
+            "date_format": "MM/DD/YYYY for display"
+        }
     }
+
+# ===============================
+# NEW: HIGHLIGHTS API ENDPOINTS
+# ===============================
+
+@app.get("/api/highlights")
+async def get_highlights(
+    user_id: int = Query(1, description="User ID")
+):
+    """Get all highlighted items for a user"""
+    
+    if not HIGHLIGHTS_DB_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Highlights database not available. Please ensure user_highlights table exists."
+        )
+    
+    try:
+        # Get highlights from database
+        highlights = get_user_highlights(user_id)
+        
+        # For each highlight, get the full order data
+        enriched_highlights = []
+        for highlight in highlights:
+            order_data = None
+            
+            if highlight['order_type'] == 'executive_order':
+                # Get executive order data
+                try:
+                    order_data = get_executive_order_by_number(highlight['order_id'])
+                    if order_data:
+                        # Apply EO validation and formatting
+                        order_data = enrich_executive_order_with_formatting(order_data)
+                except Exception as e:
+                    logger.warning(f"Could not find executive order {highlight['order_id']}: {e}")
+            
+            elif highlight['order_type'] == 'state_legislation':
+                # Get state legislation data
+                try:
+                    # Query legislation database for this bill
+                    with LegislationSession() as session:
+                        bill = session.query(StateLegislationDB).filter(
+                            StateLegislationDB.bill_number == highlight['order_id']
+                        ).first()
+                        
+                        if bill:
+                            order_data = {
+                                'id': bill.id,
+                                'bill_id': bill.bill_id,
+                                'bill_number': bill.bill_number,
+                                'title': bill.title,
+                                'description': bill.description,
+                                'state': bill.state,
+                                'state_abbr': bill.state_abbr,
+                                'status': bill.status,
+                                'category': bill.category,
+                                'introduced_date': bill.introduced_date,
+                                'last_action_date': bill.last_action_date,
+                                'ai_summary': bill.ai_summary,
+                                'ai_talking_points': bill.ai_talking_points,
+                                'ai_business_impact': bill.ai_business_impact,
+                                'ai_potential_impact': bill.ai_potential_impact,
+                                'legiscan_url': bill.legiscan_url
+                            }
+                except Exception as e:
+                    logger.warning(f"Could not find legislation {highlight['order_id']}: {e}")
+            
+            if order_data:
+                # Add highlight metadata to the order data
+                order_data['highlight_metadata'] = {
+                    'id': highlight['id'],
+                    'user_id': highlight['user_id'],
+                    'order_id': highlight['order_id'],
+                    'order_type': highlight['order_type'],
+                    'highlighted_at': highlight['highlighted_at'],
+                    'notes': highlight['notes'],
+                    'priority_level': highlight['priority_level'],
+                    'tags': highlight['tags'],
+                    'is_archived': highlight['is_archived']
+                }
+                enriched_highlights.append(order_data)
+        
+        return enriched_highlights
+        
+    except Exception as e:
+        logger.error(f"Error fetching highlights: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching highlights: {str(e)}")
+
+@app.post("/api/highlights")
+async def add_highlight(request: HighlightCreateRequest):
+    """Add a new highlight"""
+    
+    if not HIGHLIGHTS_DB_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Highlights database not available. Please ensure user_highlights table exists."
+        )
+    
+    try:
+        # Validate order_type
+        if request.order_type not in ['executive_order', 'state_legislation']:
+            raise HTTPException(
+                status_code=400,
+                detail="order_type must be 'executive_order' or 'state_legislation'"
+            )
+        
+        # Additional validation for executive orders
+        if request.order_type == 'executive_order':
+            if not validate_eo_number(request.order_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid executive order number: {request.order_id}. Must be in range 14147-14400."
+                )
+        
+        # Add highlight to database
+        result = add_user_highlight(
+            user_id=request.user_id,
+            order_id=request.order_id,
+            order_type=request.order_type,
+            notes=request.notes,
+            priority_level=request.priority_level,
+            tags=request.tags,
+            is_archived=request.is_archived
+        )
+        
+        if result:
+            return {
+                "success": True,
+                "message": "Highlight added successfully",
+                "highlight_id": result,
+                "eo_validation_passed": validate_eo_number(request.order_id) if request.order_type == 'executive_order' else None,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Failed to add highlight")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding highlight: {e}")
+        # Check if it's a duplicate key error
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Item already highlighted by this user")
+        raise HTTPException(status_code=500, detail=f"Error adding highlight: {str(e)}")
+
+@app.delete("/api/highlights/{order_id}")
+async def remove_highlight(
+    order_id: str,
+    user_id: int = Query(..., description="User ID")
+):
+    """Remove a specific highlight"""
+    
+    if not HIGHLIGHTS_DB_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Highlights database not available."
+        )
+    
+    try:
+        result = remove_user_highlight(user_id, order_id)
+        
+        if result:
+            return {
+                "success": True,
+                "message": "Highlight removed successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Highlight not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing highlight: {e}")
+        raise HTTPException(status_code=500, detail=f"Error removing highlight: {str(e)}")
+
+@app.put("/api/highlights/{order_id}")
+async def update_highlight(
+    order_id: str,
+    request: HighlightUpdateRequest
+):
+    """Update highlight metadata"""
+    
+    if not HIGHLIGHTS_DB_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Highlights database not available."
+        )
+    
+    try:
+        result = update_user_highlight(
+            user_id=request.user_id,
+            order_id=order_id,
+            notes=request.notes,
+            priority_level=request.priority_level,
+            tags=request.tags,
+            is_archived=request.is_archived
+        )
+        
+        if result:
+            return {
+                "success": True,
+                "message": "Highlight updated successfully",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Highlight not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating highlight: {e}")
+        raise HTTPException(status_code=500, detail=f"Error updating highlight: {str(e)}")
+
+@app.delete("/api/highlights")
+async def clear_all_highlights(
+    user_id: int = Query(..., description="User ID")
+):
+    """Clear all highlights for a user"""
+    
+    if not HIGHLIGHTS_DB_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Highlights database not available."
+        )
+    
+    try:
+        result = clear_user_highlights(user_id)
+        
+        return {
+            "success": True,
+            "message": f"Cleared {result} highlights successfully",
+            "highlights_cleared": result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error clearing highlights: {e}")
+        raise HTTPException(status_code=500, detail=f"Error clearing highlights: {str(e)}")
 
 # ===============================
 # AZURE SQL SPECIFIC ENDPOINTS
@@ -325,6 +701,7 @@ async def test_azure_sql_endpoint():
                 "database_type": "Azure SQL Database",
                 "total_bills": stats.get("total_bills", 0),
                 "states_with_data": stats.get("states_with_data", []),
+                "highlights_available": HIGHLIGHTS_DB_AVAILABLE,
                 "test_passed": True,
                 "timestamp": datetime.now().isoformat()
             }
@@ -396,7 +773,7 @@ async def test_save_bill_azure():
         )
 
 # ===============================
-# ENHANCED EXECUTIVE ORDERS ENDPOINTS WITH AZURE AI
+# ENHANCED EXECUTIVE ORDERS ENDPOINTS WITH AZURE AI + VALIDATION
 # ===============================
 
 @app.get("/api/executive-orders")
@@ -408,7 +785,7 @@ async def get_executive_orders(
     sort_by: str = Query("signing_date", description="Sort field"),
     sort_order: str = Query("desc", description="Sort order (asc, desc)")
 ):
-    """Get executive orders with filtering and pagination"""
+    """Get executive orders with filtering, pagination, and validation"""
     
     if category and category not in EXECUTIVE_ORDER_CATEGORIES and category != 'not-applicable':
         raise HTTPException(
@@ -426,6 +803,22 @@ async def get_executive_orders(
             sort_order=sort_order
         )
         
+        # Apply validation and formatting to each order
+        if result.get('results'):
+            validated_orders = []
+            for order in result['results']:
+                # Validate EO number
+                if validate_eo_number(order.get('eo_number', '')):
+                    enriched_order = enrich_executive_order_with_formatting(order)
+                    validated_orders.append(enriched_order)
+                else:
+                    logger.warning(f"Filtered invalid EO from database: {order.get('eo_number', 'Unknown')}")
+            
+            result['results'] = validated_orders
+            result['count'] = len(validated_orders)
+            result['validation_applied'] = True
+            result['filtered_invalid_eos'] = len(result.get('results', [])) - len(validated_orders)
+        
         return result
         
     except Exception as e:
@@ -436,7 +829,7 @@ async def fetch_executive_orders_with_azure_ai(
     request: ExecutiveOrderFetchRequest,
     background_tasks: BackgroundTasks
 ):
-    """Fetch executive orders from Federal Register with Azure AI analysis"""
+    """Fetch executive orders from Federal Register with Azure AI analysis and validation"""
 
     try:
         # Initialize the ENHANCED Federal Register API with Azure AI
@@ -458,9 +851,10 @@ async def fetch_executive_orders_with_azure_ai(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
         
-        logger.info(f"🚀 Fetching executive orders from Federal Register with Azure AI")
+        logger.info(f"🚀 Fetching executive orders from Federal Register with Azure AI + Validation")
         logger.info(f"📊 Date range: {request.start_date} to {end_date}")
         logger.info(f"🤖 Azure AI Analysis: Enabled")
+        logger.info(f"✅ EO Validation: Trump 2025 range (14147-14400)")
         
         # Call the ENHANCED API with Azure AI
         result = await api.fetch_trump_2025_executive_orders(
@@ -478,24 +872,37 @@ async def fetch_executive_orders_with_azure_ai(
                 "orders_fetched": 0,
                 "orders_saved": 0,
                 "ai_analysis_enabled": result.get('ai_analysis_enabled', False),
+                "validation_applied": True,
+                "valid_eo_range": "14147-14400",
                 "timestamp": datetime.now().isoformat(),
                 "orders": []
             }
         
+        # Apply additional validation and filtering (backup validation)
+        logger.info(f"🔍 Applying EO validation to {len(orders)} orders...")
+        validated_orders = validate_and_filter_executive_orders(orders)
+        
+        # Enrich with formatting
+        enriched_orders = []
+        for order in validated_orders:
+            enriched_order = enrich_executive_order_with_formatting(order)
+            enriched_orders.append(enriched_order)
+        
         # Log AI analysis status
         ai_enabled = result.get('ai_analysis_enabled', False)
         logger.info(f"🤖 Azure AI Analysis: {'✅ Enabled' if ai_enabled else '❌ Fallback Mode'}")
+        logger.info(f"✅ Validation: Kept {len(enriched_orders)} valid orders")
         
         # Save to database if requested
         saved_count = 0
-        if request.save_to_db:
+        if request.save_to_db and enriched_orders:
             try:
-                db_result = save_executive_orders_to_db(orders)
+                db_result = save_executive_orders_to_db(enriched_orders)
                 if isinstance(db_result, dict):
                     saved_count = db_result.get('total_processed', 0)
                 else:
                     saved_count = db_result
-                logger.info(f"✅ Saved {saved_count} orders to database with Azure AI analysis")
+                logger.info(f"✅ Saved {saved_count} validated orders to database with Azure AI analysis")
             except Exception as e:
                 logger.error(f"❌ Database save failed: {e}")
                 # Don't fail the whole request if database save fails
@@ -503,13 +910,17 @@ async def fetch_executive_orders_with_azure_ai(
 
         return {
             "success": True,
-            "message": f"Successfully processed {len(orders)} executive orders with Azure AI analysis",
+            "message": f"Successfully processed {len(enriched_orders)} validated executive orders with Azure AI analysis",
             "orders_fetched": len(orders),
+            "orders_validated": len(enriched_orders),
+            "orders_filtered": len(orders) - len(enriched_orders),
             "orders_saved": saved_count if isinstance(saved_count, int) else saved_count.get('total_processed', 0) if isinstance(saved_count, dict) else 0,
             "ai_analysis_enabled": ai_enabled,
             "ai_version": "azure_openai_federal_register_v1.0",
+            "validation_applied": True,
+            "valid_eo_range": "14147-14400",
             "timestamp": datetime.now().isoformat(),
-            "orders": orders,  # Include the actual orders with Azure AI analysis
+            "orders": enriched_orders,  # Include the validated orders with Azure AI analysis and formatting
             "search_strategies": result.get('search_strategies', []),
             "date_range_days": result.get('date_range_days', 0)
         }
@@ -522,9 +933,16 @@ async def fetch_executive_orders_with_azure_ai(
 
 @app.get("/api/executive-orders/{order_number}")
 async def get_executive_order_by_id(order_number: str):
-    """Get a specific executive order by number"""
+    """Get a specific executive order by number with validation"""
     
     try:
+        # Validate EO number first
+        if not validate_eo_number(order_number):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid executive order number: {order_number}. Must be in range 14147-14400."
+            )
+        
         order = get_executive_order_by_number(order_number)
         
         if not order:
@@ -533,9 +951,14 @@ async def get_executive_order_by_id(order_number: str):
                 detail=f"Executive order {order_number} not found"
             )
         
+        # Enrich with formatting
+        enriched_order = enrich_executive_order_with_formatting(order)
+        
         return {
             "success": True,
-            "order": order
+            "order": enriched_order,
+            "validation_passed": True,
+            "eo_range": "14147-14400"
         }
         
     except HTTPException:
@@ -800,12 +1223,12 @@ async def search_and_analyze_legislation(request: LegiScanSearchRequest):
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 # ===============================
-# UTILITY ENDPOINTS (Updated for Azure AI)
+# UTILITY ENDPOINTS (Updated for Azure AI + Highlights + Validation)
 # ===============================
 
 @app.get("/api/status")
 async def get_status():
-    """System status endpoint with Azure AI information"""
+    """System status endpoint with Azure AI, Highlights, and EO Validation information"""
     
     # Test database connections
     if AZURE_SQL_AVAILABLE:
@@ -861,27 +1284,31 @@ async def get_status():
     
     return {
         "environment": os.getenv("ENVIRONMENT", "development"),
-        "app_version": "10.0.0-Azure-AI - Executive Orders & State Legislation",
+        "app_version": "10.2.0-Azure-AI-Highlights-Validated - Executive Orders & State Legislation with Validation and Persistent Highlights",
         "database": {
             "status": "connected" if db_working else "connection_issues",
             "type": db_type,
             "azure_sql_enabled": AZURE_SQL_AVAILABLE,
             "legislation_count": stats["total_bills"] if stats else 0,
-            "executive_orders_count": eo_stats["total_orders"] if eo_stats else 0
+            "executive_orders_count": eo_stats["total_orders"] if eo_stats else 0,
+            "highlights_enabled": HIGHLIGHTS_DB_AVAILABLE
         },
         "integrations": {
             "federal_register": "available",
             "federal_register_ai": federal_register_ai_status,
             "legiscan": legiscan_status,
             "ai_analysis": ai_status,
-            "azure_sql": "connected" if (AZURE_SQL_AVAILABLE and db_working) else "not_configured"
+            "azure_sql": "connected" if (AZURE_SQL_AVAILABLE and db_working) else "not_configured",
+            "highlights": "available" if HIGHLIGHTS_DB_AVAILABLE else "table_needed"
         },
         "features": {
-            "executive_orders": "Real Federal Register Integration with Azure AI" if federal_register_ai_status == "connected" else "Basic Federal Register Integration",
+            "executive_orders": "Real Federal Register Integration with Azure AI + Validation" if federal_register_ai_status == "connected" else "Basic Federal Register Integration + Validation",
+            "eo_validation": "Trump 2025 Range (14147-14400) + Date Formatting",
             "state_legislation": "LegiScan Integration with AI" if legiscan_status == "connected" else "Configuration Required",
             "ai_analysis": "Azure AI Integration" if ai_status == "connected" else "Configuration Required",
             "azure_sql_database": "Connected & Working" if (AZURE_SQL_AVAILABLE and db_working) else "Not Available",
-            "dynamic_executive_order_ai": "Azure AI Enhanced" if federal_register_ai_status == "connected" else "Template Based"
+            "dynamic_executive_order_ai": "Azure AI Enhanced with Validation" if federal_register_ai_status == "connected" else "Template Based with Validation",
+            "persistent_highlights": "Available" if HIGHLIGHTS_DB_AVAILABLE else "Database Setup Required"
         },
         "supported_states": list(SUPPORTED_STATES.keys()),
         "api_keys_configured": {
@@ -894,6 +1321,13 @@ async def get_status():
             "endpoint": os.getenv('AZURE_ENDPOINT', 'Not Set')[:50] + "..." if os.getenv('AZURE_ENDPOINT') else 'Not Set',
             "model_name": os.getenv('AZURE_MODEL_NAME', 'Not Set'),
             "key_configured": bool(os.getenv('AZURE_KEY'))
+        },
+        "eo_validation": {
+            "enabled": True,
+            "valid_range": "14147-14400",
+            "description": "Trump 2025 Executive Orders",
+            "date_format": "MM/DD/YYYY for display",
+            "filters_invalid": True
         },
         "timestamp": datetime.now().isoformat()
     }
@@ -917,6 +1351,7 @@ async def test_azure_ai_endpoint():
                 "ai_endpoint": os.getenv('AZURE_ENDPOINT', 'Not Set')[:50] + "..." if os.getenv('AZURE_ENDPOINT') else 'Not Set',
                 "ai_model": os.getenv('AZURE_MODEL_NAME', 'Not Set'),
                 "test_passed": True,
+                "eo_validation_enabled": True,
                 "timestamp": datetime.now().isoformat()
             }
         else:
@@ -963,11 +1398,16 @@ async def clear_all_database_data():
         except Exception as e:
             logger.error(f"Error clearing legislation: {e}")
         
+        # Note: We don't clear highlights here as they should persist
+        # If you want to clear highlights, use the dedicated endpoint
+        
         return {
             "success": True,
-            "message": f"Database cleared successfully. {records_deleted} records deleted.",
+            "message": f"Database cleared successfully. {records_deleted} records deleted. (Highlights preserved)",
             "records_deleted": records_deleted,
             "database_type": "Azure SQL" if AZURE_SQL_AVAILABLE else "Fallback",
+            "highlights_preserved": True,
+            "eo_validation_maintained": True,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -975,6 +1415,92 @@ async def clear_all_database_data():
         raise HTTPException(
             status_code=500,
             detail=f"Error clearing database: {str(e)}"
+        )
+
+# NEW: EO Validation Testing Endpoint
+@app.get("/api/test-eo-validation")
+async def test_eo_validation():
+    """Test the EO validation functionality"""
+    
+    try:
+        test_cases = [
+            {"eo_number": "14147", "expected": True, "description": "Minimum valid Trump 2025 EO"},
+            {"eo_number": "14200", "expected": True, "description": "Mid-range Trump 2025 EO"},
+            {"eo_number": "14400", "expected": True, "description": "Maximum valid Trump 2025 EO"},
+            {"eo_number": "14146", "expected": False, "description": "Below valid range"},
+            {"eo_number": "14401", "expected": False, "description": "Above valid range"},
+            {"eo_number": "1052", "expected": False, "description": "Invalid low number"},
+            {"eo_number": "2025", "expected": False, "description": "Invalid year-like number"},
+            {"eo_number": "0979", "expected": False, "description": "Invalid leading zero number"},
+            {"eo_number": "", "expected": False, "description": "Empty string"},
+            {"eo_number": "abc", "expected": False, "description": "Non-numeric string"},
+        ]
+        
+        results = []
+        passed = 0
+        failed = 0
+        
+        for test_case in test_cases:
+            actual = validate_eo_number(test_case["eo_number"])
+            expected = test_case["expected"]
+            success = actual == expected
+            
+            if success:
+                passed += 1
+            else:
+                failed += 1
+            
+            results.append({
+                "eo_number": test_case["eo_number"],
+                "description": test_case["description"],
+                "expected": expected,
+                "actual": actual,
+                "passed": success
+            })
+        
+        # Test date formatting
+        date_test_cases = [
+            {"input": "2025-01-20", "expected": "01/20/2025"},
+            {"input": "2025-06-09", "expected": "06/09/2025"},
+            {"input": "", "expected": ""},
+            {"input": "invalid", "expected": "invalid"},
+        ]
+        
+        date_results = []
+        for test_case in date_test_cases:
+            actual = format_date_for_display(test_case["input"])
+            expected = test_case["expected"]
+            success = actual == expected
+            
+            date_results.append({
+                "input": test_case["input"],
+                "expected": expected,
+                "actual": actual,
+                "passed": success
+            })
+        
+        return {
+            "success": True,
+            "message": "EO validation testing completed",
+            "eo_validation_tests": {
+                "total": len(test_cases),
+                "passed": passed,
+                "failed": failed,
+                "success_rate": f"{(passed/len(test_cases)*100):.1f}%",
+                "results": results
+            },
+            "date_formatting_tests": {
+                "total": len(date_test_cases),
+                "results": date_results
+            },
+            "valid_range": "14147-14400",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"EO validation test failed: {str(e)}"
         )
     
 # ===============================
@@ -1048,7 +1574,33 @@ async def health_check_federal_register() -> bool:
         logger.error(f"Federal Register health check failed: {e}")
         return False
 
-# Health check endpoints - add these after your existing endpoints
+async def health_check_highlights() -> bool:
+    """Check highlights database functionality"""
+    try:
+        if not HIGHLIGHTS_DB_AVAILABLE:
+            return False
+        
+        # Try to get highlights for test user
+        test_highlights = get_user_highlights(1)
+        return True  # If no exception, it's working
+    except Exception as e:
+        logger.error(f"Highlights health check failed: {e}")
+        return False
+
+async def health_check_eo_validation() -> bool:
+    """Check EO validation functionality"""
+    try:
+        # Test a few validation cases
+        test_valid = validate_eo_number("14200")  # Should be True
+        test_invalid = validate_eo_number("1052")  # Should be False
+        test_format = format_date_for_display("2025-01-20")  # Should be "01/20/2025"
+        
+        return test_valid and not test_invalid and test_format == "01/20/2025"
+    except Exception as e:
+        logger.error(f"EO validation health check failed: {e}")
+        return False
+
+# Health check endpoints
 
 @app.get("/api/health/database")
 async def health_endpoint_database():
@@ -1070,6 +1622,16 @@ async def health_endpoint_federal_register():
     """Federal Register API health check endpoint"""
     return await check_service_health("federal-register", health_check_federal_register)
 
+@app.get("/api/health/highlights")
+async def health_endpoint_highlights():
+    """Highlights database health check endpoint"""
+    return await check_service_health("highlights", health_check_highlights)
+
+@app.get("/api/health/eo-validation")
+async def health_endpoint_eo_validation():
+    """EO validation health check endpoint"""
+    return await check_service_health("eo-validation", health_check_eo_validation)
+
 @app.get("/api/health/all")
 async def health_check_all_services():
     """Check all services at once"""
@@ -1080,6 +1642,8 @@ async def health_check_all_services():
             check_service_health("legiscan", health_check_legiscan),
             check_service_health("azure-ai", health_check_azure_ai),
             check_service_health("federal-register", health_check_federal_register),
+            check_service_health("highlights", health_check_highlights),
+            check_service_health("eo-validation", health_check_eo_validation),
             return_exceptions=True
         )
         
@@ -1094,6 +1658,9 @@ async def health_check_all_services():
             "services": results,
             "database_type": "Azure SQL" if AZURE_SQL_AVAILABLE else "SQLite Fallback",
             "ai_available": AI_AVAILABLE,
+            "highlights_available": HIGHLIGHTS_DB_AVAILABLE,
+            "eo_validation_enabled": True,
+            "valid_eo_range": "14147-14400",
             "checked_at": datetime.now().isoformat()
         }
         
@@ -1103,17 +1670,24 @@ async def health_check_all_services():
 
 if __name__ == "__main__":
     import uvicorn
-    print("🌐 Starting LegislationVue API v10.0.0-Azure-AI")
-    print("=" * 70)
-    print("📋 Executive Orders endpoints (With Azure AI):")
-    print("   • GET  /api/executive-orders")
-    print("   • POST /api/executive-orders/fetch  (🤖 Azure AI Enhanced)")
-    print("   • GET  /api/executive-orders/{order_number}")
+    print("🌐 Starting LegislationVue API v10.2.0-Azure-AI-Highlights-Validated")
+    print("=" * 80)
+    print("📋 Executive Orders endpoints (With Azure AI + Validation):")
+    print("   • GET  /api/executive-orders  (✅ EO Validation + Date Formatting)")
+    print("   • POST /api/executive-orders/fetch  (🤖 Azure AI + ✅ Validation)")
+    print("   • GET  /api/executive-orders/{order_number}  (✅ Validated)")
     print("")
     print("🏛️ State Legislation endpoints (Azure SQL):")
     print("   • GET  /api/state-legislation")
     print("   • POST /api/state-legislation/fetch")
     print("   • POST /api/legiscan/search-and-analyze")
+    print("")
+    print("⭐ Highlights endpoints (NEW):")
+    print("   • GET  /api/highlights?user_id=1")
+    print("   • POST /api/highlights  (✅ EO Validation)")
+    print("   • PUT  /api/highlights/{order_id}")
+    print("   • DELETE /api/highlights/{order_id}?user_id=1")
+    print("   • DELETE /api/highlights?user_id=1")
     print("")
     print("🔧 Azure SQL specific endpoints:")
     print("   • GET  /api/test-azure-sql")
@@ -1122,9 +1696,19 @@ if __name__ == "__main__":
     print("🤖 Azure AI specific endpoints:")
     print("   • GET  /api/test-azure-ai")
     print("")
+    print("✅ EO Validation endpoints (NEW):")
+    print("   • GET  /api/test-eo-validation")
+    print("")
     print("🔧 Utility endpoints:")
     print("   • GET  /api/status")
     print("   • POST /api/database/clear-all")
+    print("")
+    print("🩺 Health check endpoints:")
+    print("   • GET  /api/health/all")
+    print("   • GET  /api/health/database")
+    print("   • GET  /api/health/highlights")
+    print("   • GET  /api/health/azure-ai")
+    print("   • GET  /api/health/eo-validation  (NEW)")
     print("")
     
     azure_sql_configured = AZURE_SQL_AVAILABLE
@@ -1135,6 +1719,9 @@ if __name__ == "__main__":
     print(f"   • AZURE_SQL: {'✅ Configured' if azure_sql_configured else '❌ Missing'}")
     print(f"   • LEGISCAN_API_KEY: {'✅ Configured' if legiscan_configured else '❌ Missing'}")
     print(f"   • AZURE_AI (Key + Endpoint): {'✅ Configured' if azure_ai_configured else '❌ Missing'}")
+    print(f"   • HIGHLIGHTS_DB: {'✅ Available' if HIGHLIGHTS_DB_AVAILABLE else '❌ Functions Missing'}")
+    print(f"   • EO_VALIDATION: ✅ Enabled (Range: 14147-14400)")
+    print("")
     
     if azure_ai_configured:
         print(f"🤖 Azure AI Configuration:")
@@ -1143,5 +1730,18 @@ if __name__ == "__main__":
         print(f"   • Dynamic Executive Order Analysis: ✅ Enabled")
     else:
         print(f"⚠️  Azure AI not configured - Executive Orders will use template analysis")
+    
+    if not HIGHLIGHTS_DB_AVAILABLE:
+        print(f"⚠️  Highlights not available - add functions to database_azure_fixed.py")
+    
+    print(f"")
+    print(f"✅ NEW FEATURES IN v10.2.0:")
+    print(f"   • EO Number Validation (14147-14400 Trump 2025 range)")
+    print(f"   • Date Formatting (MM/DD/YYYY for UI display)")
+    print(f"   • Invalid EO Filtering (removes 1052, 2025, 0979, etc.)")
+    print(f"   • Enhanced Error Handling")
+    print(f"   • Validation Testing Endpoint")
+    print(f"   • Health Check for EO Validation")
+    print("")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)

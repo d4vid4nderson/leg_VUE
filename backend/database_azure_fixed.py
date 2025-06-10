@@ -1,4 +1,4 @@
-# database_azure_fixed.py - CORRECTED Azure SQL Configuration
+# database_azure_fixed.py - CORRECTED Azure SQL Configuration with Highlights
 from sqlalchemy import create_engine, Column, String, Text, DateTime, Integer, Boolean, Index, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -10,8 +10,11 @@ import os
 import urllib.parse
 from dotenv import load_dotenv
 import traceback
+import logging
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # CORRECTED Azure SQL Connection String
 def build_azure_sql_connection():
@@ -285,6 +288,31 @@ class StateLegislationDB(Base):
     )
 
 
+# NEW: User Highlights table for persistent highlights
+class UserHighlights(Base):
+    """User Highlights model for Azure SQL"""
+    
+    __tablename__ = "user_highlights"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    order_id = Column(String(255), nullable=False)  # Executive order number or bill number
+    order_type = Column(String(50), nullable=False)  # 'executive_order' or 'state_legislation'
+    highlighted_at = Column(DateTime, default=func.now())
+    notes = Column(Text, nullable=True)
+    priority_level = Column(Integer, default=1)  # 1-5 priority
+    tags = Column(Text, nullable=True)  # Comma-separated tags
+    is_archived = Column(Boolean, default=False)
+    
+    # Indexes for better query performance
+    __table_args__ = (
+        Index('idx_user_highlights_user_id', 'user_id'),
+        Index('idx_user_highlights_order_id', 'order_id'),
+        Index('idx_user_highlights_user_order', 'user_id', 'order_id'),
+        Index('idx_user_highlights_type', 'order_type'),
+    )
+
+
 # Session management
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -331,17 +359,162 @@ def test_azure_sql_connection():
         return False
 
 def init_databases():
-    """Initialize database tables"""
+    """Initialize database tables including highlights"""
     try:
         print("🔄 Initializing database tables for Azure SQL...")
         Base.metadata.create_all(bind=engine)
-        print("✅ Database tables created/verified")
+        print("✅ Database tables created/verified (including user_highlights)")
         return True
     except Exception as e:
         print(f"❌ Error initializing database: {e}")
         traceback.print_exc()
         return False
 
+# NEW: Highlights Database Functions
+def get_user_highlights(user_id: int):
+    """Get all highlights for a specific user"""
+    try:
+        with LegislationSession() as session:
+            highlights = session.query(UserHighlights).filter(
+                UserHighlights.user_id == user_id,
+                UserHighlights.is_archived == False
+            ).order_by(UserHighlights.highlighted_at.desc()).all()
+            
+            result = []
+            for highlight in highlights:
+                result.append({
+                    'id': highlight.id,
+                    'user_id': highlight.user_id,
+                    'order_id': highlight.order_id,
+                    'order_type': highlight.order_type,
+                    'highlighted_at': highlight.highlighted_at.isoformat() if highlight.highlighted_at else None,
+                    'notes': highlight.notes,
+                    'priority_level': highlight.priority_level,
+                    'tags': highlight.tags,
+                    'is_archived': highlight.is_archived
+                })
+            
+            logger.info(f"Retrieved {len(result)} highlights for user {user_id}")
+            return result
+            
+    except Exception as e:
+        logger.error(f"Error getting highlights for user {user_id}: {e}")
+        return []
+
+def add_user_highlight(user_id: int, order_id: str, order_type: str, 
+                      notes: str = None, priority_level: int = 1, 
+                      tags: str = None, is_archived: bool = False):
+    """Add a new highlight for a user"""
+    try:
+        with LegislationSession() as session:
+            # Check if highlight already exists
+            existing = session.query(UserHighlights).filter(
+                UserHighlights.user_id == user_id,
+                UserHighlights.order_id == order_id
+            ).first()
+            
+            if existing:
+                logger.warning(f"Highlight already exists for user {user_id}, order {order_id}")
+                return existing.id
+            
+            # Create new highlight
+            new_highlight = UserHighlights(
+                user_id=user_id,
+                order_id=order_id,
+                order_type=order_type,
+                notes=notes,
+                priority_level=priority_level,
+                tags=tags,
+                is_archived=is_archived,
+                highlighted_at=datetime.now()
+            )
+            
+            session.add(new_highlight)
+            session.commit()
+            
+            logger.info(f"Added highlight {new_highlight.id} for user {user_id}, order {order_id}")
+            return new_highlight.id
+            
+    except Exception as e:
+        logger.error(f"Error adding highlight for user {user_id}: {e}")
+        return None
+
+def remove_user_highlight(user_id: int, order_id: str):
+    """Remove a specific highlight for a user"""
+    try:
+        with LegislationSession() as session:
+            highlight = session.query(UserHighlights).filter(
+                UserHighlights.user_id == user_id,
+                UserHighlights.order_id == order_id
+            ).first()
+            
+            if highlight:
+                session.delete(highlight)
+                session.commit()
+                logger.info(f"Removed highlight for user {user_id}, order {order_id}")
+                return True
+            else:
+                logger.warning(f"No highlight found for user {user_id}, order {order_id}")
+                return False
+                
+    except Exception as e:
+        logger.error(f"Error removing highlight for user {user_id}: {e}")
+        return False
+
+def clear_user_highlights(user_id: int):
+    """Clear all highlights for a user"""
+    try:
+        with LegislationSession() as session:
+            count = session.query(UserHighlights).filter(
+                UserHighlights.user_id == user_id
+            ).count()
+            
+            session.query(UserHighlights).filter(
+                UserHighlights.user_id == user_id
+            ).delete()
+            
+            session.commit()
+            logger.info(f"Cleared {count} highlights for user {user_id}")
+            return count
+            
+    except Exception as e:
+        logger.error(f"Error clearing highlights for user {user_id}: {e}")
+        return 0
+
+def update_user_highlight(user_id: int, order_id: str, notes: str = None, 
+                         priority_level: int = None, tags: str = None, 
+                         is_archived: bool = None):
+    """Update highlight metadata"""
+    try:
+        with LegislationSession() as session:
+            highlight = session.query(UserHighlights).filter(
+                UserHighlights.user_id == user_id,
+                UserHighlights.order_id == order_id
+            ).first()
+            
+            if not highlight:
+                logger.warning(f"No highlight found for user {user_id}, order {order_id}")
+                return False
+            
+            # Update fields that are provided
+            if notes is not None:
+                highlight.notes = notes
+            if priority_level is not None:
+                highlight.priority_level = priority_level
+            if tags is not None:
+                highlight.tags = tags
+            if is_archived is not None:
+                highlight.is_archived = is_archived
+            
+            session.commit()
+            logger.info(f"Updated highlight for user {user_id}, order {order_id}")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error updating highlight for user {user_id}: {e}")
+        return False
+
+# Existing legislation functions (unchanged)
 def save_legislation_to_azure_sql(bills: List[Dict]) -> int:
     """Save legislation bills to Azure SQL with error handling"""
     
@@ -694,12 +867,44 @@ def test_azure_sql_full():
         print("❌ Statistics test failed")
         return False
     
+    # Test 6: Highlights functionality
+    print("\n6. Testing highlights functionality...")
+    try:
+        # Test adding a highlight
+        highlight_id = add_user_highlight(
+            user_id=1, 
+            order_id="TEST-EO-001", 
+            order_type="executive_order",
+            notes="Test highlight"
+        )
+        if not highlight_id:
+            print("❌ Add highlight test failed")
+            return False
+        
+        # Test getting highlights
+        highlights = get_user_highlights(1)
+        if not highlights or len(highlights) == 0:
+            print("❌ Get highlights test failed")
+            return False
+        
+        # Test removing highlight
+        if not remove_user_highlight(1, "TEST-EO-001"):
+            print("❌ Remove highlight test failed")
+            return False
+        
+        print("✅ Highlights functionality working")
+        
+    except Exception as e:
+        print(f"❌ Highlights test failed: {e}")
+        return False
+    
     print("\n✅ All Azure SQL tests passed!")
     print(f"   Total bills in database: {stats['total_bills']}")
     print(f"   States with data: {len(stats['states_with_data'])}")
+    print("   Highlights functionality: ✅ Working")
     
     return True
 
 if __name__ == "__main__":
-    print("🧪 Testing Azure SQL Database Configuration")
+    print("🧪 Testing Azure SQL Database Configuration with Highlights")
     test_azure_sql_full()

@@ -267,3 +267,477 @@ ol li {
   }
 }
 
+/* Add to your CSS file */
+.eo-metadata {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.eo-number {
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.eo-date {
+  color: #6b7280;
+  font-size: 14px;
+  background: #f9fafb;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.ai-badge {
+  background: #8b5cf6;
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-right: 8px;
+}
+
+/* Executive Orders Page Styles */
+.executive-orders-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.page-header h1 {
+  color: #1f2937;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Order Cards */
+.orders-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr;
+}
+
+.order-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.order-card:hover {
+  box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.order-number h3 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.category-badge {
+  display: inline-block;
+  background: #3b82f6;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.order-dates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.signing-date {
+  font-weight: 600;
+  color: #374151;
+}
+
+.pub-date {
+  margin-top: 4px;
+}
+
+.order-title {
+  margin: 0 0 24px 0;
+  color: #1f2937;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* Content Sections */
+.content-section {
+  margin-bottom: 24px;
+  border-left: 4px solid #e5e7eb;
+  padding-left: 16px;
+}
+
+.content-section h5 {
+  margin: 0 0 12px 0;
+  color: #374151;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-body {
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+/* Specific section styling */
+.summary-section {
+  border-left-color: #10b981;
+}
+
+.talking-points-section {
+  border-left-color: #f59e0b;
+}
+
+.business-impact-section {
+  border-left-color: #ef4444;
+}
+
+.long-term-impact-section {
+  border-left-color: #8b5cf6;
+}
+
+/* Formatted Content Styles */
+.formatted-content p {
+  margin: 0 0 12px 0;
+}
+
+.formatted-content p:last-child {
+  margin-bottom: 0;
+}
+
+.formatted-content ol {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: decimal;
+}
+
+.formatted-content ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.formatted-content li {
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.formatted-content li:last-child {
+  margin-bottom: 0;
+}
+
+.formatted-content strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+/* Business Impact Specific Formatting */
+.business-impact-formatted {
+  margin: 0;
+}
+
+.impact-section {
+  margin-bottom: 16px;
+}
+
+.impact-section:last-child {
+  margin-bottom: 0;
+}
+
+.impact-section h4 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.impact-section ul {
+  margin: 0;
+  padding-left: 16px;
+  list-style-type: disc;
+}
+
+.impact-section li {
+  margin-bottom: 6px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+/* Action Links */
+.order-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+  flex-wrap: wrap;
+}
+
+.action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.action-link.primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.action-link.primary:hover {
+  background: #2563eb;
+}
+
+.action-link.secondary {
+  background: #10b981;
+  color: white;
+}
+
+.action-link.secondary:hover {
+  background: #059669;
+}
+
+.action-link.tertiary {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.action-link.tertiary:hover {
+  background: #e5e7eb;
+}
+
+/* Loading and Error States */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+}
+
+.error-message {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  color: #dc2626;
+}
+
+.no-results {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .executive-orders-page {
+    padding: 16px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .page-header h1 {
+    font-size: 2em;
+  }
+  
+  .order-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .order-dates {
+    align-items: flex-start;
+  }
+  
+  .action-link {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+  }
+}
+
+/* Animation for spinning refresh icon */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Add this CSS to your main CSS file or as a <style> tag */
+
+/* Consistent formatting for all AI-generated content sections */
+.ai-content-section {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.ai-content-section .formatted-content {
+  line-height: 1.6;
+}
+
+.ai-content-section .formatted-content p {
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.ai-content-section .formatted-content p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-content-section .formatted-content ol {
+  margin: 8px 0;
+  padding-left: 24px;
+  list-style-type: decimal;
+}
+
+.ai-content-section .formatted-content ul {
+  margin: 8px 0;
+  padding-left: 24px;
+  list-style-type: disc;
+}
+
+.ai-content-section .formatted-content li {
+  margin-bottom: 6px;
+  padding-left: 4px;
+  line-height: 1.5;
+  color: inherit;
+}
+
+.ai-content-section .formatted-content li:last-child {
+  margin-bottom: 0;
+}
+
+.ai-content-section .formatted-content strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+.ai-content-section .formatted-content ol li::marker {
+  font-weight: 600;
+  color: inherit;
+}
+
+.ai-content-section .formatted-content ul li::marker {
+  color: currentColor;
+}
+
+/* Consistent bullet point styling for manual bullets */
+.bullet-list {
+  margin: 8px 0;
+}
+
+.bullet-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.bullet-item:last-child {
+  margin-bottom: 0;
+}
+
+.bullet-symbol {
+  font-weight: 600;
+  font-size: 14px;
+  margin-top: 2px;
+  color: currentColor;
+  min-width: 8px;
+}
+
+.bullet-content {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+}
+
+/* Structured sections for business impact */
+.impact-section {
+  margin-bottom: 16px;
+  border-left: 3px solid currentColor;
+  padding-left: 12px;
+  opacity: 0.8;
+}
+
+.impact-section:last-child {
+  margin-bottom: 0;
+}
+
+.impact-section-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: inherit;
+  text-transform: none;
+}
+
+.impact-section .bullet-list {
+  margin: 0;
+}
+
