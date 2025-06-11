@@ -10,6 +10,10 @@ import {
   useLocation
 } from "react-router-dom";
 
+import { useAuth } from './context/AuthContext';
+import AzureADLoginModal from './components/AzureADLoginModal';
+import AuthRedirect from './components/AuthRedirect';
+
 // Components
 import Header from './components/Header';
 import HighlightsPage from './components/HighlightsPage';
@@ -47,13 +51,53 @@ const API_URL = getApiUrl();
 // Main App Content Component
 // ------------------------
 const AppContent = () => {
-  // ---- Version Management State ----
-  const [appVersion, setAppVersion] = useState('1.0.1');
-
-  // ---- Loading Animation Hook ----
-  const { isLoading, loadingType, startLoading, stopLoading } = useLoadingAnimation();
-
-  // ---- State management ----
+    // ---- Loading Animation Hook ----
+    const { isLoading, LoadingComponent, startLoading, stopLoading } = useLoadingAnimation();
+ 
+    // ✅ FIXED: Better auth context usage
+    const { isAuthenticated, currentUser, logout, loading: authLoading } = useAuth();
+ 
+    // ✅ FIXED: State for login modal with better logic
+    const [showLoginModal, setShowLoginModal] = useState(false);
+ 
+    // ✅ FIXED: Better authentication check with proper loading handling
+    useEffect(() => {
+        console.log('🔍 Auth state changed:', { isAuthenticated, authLoading, currentUser: !!currentUser });
+ 
+        // Only show login modal if:
+        // 1. Not currently loading authentication
+        // 2. User is not authenticated
+        // 3. Modal is not already showing
+        if (!authLoading && !isAuthenticated && !showLoginModal) {
+            console.log('🔐 Showing login modal');
+            setShowLoginModal(true);
+        } else if (!authLoading && isAuthenticated && showLoginModal) {
+            console.log('✅ User authenticated, hiding login modal');
+            setShowLoginModal(false);
+        }
+    }, [isAuthenticated, authLoading, showLoginModal]);
+ 
+    // ✅ FIXED: Handle login modal close with proper state management
+    const handleLoginModalClose = () => {
+        console.log('🔐 Login modal close requested');
+        // Only allow closing if user is authenticated
+        if (isAuthenticated) {
+            console.log('✅ User is authenticated, closing modal');
+            setShowLoginModal(false);
+        } else {
+            console.log('❌ User not authenticated, keeping modal open');
+            // Don't close the modal if user is not authenticated
+        }
+    };
+ 
+    // ✅ FIXED: Handle login success
+    const handleLoginSuccess = () => {
+        console.log('✅ Login successful, closing modal');
+        setShowLoginModal(false);
+    };
+ 
+ 
+    // ---- State management ----
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -420,6 +464,19 @@ const AppContent = () => {
     URL.revokeObjectURL(url);
   }, []);
 
+      // Show loading while checking authentication
+    if (authLoading) {
+        return (
+            <div className="fixed inset-0 bg-white flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <h2 className="text-xl font-bold mb-2">Loading...</h2>
+                    <p className="text-gray-600">Checking authentication status...</p>
+                </div>
+            </div>
+        );
+    }
+
   // ------------------------
   // MAIN ROUTES RENDER
   // ------------------------
@@ -429,14 +486,24 @@ const AppContent = () => {
       {isLoading && (
         <LoadingAnimation type={loadingType} onComplete={stopLoading} />
       )}
+
+     {/* Azure AD Login Modal */}
+    <AzureADLoginModal
+        isOpen={showLoginModal}
+        onClose={handleLoginModalClose}
+        onLoginSuccess={handleLoginSuccess}
+    />
       
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header
-          showDropdown={showDropdown}
-          setShowDropdown={setShowDropdown}
-          dropdownRef={dropdownRef}
-          currentPage={location.pathname.substring(1).split('/')[0] || 'highlights'}
-          highlightedCount={highlightedItems.size}
+            showDropdown={showDropdown}
+            setShowDropdown={setShowDropdown}
+            dropdownRef={dropdownRef}
+            currentPage={location.pathname.substring(1).split('/')[0] || 'highlights'}
+            isAuthenticated={isAuthenticated}
+            currentUser={currentUser}
+            onLogout={logout}
+            onLogin={() => setShowLoginModal(true)}
         />
         
         <div className="container mx-auto px-4 sm:px-6 lg:px-12 flex-1 overflow-auto">
@@ -502,6 +569,8 @@ const AppContent = () => {
               />
             } />
             
+            <Route path="/auth/redirect" element={<AuthRedirect />} />
+
             <Route path="/settings" element={
             <SettingsPage
                 federalDateRange={federalDateRange}
