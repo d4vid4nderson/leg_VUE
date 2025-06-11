@@ -1,14 +1,51 @@
 // components/Header.jsx - Main navigation header
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import ApplicationInfoModal from './ApplicationInfoModal';
 import {
-  Info,
-  Menu as HamburgerIcon,
-  ChevronDown,
-  Star,
-  ScrollText,
-  FileText,
-  Settings
+    Building,
+    GraduationCap,
+    Heart,
+    Wrench,
+    X as XIcon,
+    ScrollText,
+    Search,
+    RotateCw as RefreshIcon,
+    Settings,
+    FileText,
+    Trash2,
+    ChevronDown,
+    Download,
+    ExternalLink,
+    Copy,
+    Menu as HamburgerIcon,
+    Star,
+    Home,
+    Info,
+    Book,
+    Database,
+    Globe,
+    Zap,
+    Shield,
+    Users,
+    ChevronRight,
+    Play,
+    BarChart3,
+    Mail,
+    MessageCircle,
+    Phone,
+    HelpCircle,
+    Monitor,
+    BookOpen,
+    Map as MapIcon,
+    RefreshCw,
+    CheckCircle,
+    XCircle,
+    AlertCircle,
+    Clock,
+    LogIn,
+    LogOut,
+    User
 } from 'lucide-react';
 
 import { SUPPORTED_STATES } from '../utils/constants';

@@ -1,3 +1,4 @@
+
 // vite.config.js
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -8,10 +9,14 @@ export default defineConfig({
   css: {
     postcss: './postcss.config.cjs', // Updated extension here
   },
+  define: {
+    global: 'globalThis',
+    'process.env': {}
+  },
   server: {
     port: 80,
     strictPort: false,
-    open: false, // Explicitly disable auto-opening browser
+    open: true,
     proxy: {
       '/api': {
         target: 'http://backend:8000',

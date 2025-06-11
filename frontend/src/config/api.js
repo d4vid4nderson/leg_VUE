@@ -4,10 +4,24 @@
 // Check if the app is running in production mode
 const isProduction = import.meta.env.MODE === 'production';
 
-// Select the appropriate API URL based on environment with fallbacks
-const API_URL = isProduction 
-  ? (import.meta.env.VITE_API_URL_PROD || 'https://your-production-url.com')
-  : (import.meta.env.VITE_API_URL || 'http://localhost:8000');
+// Function to get API URL based on environment
+export const getApiUrl = () => {
+  // Select the appropriate API URL based on environment with fallbacks
+  const apiUrl = isProduction 
+    ? (import.meta.env.VITE_API_URL_PROD || 'https://your-production-url.com')
+    : (import.meta.env.VITE_API_URL || 'http://localhost:8000');
+  
+  // Validate that we have a proper URL
+  if (!apiUrl || apiUrl === 'undefined') {
+    console.error('❌ API_URL is not properly configured!');
+    console.error('Make sure you have set VITE_API_URL in your .env file');
+  }
+  
+  return apiUrl;
+};
+
+// Get the API URL
+const API_URL = getApiUrl();
 
 // Debug logging
 console.log(`PoliticalVue: Environment details:`, {
@@ -18,13 +32,7 @@ console.log(`PoliticalVue: Environment details:`, {
   finalApiUrl: API_URL,
   allEnvVars: import.meta.env
 });
-
 console.log(`PoliticalVue: Using API URL: ${API_URL} (${isProduction ? 'production' : 'development'} mode)`);
 
-// Validate that we have a proper URL
-if (!API_URL || API_URL === 'undefined') {
-  console.error('❌ API_URL is not properly configured!');
-  console.error('Make sure you have set VITE_API_URL in your .env file');
-}
-
+// Export the API URL as default and provide the getApiUrl function
 export default API_URL;
