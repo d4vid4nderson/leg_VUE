@@ -3,6 +3,8 @@ import { Eye, EyeOff, Lock, User, AlertCircle, Building, GraduationCap, Heart, W
 import { PublicClientApplication } from '@azure/msal-browser';
 import { useAuth } from '../context/AuthContext';
 
+import yourLogo from '/public/favicon.png';
+
 const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDED onLoginSuccess prop
   const { login } = useAuth();
   const [formData, setFormData] = useState({
@@ -285,10 +287,15 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
         
         {/* Login Card */}
         <div className="p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-r from-violet-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-white" />
-            </div>
+            <div className="text-center mb-8">
+              {/* Image Logo */}
+              <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <img 
+                  src={yourLogo} 
+                  alt="LegislationVUE Logo" 
+                  className="w-full h-full object-contain"
+                />
+              </div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to LegislationVUE</h2>
             <p className="text-gray-600">Sign in with your company account</p>
           </div>

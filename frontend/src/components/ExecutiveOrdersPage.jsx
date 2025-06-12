@@ -513,7 +513,7 @@ const ExecutiveOrdersPage = ({
     <div className="pt-6">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 mb-2">Federal Executive Orders</h2>
-        <p className="text-gray-600">Explore executive orders by time period with AI analysis and fuzzy search.</p>
+        <p className="text-gray-600">Explore executive orders by time period with AI analysis and review tracking.</p>
       </div>
 
       {/* Search and Filter Bar */}
@@ -1014,22 +1014,6 @@ const ExecutiveOrdersPage = ({
                                 </p>
                                 <div className="text-green-800">
                                   {formatUniversalContent(order.ai_business_impact)}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {order.ai_potential_impact && (
-                            <div className="mb-4">
-                              <div className="bg-orange-50 p-3 rounded-md border border-purple-200">
-                                <p className="text-md font-bold text-orange-800 mb-3 flex items-center gap-2">
-                                  <span>🔮 Long-term Impact:</span>
-                                  <span className="px-2 py-0.5 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-xs rounded-full">
-                                    ✦ AI Generated
-                                  </span>
-                                </p>
-                                <div className="text-orange-800">
-                                  {formatUniversalContent(order.ai_potential_impact)}
                                 </div>
                               </div>
                             </div>

@@ -53,14 +53,28 @@ class HighlightUpdateRequest(BaseModel):
 try:
     from database_azure_fixed import (
         test_azure_sql_connection,
-        init_databases, 
-        get_legislation_from_azure_sql as get_legislation_from_db,
-        save_legislation_to_azure_sql as save_legislation_to_db,
-        get_legislation_stats_azure_sql as get_legislation_stats,
+        init_databases,
         LegislationSession,
         StateLegislationDB,
+        # Legislation functions
+        save_legislation_to_azure_sql as save_legislation_to_db,
+        get_legislation_from_azure_sql as get_legislation_from_db,
+        get_legislation_stats_azure_sql as get_legislation_stats,
+        # Highlights functions 
+        get_user_highlights,
+        add_user_highlight,
+        remove_user_highlight,
+        clear_user_highlights,
+        update_user_highlight,
         test_azure_sql_full
     )
+    AZURE_SQL_AVAILABLE = True
+    HIGHLIGHTS_DB_AVAILABLE = True
+    print("✅ Using comprehensive Azure SQL database with highlights")
+except ImportError as e:
+    print(f"❌ Database import failed: {e}")
+    AZURE_SQL_AVAILABLE = False
+    HIGHLIGHTS_DB_AVAILABLE = False
     AZURE_SQL_AVAILABLE = True
     print("✅ Using Azure SQL database configuration")
 except ImportError as e:
@@ -129,12 +143,11 @@ except ImportError as e:
 from dotenv import load_dotenv
 load_dotenv()
 
-# NEW: EO Validation Functions
 def validate_eo_number(eo_number: str) -> bool:
     """Validate that EO number is in the correct Trump 2025 range"""
     try:
         eo_int = int(str(eo_number).strip())
-        return 14147 <= eo_int <= 14400  # Trump 2025 range
+        return 14000 <= eo_int <= 15000  # EXPANDED RANGE
     except (ValueError, TypeError):
         return False
 
@@ -152,7 +165,7 @@ def validate_and_filter_executive_orders(orders: List[dict]) -> List[dict]:
             filtered_count += 1
             continue
         
-        # Skip if invalid EO number
+        # Skip if invalid EO number (using expanded range)
         if not validate_eo_number(eo_number):
             logger.warning(f"Filtered out invalid EO number {eo_number}: {order.get('title', 'Unknown')[:50]}")
             filtered_count += 1
@@ -164,18 +177,10 @@ def validate_and_filter_executive_orders(orders: List[dict]) -> List[dict]:
             filtered_count += 1
             continue
         
-        # Skip if no valid dates
-        signing_date = order.get('signing_date')
-        publication_date = order.get('publication_date')
-        if not signing_date and not publication_date:
-            logger.warning(f"Filtered out EO {eo_number} with no valid dates")
-            filtered_count += 1
-            continue
-        
         valid_orders.append(order)
     
     if filtered_count > 0:
-        logger.info(f"✅ Filtered out {filtered_count} invalid orders, kept {len(valid_orders)} valid orders")
+        logger.info(f"✅ Kept {len(valid_orders)} valid orders, filtered {filtered_count} invalid")
     
     return valid_orders
 
@@ -417,7 +422,7 @@ async def root():
         },
         "features": {
             "executive_orders": "Real Federal Register Integration with Azure AI + Validation",
-            "eo_validation": "Trump 2025 Range (14147-14400) + Date Formatting",
+            "eo_validation": "Trump 2025 Range (14147-15000) + Date Formatting",
             "state_legislation": "LegiScan Integration with AI" if legiscan_status == "connected" else "Configuration Required",
             "ai_analysis": "Azure AI Integration" if ai_status == "connected" else "Configuration Required",
             "azure_sql_database": "Connected & Working" if (AZURE_SQL_AVAILABLE and db_working) else "Not Available",
@@ -428,7 +433,7 @@ async def root():
         "executive_order_categories": EXECUTIVE_ORDER_CATEGORIES,
         "bill_categories": BILL_CATEGORIES,
         "eo_validation": {
-            "valid_range": "14147-14400",
+            "valid_range": "14147-15000",
             "description": "Trump 2025 Executive Orders",
             "date_format": "MM/DD/YYYY for display"
         }
@@ -544,7 +549,7 @@ async def add_highlight(request: HighlightCreateRequest):
             if not validate_eo_number(request.order_id):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Invalid executive order number: {request.order_id}. Must be in range 14147-14400."
+                    detail=f"Invalid executive order number: {request.order_id}. Must be in range 14147-15000."
                 )
         
         # Add highlight to database
@@ -854,7 +859,7 @@ async def fetch_executive_orders_with_azure_ai(
         logger.info(f"🚀 Fetching executive orders from Federal Register with Azure AI + Validation")
         logger.info(f"📊 Date range: {request.start_date} to {end_date}")
         logger.info(f"🤖 Azure AI Analysis: Enabled")
-        logger.info(f"✅ EO Validation: Trump 2025 range (14147-14400)")
+        logger.info(f"✅ EO Validation: Trump 2025 range (14147-15000)")
         
         # Call the ENHANCED API with Azure AI
         result = await api.fetch_trump_2025_executive_orders(
@@ -873,7 +878,7 @@ async def fetch_executive_orders_with_azure_ai(
                 "orders_saved": 0,
                 "ai_analysis_enabled": result.get('ai_analysis_enabled', False),
                 "validation_applied": True,
-                "valid_eo_range": "14147-14400",
+                "valid_eo_range": "14147-15000",
                 "timestamp": datetime.now().isoformat(),
                 "orders": []
             }
@@ -918,7 +923,7 @@ async def fetch_executive_orders_with_azure_ai(
             "ai_analysis_enabled": ai_enabled,
             "ai_version": "azure_openai_federal_register_v1.0",
             "validation_applied": True,
-            "valid_eo_range": "14147-14400",
+            "valid_eo_range": "14147-15000",
             "timestamp": datetime.now().isoformat(),
             "orders": enriched_orders,  # Include the validated orders with Azure AI analysis and formatting
             "search_strategies": result.get('search_strategies', []),
@@ -940,7 +945,7 @@ async def get_executive_order_by_id(order_number: str):
         if not validate_eo_number(order_number):
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid executive order number: {order_number}. Must be in range 14147-14400."
+                detail=f"Invalid executive order number: {order_number}. Must be in range 14147-15000."
             )
         
         order = get_executive_order_by_number(order_number)
@@ -958,7 +963,7 @@ async def get_executive_order_by_id(order_number: str):
             "success": True,
             "order": enriched_order,
             "validation_passed": True,
-            "eo_range": "14147-14400"
+            "eo_range": "14147-15000"
         }
         
     except HTTPException:
@@ -1303,7 +1308,7 @@ async def get_status():
         },
         "features": {
             "executive_orders": "Real Federal Register Integration with Azure AI + Validation" if federal_register_ai_status == "connected" else "Basic Federal Register Integration + Validation",
-            "eo_validation": "Trump 2025 Range (14147-14400) + Date Formatting",
+            "eo_validation": "Trump 2025 Range (14147-15000) + Date Formatting",
             "state_legislation": "LegiScan Integration with AI" if legiscan_status == "connected" else "Configuration Required",
             "ai_analysis": "Azure AI Integration" if ai_status == "connected" else "Configuration Required",
             "azure_sql_database": "Connected & Working" if (AZURE_SQL_AVAILABLE and db_working) else "Not Available",
@@ -1324,7 +1329,7 @@ async def get_status():
         },
         "eo_validation": {
             "enabled": True,
-            "valid_range": "14147-14400",
+            "valid_range": "14147-15000",
             "description": "Trump 2025 Executive Orders",
             "date_format": "MM/DD/YYYY for display",
             "filters_invalid": True
@@ -1493,7 +1498,7 @@ async def test_eo_validation():
                 "total": len(date_test_cases),
                 "results": date_results
             },
-            "valid_range": "14147-14400",
+            "valid_range": "14147-15000",
             "timestamp": datetime.now().isoformat()
         }
         
@@ -1660,7 +1665,7 @@ async def health_check_all_services():
             "ai_available": AI_AVAILABLE,
             "highlights_available": HIGHLIGHTS_DB_AVAILABLE,
             "eo_validation_enabled": True,
-            "valid_eo_range": "14147-14400",
+            "valid_eo_range": "14147-15000",
             "checked_at": datetime.now().isoformat()
         }
         
@@ -1720,7 +1725,7 @@ if __name__ == "__main__":
     print(f"   • LEGISCAN_API_KEY: {'✅ Configured' if legiscan_configured else '❌ Missing'}")
     print(f"   • AZURE_AI (Key + Endpoint): {'✅ Configured' if azure_ai_configured else '❌ Missing'}")
     print(f"   • HIGHLIGHTS_DB: {'✅ Available' if HIGHLIGHTS_DB_AVAILABLE else '❌ Functions Missing'}")
-    print(f"   • EO_VALIDATION: ✅ Enabled (Range: 14147-14400)")
+    print(f"   • EO_VALIDATION: ✅ Enabled (Range: 14147-15000)")
     print("")
     
     if azure_ai_configured:
@@ -1736,7 +1741,7 @@ if __name__ == "__main__":
     
     print(f"")
     print(f"✅ NEW FEATURES IN v10.2.0:")
-    print(f"   • EO Number Validation (14147-14400 Trump 2025 range)")
+    print(f"   • EO Number Validation (14147-15000 Trump 2025 range)")
     print(f"   • Date Formatting (MM/DD/YYYY for UI display)")
     print(f"   • Invalid EO Filtering (removes 1052, 2025, 0979, etc.)")
     print(f"   • Enhanced Error Handling")

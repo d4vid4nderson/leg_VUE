@@ -118,7 +118,7 @@ export const InformationModal = ({ isOpen, onClose }) => {
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
         <h3 className="text-xl font-bold text-gray-800 mb-3 flex items-center gap-2">
           <Star className="text-yellow-500" size={24} />
-          Welcome to LegislationVue
+          Welcome to LegislationVUE
         </h3>
         <p className="text-gray-700 mb-4">
           Your AI-powered legislative intelligence platform that helps you track, analyze, and understand 
@@ -136,7 +136,7 @@ export const InformationModal = ({ isOpen, onClose }) => {
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <Book size={20} className="text-green-600" />
-          How to Use LegislationVue
+          How to Use LegislationVUE
         </h4>
         
         <div className="space-y-4">
@@ -586,7 +586,7 @@ export const InformationModal = ({ isOpen, onClose }) => {
         
         <div className="space-y-3 text-sm">
           <p className="text-gray-700">
-            LegislationVue is developed by MOREgroup a collective of architecture, design, and 
+            LegislationVUE is developed by MOREgroup a collective of architecture, design, and 
             engineering brands dedicated to shaping impactful environments across the United States.
           </p>
           

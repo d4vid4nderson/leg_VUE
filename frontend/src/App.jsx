@@ -247,7 +247,7 @@ const AppContent = () => {
     }, []);
 
     // ------------------------
-    // Data Fetching
+    // Data Fetching - UPDATED WITH DEBUG LOGGING
     // ------------------------
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -255,17 +255,44 @@ const AppContent = () => {
         
         try {
             const url = `${API_URL}/api/executive-orders?page=${paginationPage}&per_page=${itemsPerPage}`;
+            console.log('🔍 Fetching executive orders from:', url);
             const data = await makeApiCall(url);
-            setOrders(data.results || []);
-            setTotalPages(data.total_pages || 1);
+            console.log('📊 Received data:', data);
+            
+            if (data && data.results) {
+                console.log(`✅ Setting ${data.results.length} orders`);
+                setOrders(data.results);
+                setTotalPages(data.total_pages || 1);
+            } else {
+                console.warn('⚠️ No results in response:', data);
+                setOrders([]);
+                setTotalPages(1);
+            }
             
         } catch (error) {
-            console.error('Error fetching data:', error);
+            console.error('❌ Error fetching executive orders:', error);
             setError(error.message);
+            setOrders([]);
         } finally {
             setLoading(false);
         }
     }, [paginationPage, itemsPerPage, makeApiCall]);
+
+    // ADDED: Auto-fetch on mount
+    useEffect(() => {
+        console.log('🚀 App mounted, calling fetchData for executive orders');
+        fetchData();
+    }, []); // Run once on mount
+
+    // ADDED: Debug logging for orders state changes
+    useEffect(() => {
+        console.log('📊 Orders state changed:', {
+            ordersLength: orders.length,
+            firstOrder: orders[0]?.title || 'No orders',
+            loading,
+            error
+        });
+    }, [orders, loading, error]);
 
     // ------------------------
     // Highlighted Orders Management
@@ -414,7 +441,7 @@ const AppContent = () => {
     }), [activeHighlightsFilters]);
 
     // ------------------------
-    // Stable Handlers
+    // Stable Handlers - UPDATED WITH MISSING HANDLERS
     // ------------------------
     const stableHandlers = useMemo(() => ({
         toggleHighlight: (order) => {
@@ -430,9 +457,8 @@ const AppContent = () => {
                     });
                 } else {
                     newSet.add(orderId);
-                    // Determine source based on current page/context
                     const currentPath = location.pathname;
-                    let source = 'executive-orders'; // default
+                    let source = 'executive-orders';
                     if (currentPath.includes('/state/')) {
                         source = 'state-legislation';
                     }
@@ -446,11 +472,64 @@ const AppContent = () => {
             });
         },
         setPaginationPage,
+        
+        // ADDED: Missing page change handler
+        handlePageChange: (newPage) => {
+            console.log('📄 Changing to page:', newPage);
+            setPaginationPage(newPage);
+        },
+        
         toggleExpanded: (orderId) => {
             setExpandedOrderId(prev => prev === orderId ? null : orderId);
         },
+        
+        // ADDED: Missing expand order handler
+        handleExpandOrder: (order) => {
+            const orderId = getOrderId(order);
+            console.log('🔽 Toggling expansion for order:', orderId);
+            setExpandedOrderId(prev => prev === orderId ? null : orderId);
+        },
+        
         isExpanded: (orderId) => expandedOrderId === orderId,
+        
+        // ADDED: Missing order expanded checker
+        isOrderExpanded: (order) => {
+            const orderId = getOrderId(order);
+            return expandedOrderId === orderId;
+        },
+        
         isHighlighted: (orderId) => highlightedItems.has(orderId),
+        
+        // ADDED: Missing item highlighted checker
+        isItemHighlighted: (order) => {
+            const orderId = getOrderId(order);
+            return highlightedItems.has(orderId);
+        },
+        
+        // ADDED: Missing item highlight handler
+        handleItemHighlight: (order, sourcePage = 'executive-orders') => {
+            console.log('⭐ Toggling highlight for:', getOrderId(order));
+            const orderId = getOrderId(order);
+            setHighlightedItems(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(orderId)) {
+                    newSet.delete(orderId);
+                    setHighlightSources(prevSources => {
+                        const newSources = new Map(prevSources);
+                        newSources.delete(orderId);
+                        return newSources;
+                    });
+                } else {
+                    newSet.add(orderId);
+                    setHighlightSources(prevSources => {
+                        const newSources = new Map(prevSources);
+                        newSources.set(orderId, sourcePage);
+                        return newSources;
+                    });
+                }
+                return newSet;
+            });
+        }
     }), [highlightedItems, expandedOrderId, location.pathname]);
 
     // ------------------------
@@ -554,26 +633,34 @@ const AppContent = () => {
                         } />
             
                         <Route path="/executive-orders" element={
-                            <ExecutiveOrdersPage
-                                orders={orders}
-                                loading={loading}
-                                error={error}
-                                searchTerm={searchTerm}
-                                setSearchTerm={setSearchTerm}
-                                activeFilter={activeFilter}
-                                setActiveFilter={setActiveFilter}
-                                filteredOrders={filteredOrders}
-                                paginationPage={paginationPage}
-                                totalPages={totalPages}
-                                stableHandlers={stableHandlers}
-                                showFilterDropdown={showFilterDropdown}
-                                setShowFilterDropdown={setShowFilterDropdown}
-                                filterDropdownRef={filterDropdownRef}
-                                fetchData={fetchData}
-                                copyToClipboard={copyToClipboard}
-                                downloadTextFile={downloadTextFile}
-                                makeApiCall={makeApiCall}
-                            />
+                            <>
+                                {console.log('🔍 Rendering ExecutiveOrdersPage with:', {
+                                    ordersCount: orders.length,
+                                    loading,
+                                    error,
+                                    filteredOrdersCount: filteredOrders.length
+                                })}
+                                <ExecutiveOrdersPage
+                                    orders={orders}
+                                    loading={loading}
+                                    error={error}
+                                    searchTerm={searchTerm}
+                                    setSearchTerm={setSearchTerm}
+                                    activeFilter={activeFilter}
+                                    setActiveFilter={setActiveFilter}
+                                    filteredOrders={filteredOrders}
+                                    paginationPage={paginationPage}
+                                    totalPages={totalPages}
+                                    stableHandlers={stableHandlers}
+                                    showFilterDropdown={showFilterDropdown}
+                                    setShowFilterDropdown={setShowFilterDropdown}
+                                    filterDropdownRef={filterDropdownRef}
+                                    fetchData={fetchData}
+                                    copyToClipboard={copyToClipboard}
+                                    downloadTextFile={downloadTextFile}
+                                    makeApiCall={makeApiCall}
+                                />
+                            </>
                         } />
             
                         <Route path="/auth/redirect" element={<AuthRedirect />} />
@@ -626,7 +713,7 @@ const AppContent = () => {
                 <footer className="bg-gray-50 border-t border-gray-200 py-4 mt-auto">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                         <div className="text-center text-sm text-gray-600">
-                            © 2025 MOREgroup. All rights reserved. LegislationVue v{appVersion}
+                            © 2025 Built with ❤️ by MOREgroup Development. All rights reserved. LegislationVUE v{appVersion}
                         </div>
                     </div>
                 </footer>
