@@ -139,31 +139,28 @@ PROMPTS = {
     Legislative Content: {text}
     """,
     
-    PromptType.BUSINESS_IMPACT: """
-    Analyze the business impact using this specific structure and focus on concrete business implications:
+PromptType.BUSINESS_IMPACT: """
+Analyze the business impact of this legislation using clear, professional language:
 
-    **Risk Assessment:**
-    • [Specific compliance risk or regulatory burden]
-    • [Operational risk or process change required]
+Risk Assessment:
+Regulatory and Market Uncertainty
+• [Describe the main regulatory risk in one clear sentence]
+• [Describe the market uncertainty risk in one clear sentence]
 
-    **Market Opportunity:**
-    • [New business opportunity created by this legislation]
-    • [Competitive advantage or market positioning benefit]
+Market Opportunity:
+Increased Investment and Demand
+• [Describe the main business opportunity in one clear sentence]  
+• [Describe specific benefits available in one clear sentence]
 
-    **Implementation Requirements:**
-    • [Specific action businesses must take by when]
-    • [Resources, systems, or processes that need updating]
+Summary:
+[Provide a balanced 1-2 sentence summary of the overall business impact]
 
-    Focus on:
-    - Concrete actions businesses need to take
-    - Financial implications (costs, savings, revenue opportunities)
-    - Competitive implications
-    - Timeline pressures
+Use simple bullet points with • character only. 
+Avoid asterisks (**) and dashes (---) in your response.
+Focus on concrete business implications.
 
-    Use bullet points with • character only. Be specific and actionable.
-    
-    Legislative Content: {text}
-    """
+Legislative Content: {text}
+"""
 }
 
 # Enhanced system messages for each type
@@ -251,15 +248,20 @@ def format_talking_points(text: str) -> str:
     return f"<ol class='talking-points'>{' '.join(html_points)}</ol>"
 
 def format_business_impact(text: str) -> str:
-    """Format business impact with specific structure"""
+    """Format business impact with clean, professional structure - FIXED VERSION"""
     if not text:
         return "<p>No business impact analysis available</p>"
     
-    # Look for the three main sections
+    # Clean up the text first - remove extra dashes and asterisks
+    text = re.sub(r'^---+\s*$', '', text, flags=re.MULTILINE)  # Remove dash separators
+    text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)  # Convert **bold** to <strong>
+    text = re.sub(r'^\*\*([^*]+):\*\*', r'<strong>\1:</strong>', text, flags=re.MULTILINE)  # Headers
+    
+    # Look for the main sections
     sections = {
         'risk': [],
         'opportunity': [],
-        'implementation': []
+        'summary': []
     }
     
     current_section = None
@@ -267,50 +269,120 @@ def format_business_impact(text: str) -> str:
     
     for line in lines:
         line = line.strip()
-        if not line:
+        if not line or line == '---':
             continue
             
-        # Detect section headers
-        if any(keyword in line.lower() for keyword in ['risk', 'compliance']):
+        # Detect section headers (case insensitive)
+        line_lower = line.lower()
+        if any(keyword in line_lower for keyword in ['risk', 'regulatory and market uncertainty']):
             current_section = 'risk'
+            # If the line has content after the header, add it
+            if ':' in line and line.split(':', 1)[1].strip():
+                content = line.split(':', 1)[1].strip()
+                if content:
+                    sections[current_section].append(content)
             continue
-        elif any(keyword in line.lower() for keyword in ['opportunity', 'market', 'benefit']):
+        elif any(keyword in line_lower for keyword in ['opportunity', 'increased investment', 'market opportunity']):
             current_section = 'opportunity'
+            # If the line has content after the header, add it
+            if ':' in line and line.split(':', 1)[1].strip():
+                content = line.split(':', 1)[1].strip()
+                if content:
+                    sections[current_section].append(content)
             continue
-        elif any(keyword in line.lower() for keyword in ['implementation', 'requirement', 'action']):
-            current_section = 'implementation'
+        elif any(keyword in line_lower for keyword in ['summary']):
+            current_section = 'summary'
+            # If the line has content after the header, add it
+            if ':' in line and line.split(':', 1)[1].strip():
+                content = line.split(':', 1)[1].strip()
+                if content:
+                    sections[current_section].append(content)
             continue
         
-        # Extract bullet points
+        # Extract bullet points and regular content
         if line.startswith('•') or line.startswith('-') or line.startswith('*'):
-            bullet_content = line[1:].strip()
+            bullet_content = re.sub(r'^[•\-*]\s*', '', line).strip()
             if bullet_content and current_section:
                 sections[current_section].append(bullet_content)
+        elif line.startswith('<strong>') and current_section:
+            # Handle specific impact bullets that are already formatted
+            sections[current_section].append(line)
+        elif current_section and line and not line.startswith('**'):
+            # Regular content
+            sections[current_section].append(line)
     
-    # Build HTML output
+    # Build clean HTML output
     html_parts = []
     
-    section_configs = [
-        ('risk', 'Risk Assessment', 'bg-red-50 border-red-200 text-red-800'),
-        ('opportunity', 'Market Opportunity', 'bg-green-50 border-green-200 text-green-800'),
-        ('implementation', 'Implementation Requirements', 'bg-blue-50 border-blue-200 text-blue-800')
-    ]
-    
-    for section_key, section_title, css_class in section_configs:
-        items = sections[section_key]
-        if not items:
-            # Add placeholder if no items found
-            items = [f"{section_title.lower()} assessment to be determined based on detailed analysis."]
+    # Risk Assessment Section
+    if sections['risk']:
+        html_parts.append('<div class="business-impact-section risk-section">')
+        html_parts.append('<h4>Risk Assessment</h4>')
+        html_parts.append('<div class="risk-content">')
         
-        html_parts.append(f'<div class="business-impact-section {css_class}">')
-        html_parts.append(f'<h4><strong>{section_title}:</strong></h4>')
-        html_parts.append('<ul>')
-        for item in items[:2]:  # Max 2 items per section
-            html_parts.append(f'<li>• {item}</li>')
-        html_parts.append('</ul>')
+        # Group risk items
+        for item in sections['risk'][:3]:  # Max 3 risk items
+            # Clean up the item
+            clean_item = re.sub(r'^[•\-*]\s*', '', item).strip()
+            clean_item = re.sub(r'^\*\*([^*]+):\*\*\s*', r'<strong>\1:</strong> ', clean_item)
+            
+            if clean_item:
+                html_parts.append(f'<p>• {clean_item}</p>')
+        
+        html_parts.append('</div>')
         html_parts.append('</div>')
     
-    return ''.join(html_parts)
+    # Opportunity Section
+    if sections['opportunity']:
+        html_parts.append('<div class="business-impact-section opportunity-section">')
+        html_parts.append('<h4>Market Opportunity</h4>')
+        html_parts.append('<div class="opportunity-content">')
+        
+        # Group opportunity items
+        for item in sections['opportunity'][:3]:  # Max 3 opportunity items
+            # Clean up the item
+            clean_item = re.sub(r'^[•\-*]\s*', '', item).strip()
+            clean_item = re.sub(r'^\*\*([^*]+):\*\*\s*', r'<strong>\1:</strong> ', clean_item)
+            
+            if clean_item:
+                html_parts.append(f'<p>• {clean_item}</p>')
+        
+        html_parts.append('</div>')
+        html_parts.append('</div>')
+    
+    # Summary Section
+    if sections['summary']:
+        html_parts.append('<div class="business-impact-section summary-section">')
+        html_parts.append('<h4>Summary</h4>')
+        html_parts.append('<div class="summary-content">')
+        
+        for item in sections['summary'][:2]:  # Max 2 summary items
+            # Clean up the item
+            clean_item = re.sub(r'^[•\-*]\s*', '', item).strip()
+            clean_item = re.sub(r'^\*\*([^*]+):\*\*\s*', r'<strong>\1:</strong> ', clean_item)
+            
+            if clean_item:
+                html_parts.append(f'<p>{clean_item}</p>')
+        
+        html_parts.append('</div>')
+        html_parts.append('</div>')
+    
+    # Fallback if no sections were found
+    if not any(sections.values()):
+        # Just clean up the raw text and present it nicely
+        cleaned_text = re.sub(r'^[•\-*]\s*', '', text, flags=re.MULTILINE)
+        cleaned_text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', cleaned_text)
+        paragraphs = [p.strip() for p in cleaned_text.split('\n') if p.strip()]
+        
+        if paragraphs:
+            html_parts.append('<div class="business-impact-section">')
+            html_parts.append('<h4>Business Impact Analysis</h4>')
+            for para in paragraphs[:4]:  # Max 4 paragraphs
+                if para:
+                    html_parts.append(f'<p>{para}</p>')
+            html_parts.append('</div>')
+    
+    return ''.join(html_parts) if html_parts else '<p>Business impact analysis processing...</p>'
 
 class LegiScanClient:
     """Enhanced LegiScan API client with caching and error handling"""
@@ -1063,33 +1135,4 @@ async def test_legiscan_integration() -> bool:
             
     except Exception as e:
         print(f"❌ LegiScan integration test failed: {e}")
-        return False
-
-# Test AI integration
-async def test_ai_integration() -> bool:
-    """Test the AI integration with distinct content generation"""
-    try:
-        print("🧪 Testing enhanced AI integration...")
-        
-        test_text = "This bill establishes comprehensive data protection requirements for businesses processing personal information. It requires explicit consent for data collection and provides users with deletion rights."
-        
-        # Test all three content types
-        summary = await get_executive_summary(test_text, "Test Legislation")
-        talking_points = await get_key_talking_points(test_text, "Test Legislation")
-        business_impact = await get_business_impact(test_text, "Test Legislation")
-        
-        # Check that we got different content
-        if (summary and talking_points and business_impact and 
-            summary != talking_points and 
-            summary != business_impact and 
-            talking_points != business_impact):
-            print("✅ Enhanced AI integration test successful!")
-            print(f"   Generated distinct content for all sections")
-            return True
-        else:
-            print("❌ AI integration test failed - content appears similar")
-            return False
-            
-    except Exception as e:
-        print(f"❌ AI integration test failed: {e}")
         return False

@@ -22,6 +22,7 @@ import {
   Shield,
   BarChart3,
   Users,
+  Sparkle,
   Lightbulb,
   Phone,
   MapPin,
@@ -75,7 +76,7 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       <div className="bg-gradient-to-r from-violet-50 to-blue-50 border border-violet-200 rounded-xl p-6">
         <div className="flex items-center gap-4 mb-4">
           <div className="w-16 h-16 bg-gradient-to-r from-violet-600 to-blue-600 rounded-xl flex items-center justify-center">
-            <img src="/logo.png" alt="LegislationVUE" className="w-10 h-10" />
+            <img src="/src/logo.png" alt="LegislationVUE" className="w-10 h-10" />
           </div>
           <div>
             <h3 className="text-2xl font-bold text-gray-800">LegislationVUE</h3>
@@ -389,7 +390,9 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
           </div>
           <div className="space-y-3">
             <div className="flex items-start gap-3">
-              <div className="w-4 h-4 bg-gradient-to-r from-violet-600 to-purple-600 rounded mt-1 flex-shrink-0"></div>
+              <div className="w-5 h-5 bg-gradient-to-r from-violet-600 to-purple-600 rounded flex items-center justify-center">
+                <span className="text-white text-xs font-bold">AI</span>
+              </div>
               <span className="text-purple-700 text-sm">Every item automatically gets AI-powered summaries</span>
             </div>
             <div className="flex items-start gap-3">
@@ -646,21 +649,30 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
           <h3 className="text-lg font-bold text-gray-800">Product Portfolio</h3>
         </div>
         <div className="space-y-4">
-        <div className="bg-white bg-opacity-70 rounded-lg p-4">
+        <div className="bg-white bg-opacity-100 rounded-lg p-4">
           <div className="flex items-center gap-3 mb-2">
             <BarChart3 className="w-5 h-5 text-green-600" />
             <h4 className="font-semibold text-gray-800">PlanVUE</h4>
             <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">Available Now!</span>
           </div>
-          <p className="text-gray-700 text-sm">
+        <p className="text-gray-700 text-sm">
             AI-powered planning tools and insights for our planners and architects.
             PlanVUE provides real-time data analysis and visualization, enabling our team to make informed decisions quickly.
             This tool streamlines our data capture of client preferences, allowing us to deliver better outcomes and client driven decisions.
-          
+          <p>
+            <a 
+              href="https://planvue.moregroupdev.com/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-green-600 hover:text-green-800 text-sm font-medium"
+            >
+              Checkout PlanVUE! <ExternalLink className="w-4 h-4" />
+            </a>
           </p>
+        </p>
         </div>
         
-          <div className="bg-white bg-opacity-70 rounded-lg p-4">
+          <div className="bg-white bg-opacity-100 rounded-lg p-4">
             <div className="flex items-center gap-3 mb-2">
               <Zap className="w-5 h-5 text-violet-600" />
               <h4 className="font-semibold text-gray-800">LegislationVUE</h4>
@@ -672,7 +684,7 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
               than manual data processing.
             </p>
           </div>
-          <div className="bg-white bg-opacity-70 rounded-lg p-4">
+          <div className="bg-white bg-opacity-100 rounded-lg p-4">
             <div className="flex items-center gap-3 mb-2">
               <FileText className="w-5 h-5 text-blue-600" />
               <h4 className="font-semibold text-gray-800">RFQVUE</h4>
@@ -691,11 +703,11 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
 <div className="bg-gradient-to-r from-violet-50 to-blue-50 border border-violet-200 rounded-lg p-6 mt-6">
   <div className="text-center">
     <p className="text-sm text-gray-700 mb-8 flex items-center justify-center gap-2">
-      Do you need a VUE or have an idea for MORE VUE's?
+      Do you need a VUE or have an idea for MORE VUE's? 
       Please reach out!
     </p>
     <a 
-      href="mailto:info@moregroup-inc.com" 
+      href="mailto:legal@moregroup-inc.com" 
       className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-blue-600 text-white rounded-lg hover:from-violet-700 hover:to-blue-700 transition-all duration-200 font-medium shadow-lg"
     >
       <Mail className="w-4 h-4" />
@@ -703,12 +715,8 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
     </a>
   </div>
 </div>
-
-        <div className="mt-8 pt-12 pb-6 border-t border-gray-200 text-center">
-            <p className="text-sm">Built with ❤️ by MOREgroup Development</p>
-        </div>
-      </div>
-  );
+</div>  
+);
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -765,15 +773,6 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-160px)]">
           {renderActiveTab()}
-        </div>
-
-        {/* Footer */}
-        <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
-          <div className="flex justify-between items-center">
-            <div className="mt-8 pt-12 pb-6 border-t border-gray-200">
-            <p className="text-sm">Built with ❤️ by MOREgroup Development</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

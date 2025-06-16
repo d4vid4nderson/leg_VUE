@@ -1,6 +1,14 @@
 # LegislationVue Backend - Python 3.13 Compatible Requirements
 # Install with: pip install -r requirements.txt
 
+# requirements.txt - Clean Backend Dependencies
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Optional: For enhanced logging
+loguru==0.7.2
+
+# Note: No SQLAlchemy dependencies!
 
 
 # Same as requirements.txt but with fixed httpx version

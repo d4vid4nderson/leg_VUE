@@ -46,3 +46,38 @@ yarn-error.log*
 backend/.azure/
 frontend/.azure/
 *.PublishSettings
+
+# Add these lines to your .gitignore file to keep credentials secure
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Database credentials
+database.config
+config.json
+
+# Azure credentials
+azure.config
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
