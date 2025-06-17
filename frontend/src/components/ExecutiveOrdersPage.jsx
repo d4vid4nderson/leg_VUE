@@ -57,7 +57,6 @@ const FILTERS = [
   { key: 'education', label: 'Education', icon: GraduationCap },
   { key: 'engineering', label: 'Engineering', icon: Wrench },
   { key: 'healthcare', label: 'Healthcare', icon: Stethoscope }
- 
 ];
 
 // Extended FILTERS array with review status options
@@ -331,21 +330,8 @@ const formatUniversalContent = (content) => {
           });
         } else {
           // Handle as complete sentences - don't break them up
-          // Only split on sentence endings followed by capital letters that start new topics
-          const sentences = content.split(/\.\s+(?=[A-Z][a-z]+\s+(?:provides|offers|includes|requires|enables|ensures))/);
-          
-          sentences.forEach(sentence => {
-            const cleanSentence = capitalizeFirstLetter(sentence.replace(/\.$/, '').trim());
-            if (cleanSentence.length > 15) { // Only include substantial content
-              items.push(cleanSentence);
-            }
-          });
-          
-          // If we only got one item, treat it as a single paragraph
-          if (items.length === 1) {
-            const fullContent = capitalizeFirstLetter(content.trim());
-            items[0] = fullContent;
-          }
+          const cleanContent = capitalizeFirstLetter(content.trim());
+          items.push(cleanContent);
         }
         
         if (items.length > 0) {
@@ -387,132 +373,6 @@ const formatUniversalContent = (content) => {
       );
     }
   }
-  
-  // Fallback to original section-based parsing
-  const parts = textContent.split(headerPattern);
-  
-  if (parts.length > 1) {
-    const sections = [];
-    
-    // Process parts: odd indices are headers, even indices are content
-    for (let i = 1; i < parts.length; i += 2) {
-      const header = parts[i];
-      const content = parts[i + 1] || '';
-      
-      if (header && header.trim()) {
-        // Clean up the header - remove asterisks and ensure colon
-        let cleanHeader = header.trim().replace(/^\*+|\*+$/g, '');
-        if (!cleanHeader.endsWith(':')) {
-          cleanHeader += ':';
-        }
-        
-        // Parse the content more carefully
-        const items = [];
-        if (content.trim()) {
-          // Don't split on every bullet point, be more selective
-          let processedContent = content.trim();
-          
-          // Only split if there are explicit bullet markers at the start of lines
-          if (/^\s*[•\-*]\s+/m.test(processedContent)) {
-            // Split on bullet markers that appear at line starts
-            const contentLines = processedContent
-              .split(/\n\s*[•\-*]\s+/)
-              .map(line => line.trim())
-              .filter(line => line.length > 15); // Increased minimum length
-            
-            contentLines.forEach(line => {
-              const isNotHeader = !sectionKeywords.some(keyword => 
-                line.toLowerCase().includes(keyword.toLowerCase()) && line.includes(':')
-              );
-              
-              if (isNotHeader && line.length > 15) {
-                let cleanLine = line;
-                
-                if (!/^(Risk Assessment|Market Opportunity|Implementation Requirements|Financial Implications|Competitive Implications|Timeline Pressures|Summary):/i.test(cleanLine)) {
-                  cleanLine = capitalizeFirstLetter(cleanLine);
-                  items.push(cleanLine);
-                }
-              }
-            });
-          } else {
-            // No explicit bullets, treat as paragraph text
-            const cleanContent = capitalizeFirstLetter(processedContent);
-            if (cleanContent.length > 15) {
-              items.push(cleanContent);
-            }
-          }
-        }
-        
-        if (items.length > 0) {
-          sections.push({
-            title: cleanHeader,
-            items: items
-          });
-        }
-      }
-    }
-    
-    if (sections.length > 0) {
-      return (
-        <div>
-          {sections.map((section, idx) => (
-            <div key={idx} style={{ marginBottom: '16px' }}>
-              <div style={{ 
-                fontWeight: 'bold', 
-                marginBottom: '8px',
-                fontSize: '14px',
-                color: 'inherit'
-              }}>
-                {section.title}
-              </div>
-              {section.items.map((item, itemIdx) => {
-                // Check if the item has bold formatting (preserve legitimate asterisks)
-                const hasBoldParts = item.includes('*') && item.match(/\*[^*]+\*/);
-                
-                if (hasBoldParts) {
-                  const parts = item.split(/(\*[^*]+\*)/);
-                  return (
-                    <div key={itemIdx} style={{ 
-                      marginBottom: '6px',
-                      fontSize: '14px',
-                      lineHeight: '1.5',
-                      color: 'inherit',
-                      paddingLeft: section.items.length === 1 ? '0px' : '12px'
-                    }}>
-                      {section.items.length === 1 ? '' : '• '}
-                      {parts.map((part, partIdx) => {
-                        if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-                          return (
-                            <strong key={partIdx} style={{ fontWeight: 'bold' }}>
-                              {part.slice(1, -1)}
-                            </strong>
-                          );
-                        } else {
-                          return part;
-                        }
-                      })}
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div key={itemIdx} style={{ 
-                      marginBottom: '6px',
-                      fontSize: '14px',
-                      lineHeight: '1.5',
-                      color: 'inherit',
-                      paddingLeft: section.items.length === 1 ? '0px' : '12px'
-                    }}>
-                      {section.items.length === 1 ? item : `• ${item}`}
-                    </div>
-                  );
-                }
-              })}
-            </div>
-          ))}
-        </div>
-      );
-    }
-  }
 
   // Final fallback: display as single paragraph if no clear structure
   return <div className="universal-text-content" style={{ fontSize: '14px', lineHeight: '1.5' }}>{textContent}</div>;
@@ -545,6 +405,8 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const [fetchingData, setFetchingData] = useState(false);
   const [fetchStatus, setFetchStatus] = useState(null);
   const [hasData, setHasData] = useState(false);
+  
+  // ✅ FIXED PAGINATION STATE
   const [pagination, setPagination] = useState({
     page: 1,
     per_page: 25,
@@ -553,7 +415,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   });
 
   // Refs
-  const hasInitialLoad = useRef(false);
   const filterDropdownRef = useRef(null);
 
   // Load saved state from localStorage
@@ -606,65 +467,182 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     }
   }, [orders.length]);
 
-  // ✅ FETCH FROM DATABASE: Get processed executive orders from your backend
+  // ✅ FIXED PAGINATION: Fetch from database with proper pagination
   const fetchFromDatabase = useCallback(async (pageNum = 1) => {
     try {
       setLoading(true);
       setError(null);
       setFetchStatus('📊 Loading executive orders from database...');
 
-      console.log('🔍 Fetching executive orders from database...');
+      console.log(`🔍 Fetching page ${pageNum}...`);
 
-      // Build query parameters - increase per_page to get all orders
-      const params = new URLSearchParams({
-        page: pageNum.toString(),
-        per_page: '200', // Increased from 25 to get all 161 orders
-        sort_by: 'publication_date',
-        sort_order: 'desc'
+      const perPage = 25;
+      
+      // Build URL with pagination parameters
+      const url = `${API_URL}/api/executive-orders?page=${pageNum}&per_page=${perPage}`;
+      console.log('🔍 Fetching from URL:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
 
-      // Add filters
-      const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
-      if (categoryFilters.length > 0) {
-        params.append('category', categoryFilters[0]); // Take first category filter
-      }
-      if (searchTerm) {
-        params.append('search', searchTerm);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Try multiple possible endpoints for executive orders
+      const data = await response.json();
+      console.log('🔍 API Response:', data);
+
+      // ✅ COMPREHENSIVE DATA EXTRACTION: Handle different response formats
+      let ordersArray = [];
+      let totalCount = 0;
+      let currentPage = pageNum;
+      
+      if (Array.isArray(data)) {
+        // Data is directly an array
+        ordersArray = data;
+        totalCount = data.length;
+        console.log('🔍 Using data directly as array');
+      } else if (data.results && Array.isArray(data.results)) {
+        // Django REST Framework style - USE API's PAGINATION DATA
+        ordersArray = data.results;
+        totalCount = data.total || data.count || 0;  
+        currentPage = data.page || pageNum;                           
+        console.log('🔍 Using data.results - total:', totalCount, 'current page:', currentPage);
+      } else if (data.data && Array.isArray(data.data)) {
+        // Generic 'data' wrapper
+        ordersArray = data.data;
+        totalCount = data.total || data.count || 0;  
+        currentPage = data.page || pageNum;
+        console.log('🔍 Using data.data');
+      } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
+        // Specific executive_orders field
+        ordersArray = data.executive_orders;
+        totalCount = data.total || data.count || 0;  
+        currentPage = data.page || pageNum;
+        console.log('🔍 Using data.executive_orders');
+      } else {
+        console.error('🔍 Could not find orders array in response!');
+        console.error('🔍 Available fields:', Object.keys(data));
+        throw new Error('No orders found in API response');
+      }
+
+      // Calculate totalPages after we have all the data
+      const totalPages = data.total_pages || Math.ceil(totalCount / perPage);
+
+      console.log(`🔍 Extracted ${ordersArray.length} orders from page ${currentPage}`);
+      console.log(`🔍 Total count: ${totalCount}, Total pages: ${totalPages}`);
+
+      // Transform the orders for display
+      const transformedOrders = ordersArray.map((order, index) => {
+        const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-${pageNum}-${index}`;
+        
+        return {
+          id: uniqueId,
+          bill_id: uniqueId,
+          eo_number: order.executive_order_number || order.document_number || 'Unknown',
+          executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
+          title: order.title || order.bill_title || 'Untitled Executive Order',
+          summary: order.description || order.summary || '',
+          signing_date: order.signing_date || order.introduced_date || '',
+          publication_date: order.publication_date || order.last_action_date || '',
+          html_url: order.html_url || order.legiscan_url || '',
+          pdf_url: order.pdf_url || '',
+          category: order.category || 'civic',
+          formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+          formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+          ai_summary: order.ai_summary || order.ai_executive_summary || '',
+          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
+          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
+          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
+          president: order.president || 'Donald Trump',
+          source: 'Database (Federal Register + Azure AI)',
+          is_highlighted: false,
+          index: index // Add index for unique ID generation
+        };
+      });
+
+      console.log(`🔍 Transformed ${transformedOrders.length} orders`);
+
+      // ✅ SET STATE: Update orders and pagination
+      setOrders(transformedOrders);
+      setPagination({
+        page: currentPage,
+        per_page: perPage,
+        total_pages: totalPages,
+        count: totalCount
+      });
+
+      console.log(`✅ Updated state - Page: ${currentPage}/${totalPages}, Count: ${totalCount}`);
+
+      setFetchStatus(`✅ Loaded ${transformedOrders.length} of ${totalCount} orders (Page ${currentPage}/${totalPages})`);
+      setHasData(transformedOrders.length > 0);
+      setTimeout(() => setFetchStatus(null), 4000);
+
+    } catch (err) {
+      console.error('❌ Error details:', err);
+      setError(`Failed to load executive orders: ${err.message}`);
+      setFetchStatus(`❌ Error: ${err.message}`);
+      setTimeout(() => setFetchStatus(null), 5000);
+      setOrders([]);
+      setHasData(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ✅ FETCH EXECUTIVE ORDERS: Includes Federal Register endpoint
+  const fetchExecutiveOrders = useCallback(async () => {
+    try {
+      setFetchingData(true);
+      console.log('🔄 Starting Executive Orders fetch from Federal Register...');
+
+      const requestBody = {
+        start_date: "2025-01-20",  // Trump inauguration date
+        end_date: null,            // Current date
+        with_ai: true,             // Enable AI processing
+        save_to_db: true          // Save to database
+      };
+
+      // Try endpoints in order
       const endpoints = [
-        `${API_URL}/api/executive-orders-fixed?${params.toString()}`,
-        `${API_URL}/api/executive-orders?${params.toString()}`,
-        `${API_URL}/api/bills?type=executive_order&${params.toString()}`,
-        `${API_URL}/api/legislation?type=executive_order&${params.toString()}`
+        `${API_URL}/api/fetch-executive-orders-simple`,
+        `${API_URL}/api/executive-orders/run-pipeline`,
+        `${API_URL}/api/executive-orders/fetch`,
+        `${API_URL}/api/fetch-executive-orders`
       ];
 
       let response;
-      let data;
       let successfulEndpoint = null;
 
       for (const endpoint of endpoints) {
         try {
           console.log('🔍 Trying endpoint:', endpoint);
+          
+          setFetchStatus(`🔄 Connecting to ${endpoint.split('/').pop()}...`);
+          
           response = await fetch(endpoint, {
+            method: 'POST',
             headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            }
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
           });
 
           if (response.ok) {
-            data = await response.json();
-            console.log('📊 Response from', endpoint, ':', data);
+            successfulEndpoint = endpoint;
+            console.log('✅ Successfully connected to:', endpoint);
             
-            // Check if we got meaningful data
-            const results = data.results || data || [];
-            if (Array.isArray(results) && results.length > 0) {
-              successfulEndpoint = endpoint;
-              console.log(`✅ Found ${results.length} orders from:`, endpoint);
-              break;
+            if (endpoint.includes('fetch-executive-orders-simple')) {
+              setFetchStatus(`✅ Connected to Federal Register API - Processing with AI...`);
             }
+            
+            break;
           } else {
             console.log(`❌ Endpoint ${endpoint} failed with status:`, response.status);
           }
@@ -674,194 +652,41 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         }
       }
 
-      if (!response || !response.ok || !data) {
+      if (!response || !response.ok) {
         throw new Error(`All endpoints failed. Last status: ${response?.status || 'Network Error'}`);
       }
 
-      const ordersData = data.results || data || [];
-      const ordersArray = Array.isArray(ordersData) ? ordersData : [];
+      const result = await response.json();
+      console.log('📥 Fetch Result:', result);
 
-      console.log(`📊 Retrieved ${ordersArray.length} orders from database`);
-
-      // Transform database format to frontend format
-      const transformedOrders = ordersArray.map(order => {
-        // Handle both executive orders and bill data structures
-        const isExecutiveOrder = order.executive_order_number || order.document_number;
+      if (result.success !== false) {
+        const count = result.orders_saved || result.count || result.bills_analyzed || 0;
+        const method = result.method || 'unknown';
         
-        let uniqueId;
-        if (isExecutiveOrder) {
-          // Executive Order ID generation
-          uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id;
+        if (method === 'federal_register_api_direct') {
+          setFetchStatus(`✅ Federal Register: ${count} executive orders fetched and analyzed with Azure AI!`);
         } else {
-          // Bill ID generation (fallback)
-          uniqueId = order.bill_id || order.id;
+          setFetchStatus(`✅ Fetch completed: ${count} orders processed with Azure AI!`);
         }
         
-        return {
-          // Core identification
-          id: uniqueId,
-          bill_id: uniqueId,
-          
-          // Executive Order specific fields
-          eo_number: order.executive_order_number || order.document_number || 'Unknown',
-          executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
-          
-          // Standard fields
-          title: order.title || 'Untitled Executive Order',
-          summary: order.description || '',
-          signing_date: order.signing_date || order.introduced_date || '',
-          publication_date: order.publication_date || order.last_action_date || '',
-          html_url: order.html_url || order.legiscan_url || '',
-          pdf_url: order.pdf_url || '',
-          document_number: order.document_number || '',
-          citation: order.citation || '',
-          president: order.president || 'Donald Trump',
-          source: 'Database (Federal Register + Azure AI)',
-          category: order.category || 'civic',
-          formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
-          formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
-          is_highlighted: false,
-          
-          // AI analysis from Azure AI Foundry
-          ai_summary: order.ai_summary || order.ai_executive_summary || '',
-          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
-          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
-          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
-          ai_version: order.ai_version || ''
-        };
-      });
-
-      setOrders(transformedOrders);
-      
-      // Fix pagination calculation
-      const totalCount = data.count || data.total || transformedOrders.length;
-      const perPage = 200;
-      const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
-      
-      setPagination(prev => ({
-        ...prev,
-        page: data.page || pageNum,
-        total_pages: totalPages,
-        count: totalCount,
-        per_page: perPage
-      }));
-
-      setFetchStatus(`✅ Loaded ${transformedOrders.length} of ${totalCount} executive orders from database`);
-      setHasData(transformedOrders.length > 0);
-      setTimeout(() => setFetchStatus(null), 3000);
-
-      console.log(`✅ Loaded ${transformedOrders.length} executive orders from database`);
-      console.log(`📄 Pagination: Page ${pageNum} of ${totalPages}, Total: ${totalCount}`);
+        // Refresh data from database after fetch completes
+        setTimeout(() => {
+          fetchFromDatabase(1);
+        }, 2000);
+        
+        setTimeout(() => setFetchStatus(null), 5000);
+      } else {
+        throw new Error(result.message || result.error || 'Fetch failed');
+      }
 
     } catch (err) {
-      console.error('❌ Failed to fetch from database:', err);
-      setError(`Failed to load executive orders: ${err.message}`);
-      setFetchStatus(`❌ Error: ${err.message}`);
-      setTimeout(() => setFetchStatus(null), 5000);
-      setOrders([]);
-      setHasData(false);
+      console.error('❌ Fetch failed:', err);
+      setFetchStatus(`❌ Fetch failed: ${err.message}`);
+      setTimeout(() => setFetchStatus(null), 8000);
     } finally {
-      setLoading(false);
+      setFetchingData(false);
     }
-  }, [selectedFilters, searchTerm]);
-
-  // ✅ FETCH EXECUTIVE ORDERS: Try multiple endpoints
-// ✅ UPDATED FETCH EXECUTIVE ORDERS: Now includes Federal Register endpoint
-const fetchExecutiveOrders = useCallback(async () => {
-  try {
-    setFetchingData(true);
-    console.log('🔄 Starting Executive Orders fetch from Federal Register...');
-
-    const requestBody = {
-      start_date: "2025-01-20",  // Trump inauguration date
-      end_date: null,            // Current date
-      with_ai: true,             // Enable AI processing
-      save_to_db: true          // Save to database
-    };
-
-    // ✅ UPDATED: Now includes your Federal Register endpoint first
-    const endpoints = [
-      `${API_URL}/api/fetch-executive-orders-simple`,    // ✅ NEW - Your Federal Register integration
-      `${API_URL}/api/executive-orders/run-pipeline`,     // Fallback
-      `${API_URL}/api/executive-orders/fetch`,            // Fallback
-      `${API_URL}/api/executive-orders/quick-pipeline`,   // Fallback
-      `${API_URL}/api/fetch-executive-orders`             // Fallback
-    ];
-
-    let response;
-    let successfulEndpoint = null;
-
-    // Try each endpoint until one works
-    for (const endpoint of endpoints) {
-      try {
-        console.log('🔍 Trying endpoint:', endpoint);
-        
-        setFetchStatus(`🔄 Connecting to ${endpoint.split('/').pop()}...`);
-        
-        response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        if (response.ok) {
-          successfulEndpoint = endpoint;
-          console.log('✅ Successfully connected to:', endpoint);
-          
-          // Update status for Federal Register specifically
-          if (endpoint.includes('fetch-executive-orders-simple')) {
-            setFetchStatus(`✅ Connected to Federal Register API - Processing with AI...`);
-          }
-          
-          break;
-        } else {
-          console.log(`❌ Endpoint ${endpoint} failed with status:`, response.status);
-        }
-      } catch (err) {
-        console.log(`❌ Endpoint ${endpoint} error:`, err.message);
-        continue;
-      }
-    }
-
-    if (!response || !response.ok) {
-      throw new Error(`All endpoints failed. Last status: ${response?.status || 'Network Error'}`);
-    }
-
-    const result = await response.json();
-    console.log('📥 Fetch Result:', result);
-
-    if (result.success !== false) {
-      const count = result.orders_saved || result.count || result.bills_analyzed || 0;
-      const method = result.method || 'unknown';
-      
-      // ✅ Better success message for Federal Register
-      if (method === 'federal_register_api_direct') {
-        setFetchStatus(`✅ Federal Register: ${count} executive orders fetched and analyzed with Azure AI!`);
-      } else {
-        setFetchStatus(`✅ Fetch completed: ${count} orders processed with Azure AI!`);
-      }
-      
-      // Refresh data from database after fetch completes
-      setTimeout(() => {
-        fetchFromDatabase(1);
-      }, 2000);
-      
-      setTimeout(() => setFetchStatus(null), 5000);
-    } else {
-      throw new Error(result.message || result.error || 'Fetch failed');
-    }
-
-  } catch (err) {
-    console.error('❌ Fetch failed:', err);
-    setFetchStatus(`❌ Fetch failed: ${err.message}`);
-    setTimeout(() => setFetchStatus(null), 8000);
-  } finally {
-    setFetchingData(false);
-  }
-}, [fetchFromDatabase]);
+  }, [fetchFromDatabase]);
 
   // Filter helper functions
   const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
@@ -915,16 +740,15 @@ const fetchExecutiveOrders = useCallback(async () => {
     return filtered;
   }, [orders, selectedFilters, reviewedOrders, searchTerm]);
 
-  // Event handlers
+  // ✅ FIXED PAGINATION: Event handlers
   const handleSearch = useCallback(() => {
-    fetchFromDatabase(1);
+    fetchFromDatabase(1); // Always start from page 1 on new search
   }, [fetchFromDatabase]);
 
   const handlePageChange = useCallback((newPage) => {
+    console.log(`🔄 Changing to page ${newPage}`);
     fetchFromDatabase(newPage);
   }, [fetchFromDatabase]);
-
-  // REMOVED: toggleExpanded function - using inline logic instead
 
   // Toggle review status function
   const handleToggleReviewStatus = async (order) => {
@@ -979,11 +803,10 @@ const fetchExecutiveOrders = useCallback(async () => {
         // REMOVE highlight
         console.log('🗑️ Attempting to remove highlight for:', orderId);
         
-        // Optimistic UI update - remove from local state immediately
+        // Optimistic UI update
         setLocalHighlights(prev => {
           const newSet = new Set(prev);
-          const deleted = newSet.delete(orderId);
-          console.log('🔄 Optimistically removed from local state:', deleted, 'New size:', newSet.size);
+          newSet.delete(orderId);
           return newSet;
         });
         
@@ -992,15 +815,11 @@ const fetchExecutiveOrders = useCallback(async () => {
         });
         
         if (!response.ok) {
-          console.error('❌ Failed to remove highlight from backend, status:', response.status);
-          // Revert optimistic update on error - add back to local state
-          setLocalHighlights(prev => {
-            console.log('🔄 Reverting optimistic update - adding back to local state');
-            return new Set([...prev, orderId]);
-          });
+          console.error('❌ Failed to remove highlight from backend');
+          // Revert optimistic update
+          setLocalHighlights(prev => new Set([...prev, orderId]));
         } else {
           console.log('✅ Successfully removed highlight from backend');
-          // Also call the stable handler to sync global state
           if (stableHandlers?.handleItemHighlight) {
             stableHandlers.handleItemHighlight(order, 'executive_order');
           }
@@ -1009,12 +828,8 @@ const fetchExecutiveOrders = useCallback(async () => {
         // ADD highlight
         console.log('⭐ Attempting to add highlight for:', orderId);
         
-        // Optimistic UI update - add to local state immediately
-        setLocalHighlights(prev => {
-          const newSet = new Set([...prev, orderId]);
-          console.log('🔄 Optimistically added to local state, New size:', newSet.size);
-          return newSet;
-        });
+        // Optimistic UI update
+        setLocalHighlights(prev => new Set([...prev, orderId]));
         
         const response = await fetch(`${API_URL}/api/highlights`, {
           method: 'POST',
@@ -1031,22 +846,17 @@ const fetchExecutiveOrders = useCallback(async () => {
         });
         
         if (!response.ok) {
-          const errorData = await response.json();
-          console.error('❌ Failed to add highlight, status:', response.status, 'Error:', errorData);
-          if (response.status !== 409) { // 409 means already exists, which is fine
-            // Revert optimistic update on error - remove from local state
+          console.error('❌ Failed to add highlight');
+          if (response.status !== 409) { // 409 means already exists
+            // Revert optimistic update
             setLocalHighlights(prev => {
               const newSet = new Set(prev);
-              const deleted = newSet.delete(orderId);
-              console.log('🔄 Reverting optimistic update - removed from local state:', deleted);
+              newSet.delete(orderId);
               return newSet;
             });
-          } else {
-            console.log('ℹ️ Highlight already exists in backend (409 conflict)');
           }
         } else {
           console.log('✅ Successfully added highlight to backend');
-          // Also call the stable handler to sync global state
           if (stableHandlers?.handleItemHighlight) {
             stableHandlers.handleItemHighlight(order, 'executive_order');
           }
@@ -1057,17 +867,11 @@ const fetchExecutiveOrders = useCallback(async () => {
       console.error('❌ Error managing highlight:', error);
       // Revert optimistic update on error
       if (isCurrentlyHighlighted) {
-        // Was trying to remove, add it back
-        setLocalHighlights(prev => {
-          console.log('🔄 Error recovery - adding back to local state');
-          return new Set([...prev, orderId]);
-        });
+        setLocalHighlights(prev => new Set([...prev, orderId]));
       } else {
-        // Was trying to add, remove it
         setLocalHighlights(prev => {
           const newSet = new Set(prev);
-          const deleted = newSet.delete(orderId);
-          console.log('🔄 Error recovery - removed from local state:', deleted);
+          newSet.delete(orderId);
           return newSet;
         });
       }
@@ -1078,9 +882,6 @@ const fetchExecutiveOrders = useCallback(async () => {
         newSet.delete(orderId);
         return newSet;
       });
-      
-      // Debug final state
-      console.log('🏁 Final highlight operation completed for:', orderId);
     }
   }, [localHighlights, stableHandlers]);
 
@@ -1095,9 +896,7 @@ const fetchExecutiveOrders = useCallback(async () => {
     // Also check stable handlers as fallback
     const stableHighlighted = stableHandlers?.isItemHighlighted?.(order) || false;
     
-    const isHighlighted = localHighlighted || stableHighlighted;
-    
-    return isHighlighted;
+    return localHighlighted || stableHighlighted;
   }, [localHighlights, stableHandlers]);
 
   // Check if order is currently being highlighted/unhighlighted
@@ -1147,7 +946,7 @@ const fetchExecutiveOrders = useCallback(async () => {
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-800 mb-2">Federal Executive Orders</h2>
         <p className="text-gray-600">
-          Processed with Federal Register API + Azure AI Foundry, stored in database
+          Retrieving executive orders from official federal sources, leveraging state-of-the-art AI models to extract summaries, strategic talking points, and potential business implications.
         </p>
       </div>
 
@@ -1334,18 +1133,13 @@ const fetchExecutiveOrders = useCallback(async () => {
               <div className="flex items-center gap-3">
                 <Download size={20} className="text-blue-600" />
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Fetch Executive Orders</h3>
+                  <h3 className="text-lg font-semibold text-gray-800">Executive Orders Management</h3>
                   <p className="text-sm text-gray-600">
-                    {isFetchExpanded ? 'Click to fetch latest executive orders with AI analysis' : 'Click to expand fetch controls'}
+                    {isFetchExpanded ? 'Fetch new orders or load from database' : 'Click to expand management controls'}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {fetchStatus && (
-                  <div className="text-sm text-blue-600 font-medium max-w-xs truncate">
-                    {fetchStatus}
-                  </div>
-                )}
                 <ChevronDown 
                   size={20} 
                   className={`text-gray-500 transition-transform duration-200 ${isFetchExpanded ? 'rotate-180' : ''}`}
@@ -1356,45 +1150,65 @@ const fetchExecutiveOrders = useCallback(async () => {
 
           {isFetchExpanded && (
             <div className="p-6">
-              {/* Fetch Status Bar */}
-              {fetchStatus && (
-                <div className="mb-6 p-4 bg-blue-50 border-blue-200 border rounded-md">
-                  <p className="text-blue-800 text-sm font-medium">{fetchStatus}</p>
+              {/* Status Display */}
+              {(fetchStatus || fetchingData || loading) && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    {(fetchingData || loading) && (
+                      <RefreshIcon size={16} className="animate-spin text-blue-600" />
+                    )}
+                    <span className="text-sm text-blue-700 font-medium">
+                      {fetchStatus || (fetchingData ? 'Fetching and analyzing...' : 'Loading...')}
+                    </span>
+                  </div>
                 </div>
               )}
 
               <div className="mb-4">
                 <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
                   <ScrollText size={16} className="text-purple-600" />
-                  Quick Fetch Executive Orders
+                  Executive Orders Management
                 </h4>
-                <div className="grid grid-cols-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Fetch New Orders Button */}
                   <button
                     onClick={fetchExecutiveOrders}
-                    disabled={fetchingData}
+                    disabled={fetchingData || loading}
                     className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 ${
-                      fetchingData 
+                      fetchingData || loading
                         ? 'opacity-50 cursor-not-allowed' 
                         : 'hover:shadow-lg hover:border-purple-300 hover:bg-purple-50'
                     } border-gray-200 bg-white text-gray-700`}
                   >
                     <div className="font-medium mb-2 text-purple-600 flex items-center justify-center gap-2">
-                      <ScrollText size={16} />
-                      Fetch Executive Orders
+                      <Sparkles size={16} />
+                      Fetch New Executive Orders
                     </div>
                     <div className="text-xs text-gray-500">
-                      Latest from Federal Register with AI analysis
+                      Get latest from Federal Register with AI analysis
+                    </div>
+                  </button>
+
+                  {/* Load from Database Button */}
+                  <button
+                    onClick={() => fetchFromDatabase(1)}
+                    disabled={fetchingData || loading}
+                    className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 ${
+                      fetchingData || loading
+                        ? 'opacity-50 cursor-not-allowed' 
+                        : 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50'
+                    } border-gray-200 bg-white text-gray-700`}
+                  >
+                    <div className="font-medium mb-2 text-blue-600 flex items-center justify-center gap-2">
+                      <Database size={16} />
+                      Load from Database
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Load processed orders from local database
                     </div>
                   </button>
                 </div>
               </div>
-
-              {fetchingData && (
-                <div className="flex items-center justify-center pt-4 border-t border-gray-200">
-                  <RefreshIcon size={20} className="animate-spin text-purple-600 mr-3" />
-                  <span className="text-sm text-purple-600 font-medium">Fetching and analyzing executive orders with AI...</span>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1470,9 +1284,6 @@ const fetchExecutiveOrders = useCallback(async () => {
                 const isExpanded = expandedOrders.has(orderId);
                 const isReviewed = reviewedOrders.has(orderId);
                 
-                // Debug logging
-                console.log(`Order ${index}: ID=${orderId}, Expanded=${isExpanded}, Title=${order.title?.slice(0, 30)}`);
-                
                 return (
                   <div key={`order-${orderId}-${index}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
                     <div className="p-4">
@@ -1480,17 +1291,13 @@ const fetchExecutiveOrders = useCallback(async () => {
                         <div 
                           className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
                           onClick={() => {
-                            console.log(`Clicking order ${index}, ID: ${orderId}`);
                             setExpandedOrders(prev => {
                               const newSet = new Set(prev);
                               if (newSet.has(orderId)) {
-                                console.log(`Collapsing ${orderId}`);
                                 newSet.delete(orderId);
                               } else {
-                                console.log(`Expanding ${orderId}`);
                                 newSet.add(orderId);
                               }
-                              console.log('New expanded set:', Array.from(newSet));
                               return newSet;
                             });
                           }}
@@ -1549,7 +1356,6 @@ const fetchExecutiveOrders = useCallback(async () => {
                               e.preventDefault();
                               e.stopPropagation();
                               if (!isOrderHighlightLoading(orderWithIndex)) {
-                                console.log('🌟 Highlighting order:', orderWithIndex.title);
                                 await handleOrderHighlight(orderWithIndex);
                               }
                             }}
@@ -1576,17 +1382,13 @@ const fetchExecutiveOrders = useCallback(async () => {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              console.log(`Button click order ${index}, ID: ${orderId}`);
                               setExpandedOrders(prev => {
                                 const newSet = new Set(prev);
                                 if (newSet.has(orderId)) {
-                                  console.log(`Button collapsing ${orderId}`);
                                   newSet.delete(orderId);
                                 } else {
-                                  console.log(`Button expanding ${orderId}`);
                                   newSet.add(orderId);
                                 }
-                                console.log('Button new expanded set:', Array.from(newSet));
                                 return newSet;
                               });
                             }}
@@ -1757,8 +1559,8 @@ const fetchExecutiveOrders = useCallback(async () => {
         </div>
       </div>
 
-      {/* Pagination - Always show if there are orders and potential for more pages */}
-      {!loading && !error && orders.length > 0 && (
+      {/* ✅ FIXED PAGINATION: Always show if there are orders and multiple pages */}
+      {!loading && !error && orders.length > 0 && pagination.total_pages > 1 && (
         <div className="mt-6 flex justify-center">
           <div className="flex items-center space-x-2">
             <button
@@ -1816,7 +1618,6 @@ const fetchExecutiveOrders = useCallback(async () => {
           </div>
         </div>
       )}
-
 
       {/* Universal CSS Styles - Same as StatePage */}
       <style>{`
