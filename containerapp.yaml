@@ -18,6 +18,9 @@ properties:
       - server: moregroupdev.azurecr.io
         identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-apply-001"
     secrets:
+      - name: managed-identity-client-id
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/MANAGED-IDENTITY-CLIENT-ID"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
       - name: azure-endpoint
         keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-ENDPOINT"
         identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
@@ -94,6 +97,8 @@ properties:
         env:
           - name: ENVIRONMENT
             value: production
+          - name: MANAGED_IDENTITY_CLIENT_ID
+            secretRef: managed-identity-client-id
           # Azure AI variables - converting dashes to underscores
           - name: AZURE_ENDPOINT  # Use underscore format for environment variable
             secretRef: azure-endpoint  # Reference to dashed secret name

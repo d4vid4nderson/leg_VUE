@@ -49,18 +49,20 @@ def build_azure_sql_connection():
 
 
 def build_connection_string_with_managed_identity():
-    """Build Azure SQL connection string using managed identity for production"""
+    """Build Azure SQL connection string using system-assigned identity"""
     environment = os.getenv("ENVIRONMENT", "development")
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
     
     if environment == "production":
-        # Production environment - use managed identity
-        print("🔐 Using managed identity authentication for production")
+        # Production environment - use system-assigned identity (simplest approach)
+        print("🔐 Using system-assigned managed identity authentication")
+        
+        # For system-assigned identity, no client_id needed
         connection_string = (
             f"mssql+pyodbc://{server}:1433/{database}"
             f"?driver=ODBC+Driver+18+for+SQL+Server"
-            f"&authentication=ActiveDirectoryMSI"
+            f"&authentication=ActiveDirectoryMSI"  # System-assigned identity uses this
             f"&Encrypt=yes"
             f"&TrustServerCertificate=no"
             f"&Connection+Timeout=30"

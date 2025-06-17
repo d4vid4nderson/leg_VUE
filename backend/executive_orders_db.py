@@ -116,45 +116,49 @@ class ProcessingLog(Base):
         Index('idx_start_time', 'start_time'),
     )
 
-# Enhanced database setup
+
 def get_database_url():
-    """Get database URL with enhanced Azure SQL support"""
-    db_info = get_database_info()
-    
-    if db_info.get("using_azure_sql"):
-        # Azure SQL configuration
-        server = os.getenv('AZURE_SQL_SERVER')
-        database = os.getenv('AZURE_SQL_DATABASE')
-        username = os.getenv('AZURE_SQL_USERNAME')
-        password = os.getenv('AZURE_SQL_PASSWORD')
-        
-        if all([server, database, username, password]):
-            # URL encode password to handle special characters
-            password_encoded = urllib.parse.quote_plus(password)
-            username_encoded = urllib.parse.quote_plus(username)
-            
-            # Try different driver versions
-            drivers = [
-                "ODBC+Driver+18+for+SQL+Server",
-                "ODBC+Driver+17+for+SQL+Server",
-                "ODBC+Driver+13+for+SQL+Server"
-            ]
-            
-            for driver in drivers:
-                try:
-                    connection_string = (
-                        f"mssql+pyodbc://{username_encoded}:{password_encoded}@{server}/{database}"
-                        f"?driver={driver}&Encrypt=yes&TrustServerCertificate=no&Connection+Timeout=30"
-                    )
-                    print(f"✅ Using Azure SQL with {driver}")
-                    return connection_string
-                except Exception as e:
-                    print(f"⚠️ Driver {driver} not available: {e}")
-                    continue
-    
-    # Fallback to SQLite
-    print("ℹ️ Using SQLite fallback database")
-    return "sqlite:///./executive_orders.db"
+   """Get database URL with enhanced Azure SQL support"""
+   environment = os.getenv("ENVIRONMENT", "development")
+   server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+   database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+   
+   if environment == "production":
+       # For production, use system-assigned MSI
+       print("🔐 Using system-assigned managed identity for executive orders")
+       connection_string = (
+           f"mssql+pyodbc://{server}:1433/{database}"
+           f"?driver=ODBC+Driver+18+for+SQL+Server"
+           f"&authentication=ActiveDirectoryMSI"
+           f"&Encrypt=yes"
+           f"&TrustServerCertificate=no"
+           f"&Connection+Timeout=30"
+       )
+       return connection_string
+   else:
+       # Development - use SQL auth
+       username = os.getenv('AZURE_SQL_USERNAME')
+       password = os.getenv('AZURE_SQL_PASSWORD')
+       
+       if all([server, database, username, password]):
+           # URL encode password for special characters
+           password_encoded = urllib.parse.quote_plus(password)
+           username_encoded = urllib.parse.quote_plus(username)
+           
+           # Standard SQL authentication for development
+           connection_string = (
+               f"mssql+pyodbc://{username_encoded}:{password_encoded}@{server}:1433/{database}"
+               f"?driver=ODBC+Driver+18+for+SQL+Server"
+               f"&Encrypt=yes"
+               f"&TrustServerCertificate=no"
+               f"&Connection+Timeout=30"
+           )
+           print(f"🔑 Using SQL authentication for development")
+           return connection_string
+       else:
+           # Fallback to SQLite
+           print("ℹ️ Using SQLite fallback database")
+           return "sqlite:///./executive_orders.db"
 
 DATABASE_URL = get_database_url()
 engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
