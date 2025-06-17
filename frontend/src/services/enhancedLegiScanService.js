@@ -1,7 +1,9 @@
 // services/enhancedLegiScanService.js
+import API_URL from '../config/api';
+
 class EnhancedLegiScanService {
-  constructor(baseURL = 'http://localhost:8000') {
-    this.baseURL = baseURL;
+  constructor(baseURL = API_URL) {
+    this.baseURL = baseURL || ''; // If API_URL is empty, use relative URLs
   }
 
   // Test the enhanced integration

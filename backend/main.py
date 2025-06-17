@@ -296,14 +296,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS setup
+
+# Get environment
+environment = os.getenv("ENVIRONMENT", "development")
+
+# CORS setup with environment-based configuration
+if environment == "production":
+    # Production - restrict to specific domain
+    cors_origins = ["https://leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io"]
+    print(f"✅ Production CORS configured for {cors_origins}")
+else:
+    # Development - allow all origins
+    cors_origins = ["*"]
+    print(f"⚠️ Development CORS configured - allowing all origins")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Supported states
 SUPPORTED_STATES = {

@@ -36,7 +36,6 @@ def setup_azure_sql_environment():
         print("AZURE_SQL_PASSWORD=your-password")
         print("")
         print("# OR use a complete DATABASE_URL:")
-        print("# DATABASE_URL=mssql+pyodbc://username:password@sql-legislation-tracker.database.windows.net:1433/database?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no&Connection+Timeout=30")
         
         return False
     
@@ -65,23 +64,6 @@ def create_sample_env_file():
     """Create a sample .env file with proper Azure SQL format"""
     
     sample_env = """# LegislationVue Environment Configuration
-
-# Azure SQL Database (Option 1: Individual components)
-AZURE_SQL_SERVER=sql-legislation-tracker.database.windows.net
-AZURE_SQL_DATABASE=db-legislation
-AZURE_SQL_USERNAME=david.anderson
-AZURE_SQL_PASSWORD=_MOREgroup
-
-# OR Azure SQL Database (Option 2: Complete URL)
-# DATABASE_URL=mssql+pyodbc://david.anderson:_MOREgroup@sql-legislation-tracker.database.windows.net:1433/database?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no&Connection+Timeout=30
-
-# LegiScan API
-LEGISCAN_API_KEY=e3bd77ddffa618452dbe7e9bd3ea3a35
-
-# Azure AI
-AZURE_ENDPOINT=https://david-mabholqy-swedencentral.openai.azure.com/
-AZURE_KEY=8bFP5NQ6KL7jSV74M3ZJ77vh9uYrtR7c3sOkAmM3Gs7tirc5mOWAJQQJ99BEACfhMk5XJ3w3AAAAACOGGlXN
-AZURE_MODEL_NAME=summarize-gpt-4.1
 
 # Optional: Environment
 ENVIRONMENT=development

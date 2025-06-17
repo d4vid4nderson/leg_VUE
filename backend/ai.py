@@ -87,8 +87,8 @@ except ImportError:
 LEGISCAN_API_KEY = os.getenv('LEGISCAN_API_KEY')
 LEGISCAN_BASE_URL = "https://api.legiscan.com/?key={0}&op={1}&{2}"
 
-AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT", "https://david-mabholqy-swedencentral.openai.azure.com/")
-AZURE_KEY = os.getenv("AZURE_KEY", "8bFP5NQ6KL7jSV74M3ZJ77vh9uYrtR7c3sOkAmM3Gs7tirc5mOWAJQQJ99BEACfhMk5XJ3w3AAAAACOGGlXN")
+AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT", "val here")
+AZURE_KEY = os.getenv("AZURE_KEY", "key here")
 MODEL_NAME = os.getenv("AZURE_MODEL_NAME", "summarize-gpt-4.1")
 
 # Debug logging

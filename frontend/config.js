@@ -1,29 +1,43 @@
-// src/config/api.js
+// src/config/config.js
+import API_URL from './api';
 
-// Check if the app is running in production mode
 const isProduction = import.meta.env.MODE === 'production';
-
-// Select the appropriate API URL based on environment
-const API_URL = isProduction 
-  ? import.meta.env.VITE_API_URL_PROD 
-  : import.meta.env.VITE_API_URL;
 
 // Export the configured API URL
 export const apiUrl = API_URL;
 
-// You can also export a configured axios instance or fetch wrapper
+// Enhanced fetch wrapper with better error handling
 export const fetchApi = async (endpoint, options = {}) => {
   const url = `${API_URL}${endpoint}`;
-  const response = await fetch(url, options);
   
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+  try {
+    const response = await fetch(url, options);
+    
+    if (!response.ok) {
+      let errorDetails = '';
+      try {
+        const errorData = await response.json();
+        errorDetails = errorData.detail || errorData.message || JSON.stringify(errorData);
+      } catch (parseError) {
+        errorDetails = response.statusText;
+      }
+      
+      throw new Error(`API error ${response.status}: ${errorDetails}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+      error.message = `Cannot connect to backend server at ${API_URL}. Make sure the backend is running.`;
+    }
+    
+    console.error('❌ API Error:', error.message);
+    throw error;
   }
-  
-  return response.json();
 };
 
 export default {
   apiUrl,
-  fetchApi
+  fetchApi,
+  isProduction
 };

@@ -1,0 +1,126 @@
+name: leg-vue
+location: centralus
+type: Microsoft.App/containerApps
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-apply-001": {}
+    "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001": {}
+properties:
+  managedEnvironmentId: /subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourceGroups/rg-legislation-tracker/providers/Microsoft.App/managedEnvironments/env-leg-vue
+  configuration:
+    ingress:
+      allowInsecure: false
+      external: true
+      targetPort: 80
+      transport: auto
+    registries:
+      - server: moregroupdev.azurecr.io
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-apply-001"
+    secrets:
+      - name: azure-endpoint
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-ENDPOINT"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: azure-key
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-KEY"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: azure-model-name
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-MODEL-NAME"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: azure-sql-database
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-DATABASE"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: azure-sql-password
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-PASSWORD"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: azure-sql-server
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-SERVER"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: azure-sql-username
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-USERNAME"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: debug-mode
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/DEBUG-MODE"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: from-email
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/FROM-EMAIL"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: legiscan-api-key
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/LEGISCAN-API-KEY"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: sendgrid-api-key
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/SENDGRID-API-KEY"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: sql-echo
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/SQL-ECHO"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: vite-azure-client-id
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-CLIENT-ID"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: vite-azure-tenant-id
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-TENANT-ID"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: vite-api-url
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+      - name: vite-api-url-prod
+        keyVaultUrl: "https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL-PROD"
+        identity: "/subscriptions/47a3dc42-3a05-4529-9b6e-f4416090970b/resourcegroups/rg-alz-mgmt-identity-centralus-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-alz-mgmt-centralus-plan-001"
+  template:
+    containers:
+      - name: frontend
+        image: moregroupdev.azurecr.io/leg-vue-frontend:latest
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: ENVIRONMENT
+            value: production
+          - name: VITE_AZURE_CLIENT_ID  # Use underscore format for environment variable
+            secretRef: vite-azure-client-id  # Reference to dashed secret name
+          - name: VITE_AZURE_TENANT_ID  # Use underscore format for environment variable
+            secretRef: vite-azure-tenant-id  # Reference to dashed secret name
+          # API URLs with proper naming
+          - name: VITE_API_URL  # Use underscore format for environment variable
+            secretRef: vite-api-url  # Reference to dashed secret name
+          - name: VITE_API_URL_PROD  # Use underscore format for environment variable
+            secretRef: vite-api-url-prod  # Reference to dashed secret name
+          
+      - name: backend
+        image: moregroupdev.azurecr.io/leg-vue-backend:latest
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: ENVIRONMENT
+            value: production
+          # Azure AI variables - converting dashes to underscores
+          - name: AZURE_ENDPOINT  # Use underscore format for environment variable
+            secretRef: azure-endpoint  # Reference to dashed secret name
+          - name: AZURE_KEY  # Use underscore format for environment variable
+            secretRef: azure-key  # Reference to dashed secret name
+          - name: AZURE_MODEL_NAME  # Use underscore format for environment variable
+            secretRef: azure-model-name  # Reference to dashed secret name
+          # Azure SQL variables - converting dashes to underscores
+          - name: AZURE_SQL_SERVER  # Use underscore format for environment variable
+            secretRef: azure-sql-server  # Reference to dashed secret name
+          - name: AZURE_SQL_DATABASE  # Use underscore format for environment variable
+            secretRef: azure-sql-database  # Reference to dashed secret name
+          - name: AZURE_SQL_USERNAME  # Use underscore format for environment variable
+            secretRef: azure-sql-username  # Reference to dashed secret name
+          - name: AZURE_SQL_PASSWORD  # Use underscore format for environment variable
+            secretRef: azure-sql-password  # Reference to dashed secret name
+          # Other variables - converting dashes to underscores
+          - name: LEGISCAN_API_KEY  # Use underscore format for environment variable
+            secretRef: legiscan-api-key  # Reference to dashed secret name
+          - name: DEBUG_MODE  # Use underscore format for environment variable
+            secretRef: debug-mode  # Reference to dashed secret name
+          - name: SQL_ECHO  # Use underscore format for environment variable
+            secretRef: sql-echo  # Reference to dashed secret name
+          - name: FROM_EMAIL  # Use underscore format for environment variable
+            secretRef: from-email  # Reference to dashed secret name
+          - name: SENDGRID_API_KEY  # Use underscore format for environment variable
+            secretRef: sendgrid-api-key  # Reference to dashed secret name
+    scale:
+      minReplicas: 1
+      maxReplicas: 3

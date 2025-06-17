@@ -22,7 +22,7 @@ def build_azure_sql_connection():
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
     username = os.getenv('AZURE_SQL_USERNAME', 'david.anderson')
-    password = os.getenv('AZURE_SQL_PASSWORD', '_MOREgroup')
+    password = os.getenv('AZURE_SQL_PASSWORD', 'failed to pull SQL password')
     
     if not all([server, database, username, password]):
         print("❌ Missing Azure SQL configuration")
@@ -47,13 +47,47 @@ def build_azure_sql_connection():
     print(f"   Username: {username}")
     return connection_string
 
+
+def build_connection_string_with_managed_identity():
+    """Build Azure SQL connection string using managed identity for production"""
+    environment = os.getenv("ENVIRONMENT", "development")
+    server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+    database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+    
+    if environment == "production":
+        # Production environment - use managed identity
+        print("🔐 Using managed identity authentication for production")
+        connection_string = (
+            f"mssql+pyodbc://{server}:1433/{database}"
+            f"?driver=ODBC+Driver+18+for+SQL+Server"
+            f"&authentication=ActiveDirectoryMSI"
+            f"&Encrypt=yes"
+            f"&TrustServerCertificate=no"
+            f"&Connection+Timeout=30"
+        )
+        return connection_string
+    else:
+        # Use regular connection for development
+        return build_azure_sql_connection()
+
+
 # Get database URL
-DATABASE_URL = os.getenv('DATABASE_URL') or build_azure_sql_connection()
+# DATABASE_URL = os.getenv('DATABASE_URL') or build_azure_sql_connection()
+
+
+environment = os.getenv("ENVIRONMENT", "development")
+if environment == "production":
+    DATABASE_URL = build_connection_string_with_managed_identity()
+    print(f"🚀 Using managed identity connection for production")
+else:
+    DATABASE_URL = os.getenv('DATABASE_URL') or build_azure_sql_connection()
+    print(f"🔍 Using development connection: {DATABASE_URL[:30]}...")
 
 if not DATABASE_URL:
     # Fallback to SQLite
     DATABASE_URL = "sqlite:///./legislation_vue_fallback.db"
     print(f"📁 Using SQLite fallback: {DATABASE_URL}")
+
 
 # CORRECTED: Create engine with proper Azure SQL settings
 try:
@@ -908,3 +942,4 @@ def test_azure_sql_full():
 if __name__ == "__main__":
     print("🧪 Testing Azure SQL Database Configuration with Highlights")
     test_azure_sql_full()
+

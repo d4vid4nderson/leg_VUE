@@ -17,7 +17,7 @@ def test_azure_sql_connection_only():
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
     username = os.getenv('AZURE_SQL_USERNAME', 'david.anderson')
-    password = os.getenv('AZURE_SQL_PASSWORD', '_MOREgroup')
+    password = os.getenv('AZURE_SQL_PASSWORD', 'failed to pull SQL password')
     
     print(f"Server: {server}")
     print(f"Database: {database}")
