@@ -1,15 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, Lock, User, AlertCircle, Building, GraduationCap, Heart, Wrench, X as XIcon } from 'lucide-react';
-import { PublicClientApplication } from '@azure/msal-browser';
-import { useAuth } from '../context/AuthContext';
+import React, { useState, useEffect } from "react";
+import {
+  Eye,
+  EyeOff,
+  Lock,
+  User,
+  AlertCircle,
+  Building,
+  GraduationCap,
+  Heart,
+  Wrench,
+  X as XIcon,
+} from "lucide-react";
+import { PublicClientApplication } from "@azure/msal-browser";
+import { useAuth } from "../context/AuthContext";
 
-import yourLogo from '/public/favicon.png';
+import yourLogo from "/src/favicon.png";
 
-const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDED onLoginSuccess prop
+const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
+  // ✅ ADDED onLoginSuccess prop
   const { login } = useAuth();
   const [formData, setFormData] = useState({
-    username: '',
-    password: ''
+    username: "",
+    password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
@@ -38,26 +50,29 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
 
   // Animation for floating icons
   const [animatedIcons] = useState([
-    { icon: Building, delay: 0, x: 20, y: 30, id: 'icon1' },
-    { icon: GraduationCap, delay: 1000, x: 80, y: 20, id: 'icon2' },
-    { icon: Heart, delay: 2000, x: 10, y: 70, id: 'icon3' },
-    { icon: Wrench, delay: 3000, x: 85, y: 80, id: 'icon4' }
+    { icon: Building, delay: 0, x: 20, y: 30, id: "icon1" },
+    { icon: GraduationCap, delay: 1000, x: 80, y: 20, id: "icon2" },
+    { icon: Heart, delay: 2000, x: 10, y: 70, id: "icon3" },
+    { icon: Wrench, delay: 3000, x: 85, y: 80, id: "icon4" },
   ]);
 
   // Demo credentials for testing
   const demoCredentials = {
-    username: 'demo@legislationvue.com',
-    password: 'demo123'
+    username: "demo@legislationvue.com",
+    password: "demo123",
   };
 
   // Initialize MSAL
   useEffect(() => {
     if (!isOpen) return;
-    
+
     const initializeMsal = async () => {
       try {
         // Check if Azure credentials are configured
-        if (!import.meta.env.VITE_AZURE_CLIENT_ID || !import.meta.env.VITE_AZURE_TENANT_ID) {
+        if (
+          !import.meta.env.VITE_AZURE_CLIENT_ID ||
+          !import.meta.env.VITE_AZURE_TENANT_ID
+        ) {
           // Don't show warning, just silently skip Azure AD setup
           return;
         }
@@ -66,11 +81,12 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
         const pca = new PublicClientApplication(msalConfig);
         await pca.initialize();
         setMsalInstance(pca);
-        console.log('✅ MSAL initialized successfully');
+        console.log("✅ MSAL initialized successfully");
       } catch (error) {
-        console.error('❌ MSAL initialization failed:', error);
+        console.error("❌ MSAL initialization failed:", error);
         setErrors({
-          azure: 'Azure AD configuration error. Please use demo login or contact administrator.'
+          azure:
+            "Azure AD configuration error. Please use demo login or contact administrator.",
         });
       }
     };
@@ -78,12 +94,12 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
     initializeMsal();
   }, [isOpen]);
 
-
-    // ✅ UPDATED: Handle Azure AD Sign In with expiration data
+  // ✅ UPDATED: Handle Azure AD Sign In with expiration data
   const handleAzureSignIn = async () => {
     if (!msalInstance) {
       setErrors({
-        azure: 'Azure AD not initialized. Please use demo login or contact administrator.'
+        azure:
+          "Azure AD not initialized. Please use demo login or contact administrator.",
       });
       return;
     }
@@ -92,73 +108,81 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
     setErrors({});
 
     try {
-      console.log('🔄 Starting Azure AD sign-in...');
-      
+      console.log("🔄 Starting Azure AD sign-in...");
+
       // Attempt login with popup
       const response = await msalInstance.loginPopup(loginRequest);
-      
+
       if (response && response.account) {
-        console.log('✅ Azure AD sign-in successful:', response.account);
-        
+        console.log("✅ Azure AD sign-in successful:", response.account);
+
         // Get access token for API calls
         const tokenResponse = await msalInstance.acquireTokenSilent({
           scopes: loginRequest.scopes,
-          account: response.account
+          account: response.account,
         });
-        
+
         // ✅ NEW: Calculate expiration time (Azure AD tokens typically expire in 1 hour)
-        const expiresIn = tokenResponse.expiresOn ? 
-          new Date(tokenResponse.expiresOn).getTime() : 
-          Date.now() + (60 * 60 * 1000); // Default 1 hour if not provided
-        
+        const expiresIn = tokenResponse.expiresOn
+          ? new Date(tokenResponse.expiresOn).getTime()
+          : Date.now() + 60 * 60 * 1000; // Default 1 hour if not provided
+
         // Extract user information with token expiration
         const userInfo = {
           username: response.account.username,
           name: response.account.name || response.account.username,
-          role: 'user',
+          role: "user",
           access_token: tokenResponse.accessToken,
           refresh_token: tokenResponse.refreshToken || null, // May not always be available
           expires_at: new Date(expiresIn).toISOString(),
           account_id: response.account.homeAccountId, // For MSAL refresh
           tenant_id: response.account.tenantId,
-          authMethod: 'azure-ad'
+          authMethod: "azure-ad",
         };
 
-        console.log('🔐 Calling login with Azure AD user info (expires at:', userInfo.expires_at, ')');
-        
+        console.log(
+          "🔐 Calling login with Azure AD user info (expires at:",
+          userInfo.expires_at,
+          ")",
+        );
+
         // Call the auth context login handler
         login(userInfo);
-        
+
         // Call success callback first, then close
         if (onLoginSuccess) {
-          console.log('✅ Calling onLoginSuccess callback');
+          console.log("✅ Calling onLoginSuccess callback");
           onLoginSuccess();
         }
-        
+
         // Close the modal
-        console.log('✅ Closing Azure AD login modal');
+        console.log("✅ Closing Azure AD login modal");
         onClose();
       }
     } catch (error) {
-      console.error('❌ Azure AD sign-in failed:', error);
-      
+      console.error("❌ Azure AD sign-in failed:", error);
+
       // Handle specific MSAL errors with better messages
-      let errorMessage = 'Azure AD sign-in failed. Please try again.';
-      
-      if (error.errorCode === 'user_cancelled') {
-        errorMessage = 'Sign-in was cancelled.';
-      } else if (error.errorCode === 'consent_required') {
-        errorMessage = 'Consent is required. Please contact your administrator.';
-      } else if (error.message && error.message.includes('AADSTS9002326')) {
-        errorMessage = 'Azure AD app is not configured as Single Page Application. Please contact your administrator to fix the app registration.';
-      } else if (error.message && error.message.includes('Cross-origin')) {
-        errorMessage = 'Azure AD configuration error: App must be registered as Single Page Application (SPA). Please contact your administrator.';
-      } else if (error.message && error.message.includes('invalid_request')) {
-        errorMessage = 'Azure AD configuration error. The app registration needs to be updated. Please use demo login or contact administrator.';
+      let errorMessage = "Azure AD sign-in failed. Please try again.";
+
+      if (error.errorCode === "user_cancelled") {
+        errorMessage = "Sign-in was cancelled.";
+      } else if (error.errorCode === "consent_required") {
+        errorMessage =
+          "Consent is required. Please contact your administrator.";
+      } else if (error.message && error.message.includes("AADSTS9002326")) {
+        errorMessage =
+          "Azure AD app is not configured as Single Page Application. Please contact your administrator to fix the app registration.";
+      } else if (error.message && error.message.includes("Cross-origin")) {
+        errorMessage =
+          "Azure AD configuration error: App must be registered as Single Page Application (SPA). Please contact your administrator.";
+      } else if (error.message && error.message.includes("invalid_request")) {
+        errorMessage =
+          "Azure AD configuration error. The app registration needs to be updated. Please use demo login or contact administrator.";
       }
-      
+
       setErrors({
-        azure: errorMessage
+        azure: errorMessage,
       });
     } finally {
       setIsAzureLoading(false);
@@ -168,94 +192,100 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
   // ✅ UPDATED: Demo login with expiration (24 hours for demo)
   const handleDemoSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
-    
+
     setIsLoading(true);
-    
+
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      if (formData.username === demoCredentials.username && 
-          formData.password === demoCredentials.password) {
-        
-        const authToken = 'demo-jwt-token-' + Date.now();
-        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
-        
-        console.log('🔐 Calling login with demo user info (expires at:', expiresAt, ')');
-        
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      if (
+        formData.username === demoCredentials.username &&
+        formData.password === demoCredentials.password
+      ) {
+        const authToken = "demo-jwt-token-" + Date.now();
+        const expiresAt = new Date(
+          Date.now() + 24 * 60 * 60 * 1000,
+        ).toISOString(); // 24 hours
+
+        console.log(
+          "🔐 Calling login with demo user info (expires at:",
+          expiresAt,
+          ")",
+        );
+
         // Call the auth context login
         login({
           username: formData.username,
-          name: 'Demo User',
-          role: 'analyst',
+          name: "Demo User",
+          role: "analyst",
           access_token: authToken,
           refresh_token: null, // Demo doesn't have refresh
           expires_at: expiresAt,
-          authMethod: 'demo'
+          authMethod: "demo",
         });
-        
+
         // Call success callback first, then close
         if (onLoginSuccess) {
-          console.log('✅ Calling onLoginSuccess callback');
+          console.log("✅ Calling onLoginSuccess callback");
           onLoginSuccess();
         }
-        
+
         // Close the modal
-        console.log('✅ Closing demo login modal');
+        console.log("✅ Closing demo login modal");
         onClose();
       } else {
         setErrors({
-          general: 'Invalid username or password. Try the demo credentials below.'
+          general:
+            "Invalid username or password. Try the demo credentials below.",
         });
       }
     } catch (error) {
       setErrors({
-        general: 'Login failed. Please try again.'
+        general: "Login failed. Please try again.",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-
   // Regular form handlers (for demo login)
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
-    
+
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [name]: ''
+        [name]: "",
       }));
     }
   };
 
   const validateForm = () => {
     const newErrors = {};
-    
+
     if (!formData.username.trim()) {
-      newErrors.username = 'Username or email is required';
-    } else if (!formData.username.includes('@')) {
-      newErrors.username = 'Please enter a valid email address';
+      newErrors.username = "Username or email is required";
+    } else if (!formData.username.includes("@")) {
+      newErrors.username = "Please enter a valid email address";
     }
-    
+
     if (!formData.password) {
-      newErrors.password = 'Password is required';
+      newErrors.password = "Password is required";
     } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+      newErrors.password = "Password must be at least 6 characters";
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
 
   const handleDemoLogin = () => {
     setFormData(demoCredentials);
@@ -267,13 +297,13 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Blurred overlay */}
-      <div 
+      <div
         className="absolute inset-0 backdrop-blur-md bg-gray-900 bg-opacity-50"
         onClick={(e) => {
           if (!isLoading && !isAzureLoading) onClose();
         }}
       ></div>
-      
+
       {/* Modal Content */}
       <div className="relative z-10 bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {/* Close button */}
@@ -284,19 +314,21 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
         >
           <XIcon size={24} />
         </button>
-        
+
         {/* Login Card */}
         <div className="p-8">
-            <div className="text-center mb-8">
-              {/* Image Logo */}
-              <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <img 
-                  src={yourLogo} 
-                  alt="LegislationVUE Logo" 
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to LegislationVUE</h2>
+          <div className="text-center mb-8">
+            {/* Image Logo */}
+            <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+              <img
+                src={yourLogo}
+                alt="LegislationVUE Logo"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+              Welcome to LegislationVUE
+            </h2>
             <p className="text-gray-600">Sign in with your company account</p>
           </div>
 
@@ -309,15 +341,16 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
           )}
 
           {/* Azure AD Sign In Button - Only show if Azure is configured */}
-          {(import.meta.env.VITE_AZURE_CLIENT_ID && import.meta.env.VITE_AZURE_TENANT_ID) ? (
+          {import.meta.env.VITE_AZURE_CLIENT_ID &&
+          import.meta.env.VITE_AZURE_TENANT_ID ? (
             <div className="mb-6">
               <button
                 onClick={handleAzureSignIn}
                 disabled={isAzureLoading || !msalInstance}
                 className={`w-full py-4 px-6 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-3 ${
                   isAzureLoading || !msalInstance
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg transform hover:scale-105'
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg transform hover:scale-105"
                 }`}
               >
                 {isAzureLoading ? (
@@ -327,17 +360,21 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
                   </>
                 ) : (
                   <>
-                    <svg className="w-5 h-5" viewBox="0 0 23 23" fill="currentColor">
-                      <path d="M1 1h10v10H1z"/>
-                      <path d="M12 1h10v10H12z"/>
-                      <path d="M1 12h10v10H1z"/>
-                      <path d="M12 12h10v10H12z"/>
+                    <svg
+                      className="w-5 h-5"
+                      viewBox="0 0 23 23"
+                      fill="currentColor"
+                    >
+                      <path d="M1 1h10v10H1z" />
+                      <path d="M12 1h10v10H12z" />
+                      <path d="M1 12h10v10H1z" />
+                      <path d="M12 12h10v10H12z" />
                     </svg>
                     Sign in with Microsoft
                   </>
                 )}
               </button>
-              
+
               <p className="text-xs text-gray-500 text-center mt-2">
                 Use your company Microsoft account to sign in
               </p>
@@ -361,9 +398,8 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
             </div>
           )}
 
-
-      {/* Demo Form Toggle */}
-{/*
+          {/* Demo Form Toggle */}
+          {/*
 <button
   type="button"
   onClick={() => setShowDemoForm(!showDemoForm)}
@@ -475,13 +511,14 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => { // ✅ ADDE
 )}
 */}
 
-
-
           {/* Footer Links */}
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              Need help? 
-              <a href="mailto:legal@moregroup-inc.com" className="ml-1 text-blue-600 hover:text-blue-700 font-medium">
+              Need help?
+              <a
+                href="mailto:legal@moregroup-inc.com"
+                className="ml-1 text-blue-600 hover:text-blue-700 font-medium"
+              >
                 Contact IT Support
               </a>
             </p>

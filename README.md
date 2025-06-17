@@ -53,8 +53,4 @@ VITE_API_URL=http://localhost:8000
 See deployment instructions for Azure App Service and Static Web Apps.
 
 ## License
-<<<<<<< Updated upstream
 MIT
-=======
-MIT
->>>>>>> Stashed changes

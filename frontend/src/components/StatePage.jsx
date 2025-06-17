@@ -264,239 +264,257 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     return <div className="universal-text-content">{textContent}</div>;
   };
 
-  const formatUniversalContent = (content) => {
-    if (!content) return null;
+const formatUniversalContent = (content) => {
+  if (!content) return null;
 
-    // Remove HTML tags but preserve formatting indicators
-    let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
-    textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
+  // Remove HTML tags but preserve formatting indicators
+  let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
+  textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
+  
+  // Updated section keywords to include Summary and Market Opportunity
+  const sectionKeywords = [
+    'Risk Assessment', 
+    'Market Opportunity', 
+    'Implementation Requirements', 
+    'Financial Implications', 
+    'Competitive Implications', 
+    'Timeline Pressures',
+    'Summary'  // Added Summary to be treated as a section header
+  ];
+  
+  // Create a more flexible regex that handles both colons and periods after keywords
+  const headerPattern = new RegExp(`\\*?(${sectionKeywords.join('|')})\\*?[:.]?`, 'gi');
+  
+  // Also look for inline mentions like "Market Opportunity: text" or "Summary: text"
+  const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]\\s*([^.]*(?:\\.[^A-Z][^.]*)*)\\.?`, 'gi');
+  
+  // First, try to extract inline sections (like "Summary: text within paragraph")
+  const inlineMatches = [];
+  let match;
+  while ((match = inlinePattern.exec(textContent)) !== null) {
+    inlineMatches.push({
+      header: match[1].trim(),
+      content: match[2].trim(),
+      fullMatch: match[0]
+    });
+  }
+  
+  // If we found inline sections, process them
+  if (inlineMatches.length > 0) {
+    const sections = [];
     
-    // First, handle the concatenated sections problem
-    // Split by common section headers, being more aggressive about separation
-    const sectionKeywords = ['Risk Assessment', 'Market Opportunity', 'Implementation Requirements', 'Financial Implications', 'Competitive Implications', 'Timeline Pressures'];
-    
-    // Create a regex that splits on these keywords when they appear as headers
-    const headerPattern = new RegExp(`\\*?(${sectionKeywords.join('|')})\\*?:`, 'gi');
-    const parts = textContent.split(headerPattern);
-    
-    if (parts.length > 1) {
-      const sections = [];
-      
-      // Process parts: odd indices are headers, even indices are content
-      for (let i = 1; i < parts.length; i += 2) {
-        const header = parts[i];
-        const content = parts[i + 1] || '';
+    inlineMatches.forEach(({ header, content, fullMatch }) => {
+      if (header && content && content.length > 5) {
+        // Clean up the header
+        let cleanHeader = header.trim();
+        if (!cleanHeader.endsWith(':')) {
+          cleanHeader += ':';
+        }
         
-        if (header && header.trim()) {
-          // Clean up the header - remove asterisks and ensure colon
-          let cleanHeader = header.trim().replace(/^\*+|\*+$/g, '');
-          if (!cleanHeader.endsWith(':')) {
-            cleanHeader += ':';
-          }
+        // Split content into items if it contains multiple sentences or bullet indicators
+        const items = [];
+        
+        // Check if content has bullet-like patterns
+        if (content.includes('•') || content.includes('-') || content.includes('*')) {
+          const contentLines = content
+            .split(/[•\-*]\s*/)
+            .map(line => line.trim())
+            .filter(line => line.length > 3);
           
-          // Parse the content into bullet points
-          const items = [];
-          if (content.trim()) {
-            // Split content by bullet indicators and clean up
-            const contentLines = content
-              .split(/[•\-*]\s*/)
-              .map(line => line.trim())
-              .filter(line => line.length > 3);
-            
-            contentLines.forEach(line => {
-              // Remove any section headers that got mixed in
-              const isNotHeader = !sectionKeywords.some(keyword => 
-                line.toLowerCase().includes(keyword.toLowerCase()) && line.includes(':')
-              );
-              
-              if (isNotHeader && line.length > 5) {
-                // Clean up any remaining asterisks that aren't meant for bold formatting
-                let cleanLine = line;
-                
-                // If the line starts with a potential header keyword followed by colon, skip it
-                if (!/^(Risk Assessment|Market Opportunity|Implementation Requirements|Financial Implications|Competitive Implications|Timeline Pressures):/i.test(cleanLine)) {
-                  // Capitalize the first letter of the bullet point
-                  cleanLine = capitalizeFirstLetter(cleanLine);
-                  items.push(cleanLine);
-                }
-              }
-            });
-          }
-          
-          if (items.length > 0) {
-            sections.push({
-              title: cleanHeader,
-              items: items
-            });
+          contentLines.forEach(line => {
+            const cleanLine = capitalizeFirstLetter(line.replace(/\.$/, ''));
+            if (cleanLine.length > 5) {
+              items.push(cleanLine);
+            }
+          });
+        } else {
+          // Treat as single content block
+          const cleanContent = capitalizeFirstLetter(content.replace(/\.$/, ''));
+          if (cleanContent.length > 5) {
+            items.push(cleanContent);
           }
         }
-      }
-      
-      if (sections.length > 0) {
-        return (
-          <div>
-            {sections.map((section, idx) => (
-              <div key={idx} style={{ marginBottom: '16px' }}>
-                <div style={{ 
-                  fontWeight: 'bold', 
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  color: 'inherit'
-                }}>
-                  {section.title}
-                </div>
-                {section.items.map((item, itemIdx) => {
-                  // Check if the item has bold formatting (preserve legitimate asterisks)
-                  const hasBoldParts = item.includes('*') && item.match(/\*[^*]+\*/);
-                  
-                  if (hasBoldParts) {
-                    const parts = item.split(/(\*[^*]+\*)/);
-                    return (
-                      <div key={itemIdx} style={{ 
-                        marginBottom: '4px',
-                        fontSize: '14px',
-                        lineHeight: '1.5',
-                        color: 'inherit'
-                      }}>
-                        • {parts.map((part, partIdx) => {
-                          if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-                            return (
-                              <strong key={partIdx} style={{ fontWeight: 'bold' }}>
-                                {part.slice(1, -1)}
-                              </strong>
-                            );
-                          } else {
-                            return part;
-                          }
-                        })}
-                      </div>
-                    );
-                  } else {
-                    return (
-                      <div key={itemIdx} style={{ 
-                        marginBottom: '4px',
-                        fontSize: '14px',
-                        lineHeight: '1.5',
-                        color: 'inherit'
-                      }}>
-                        • {item}
-                      </div>
-                    );
-                  }
-                })}
-              </div>
-            ))}
-          </div>
-        );
-      }
-    }
-
-    // Fallback method - more aggressive line-by-line parsing
-    const lines = textContent.split(/\n+|(?=[A-Z][^:]*:)/).map(line => line.trim()).filter(line => line.length > 0);
-    
-    if (lines.length > 0) {
-      const sections = [];
-      let currentSection = null;
-      
-      lines.forEach(line => {
-        // Check if this line is a section header
-        const isHeader = sectionKeywords.some(keyword => 
-          line.toLowerCase().includes(keyword.toLowerCase())
-        ) && (line.includes(':') || line.length < 50);
         
-        if (isHeader) {
-          // Save previous section
-          if (currentSection && currentSection.items.length > 0) {
-            sections.push(currentSection);
-          }
-          
-          // Start new section
-          let cleanHeader = line.replace(/^\*+|\*+$/g, '').trim();
-          if (!cleanHeader.endsWith(':')) {
-            cleanHeader += ':';
-          }
-          
-          currentSection = {
+        if (items.length > 0) {
+          sections.push({
             title: cleanHeader,
-            items: []
-          };
-        } else if (currentSection && line.length > 5) {
-          // Add content to current section
-          let cleanLine = line.replace(/^[•\-*]\s*/, '').trim();
-          
-          // Make sure this isn't accidentally a header
-          const isNotAccidentalHeader = !sectionKeywords.some(keyword => 
-            cleanLine.toLowerCase().includes(keyword.toLowerCase()) && cleanLine.includes(':')
-          );
-          
-          if (isNotAccidentalHeader) {
-            // Capitalize the first letter of the bullet point
-            cleanLine = capitalizeFirstLetter(cleanLine);
-            currentSection.items.push(cleanLine);
-          }
+            items: items
+          });
         }
-      });
-      
-      // Add the last section
-      if (currentSection && currentSection.items.length > 0) {
-        sections.push(currentSection);
       }
-      
-      if (sections.length > 0) {
-        return (
-          <div>
-            {sections.map((section, idx) => (
-              <div key={idx} style={{ marginBottom: '16px' }}>
-                <div style={{ 
-                  fontWeight: 'bold', 
-                  marginBottom: '8px',
-                  fontSize: '14px',
-                  color: 'inherit'
-                }}>
-                  {section.title}
-                </div>
-                {section.items.map((item, itemIdx) => (
-                  <div key={itemIdx} style={{ 
-                    marginBottom: '4px',
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                    color: 'inherit'
-                  }}>
-                    • {item}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        );
-      }
-    }
-
-    // Final fallback: simple bullet list
-    const sentences = textContent
-      .split(/[.!?]\s+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 10);
+    });
     
-    if (sentences.length > 1) {
+    if (sections.length > 0) {
       return (
         <div>
-          {sentences.map((sentence, idx) => (
-            <div key={idx} style={{ 
-              marginBottom: '4px',
-              fontSize: '14px',
-              lineHeight: '1.5',
-              color: 'inherit'
-            }}>
-              • {sentence.replace(/^[•\-*]\s*/, '')}
+          {sections.map((section, idx) => (
+            <div key={idx} style={{ marginBottom: '16px' }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                marginBottom: '8px',
+                fontSize: '14px',
+                color: 'inherit'
+              }}>
+                {section.title}
+              </div>
+              {section.items.map((item, itemIdx) => (
+                <div key={itemIdx} style={{ 
+                  marginBottom: '4px',
+                  fontSize: '14px',
+                  lineHeight: '1.5',
+                  color: 'inherit',
+                  paddingLeft: '0px' // No bullet point for single content blocks
+                }}>
+                  {section.items.length === 1 ? item : `• ${item}`}
+                </div>
+              ))}
             </div>
           ))}
         </div>
       );
     }
+  }
+  
+  // Fallback to original section-based parsing
+  const parts = textContent.split(headerPattern);
+  
+  if (parts.length > 1) {
+    const sections = [];
+    
+    // Process parts: odd indices are headers, even indices are content
+    for (let i = 1; i < parts.length; i += 2) {
+      const header = parts[i];
+      const content = parts[i + 1] || '';
+      
+      if (header && header.trim()) {
+        // Clean up the header - remove asterisks and ensure colon
+        let cleanHeader = header.trim().replace(/^\*+|\*+$/g, '');
+        if (!cleanHeader.endsWith(':')) {
+          cleanHeader += ':';
+        }
+        
+        // Parse the content into bullet points
+        const items = [];
+        if (content.trim()) {
+          // Split content by bullet indicators and clean up
+          const contentLines = content
+            .split(/[•\-*]\s*/)
+            .map(line => line.trim())
+            .filter(line => line.length > 3);
+          
+          contentLines.forEach(line => {
+            // Remove any section headers that got mixed in
+            const isNotHeader = !sectionKeywords.some(keyword => 
+              line.toLowerCase().includes(keyword.toLowerCase()) && line.includes(':')
+            );
+            
+            if (isNotHeader && line.length > 5) {
+              // Clean up any remaining asterisks that aren't meant for bold formatting
+              let cleanLine = line;
+              
+              // If the line starts with a potential header keyword followed by colon, skip it
+              if (!/^(Risk Assessment|Market Opportunity|Implementation Requirements|Financial Implications|Competitive Implications|Timeline Pressures|Summary):/i.test(cleanLine)) {
+                // Capitalize the first letter of the bullet point
+                cleanLine = capitalizeFirstLetter(cleanLine);
+                items.push(cleanLine);
+              }
+            }
+          });
+        }
+        
+        if (items.length > 0) {
+          sections.push({
+            title: cleanHeader,
+            items: items
+          });
+        }
+      }
+    }
+    
+    if (sections.length > 0) {
+      return (
+        <div>
+          {sections.map((section, idx) => (
+            <div key={idx} style={{ marginBottom: '16px' }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                marginBottom: '8px',
+                fontSize: '14px',
+                color: 'inherit'
+              }}>
+                {section.title}
+              </div>
+              {section.items.map((item, itemIdx) => {
+                // Check if the item has bold formatting (preserve legitimate asterisks)
+                const hasBoldParts = item.includes('*') && item.match(/\*[^*]+\*/);
+                
+                if (hasBoldParts) {
+                  const parts = item.split(/(\*[^*]+\*)/);
+                  return (
+                    <div key={itemIdx} style={{ 
+                      marginBottom: '4px',
+                      fontSize: '14px',
+                      lineHeight: '1.5',
+                      color: 'inherit'
+                    }}>
+                      • {parts.map((part, partIdx) => {
+                        if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+                          return (
+                            <strong key={partIdx} style={{ fontWeight: 'bold' }}>
+                              {part.slice(1, -1)}
+                            </strong>
+                          );
+                        } else {
+                          return part;
+                        }
+                      })}
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div key={itemIdx} style={{ 
+                      marginBottom: '4px',
+                      fontSize: '14px',
+                      lineHeight: '1.5',
+                      color: 'inherit'
+                    }}>
+                      • {item}
+                    </div>
+                  );
+                }
+              })}
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
 
-    return <div className="universal-text-content">{textContent}</div>;
-  };
+  // Final fallback: simple bullet list
+  const sentences = textContent
+    .split(/[.!?]\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 10);
+  
+  if (sentences.length > 1) {
+    return (
+      <div>
+        {sentences.map((sentence, idx) => (
+          <div key={idx} style={{ 
+            marginBottom: '4px',
+            fontSize: '14px',
+            lineHeight: '1.5',
+            color: 'inherit'
+          }}>
+            • {sentence.replace(/^[•\-*]\s*/, '')}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <div className="universal-text-content">{textContent}</div>;
+};
 
   // Filter helper functions
   const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
@@ -1064,7 +1082,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                             size={16} 
                             className={
                               filter.key === 'civic' ? 'text-blue-600' :
-                              filter.key === 'education' ? 'text-yellow-600' :
+                              filter.key === 'education' ? 'text-orange-600' :
                               filter.key === 'engineering' ? 'text-green-600' :
                               filter.key === 'healthcare' ? 'text-red-600' :
                               'text-gray-600'
@@ -1449,65 +1467,66 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                           </button>
                         </div>
                       </div>
-
-                      {/* AI Summary - Always show */}
-                      {bill.summary && bill.summary !== 'No AI summary available' && (
-                        <div className="px-6 pb-4">
-                          <div className="p-3 bg-violet-50 border border-violet-200 rounded-md">
-                            <p className="text-sm font-medium text-violet-800 mb-2 flex items-center gap-2">
-                              <span>AI Summary:</span>
-                              <span className="px-2 py-0.5 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-xs rounded-full">
-                                ✦ AI Generated
-                              </span>
-                            </p>
-                            <p className="text-sm text-violet-800 leading-relaxed">{bill.summary}</p>
+                    {bill.summary && bill.summary !== 'No AI summary available' && (
+                      <div className="mb-4 mt-4 mx-6">
+                        <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
+                            <span className="text-purple-800">-</span>
+                            <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                              ✦ AI Generated
+                            </span>
                           </div>
+                          <p className="text-sm text-violet-800 leading-relaxed">{bill.summary}</p>
                         </div>
-                      )}
-
-                      {/* Description - Always show */}
-                      <div className="px-6 pb-4">
-                        <p className="text-gray-700">{bill.description || 'No description available'}</p>
                       </div>
+                    )}
 
-                      {/* ADDED: Expanded AI Content Section */}
-                      {isExpanded && (
-                        <div className="px-6 pb-4">
-                          {/* AI Talking Points */}
-                          {bill.ai_talking_points && (
-                            <div className="mb-4">
-                              <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
-                                <p className="text-md font-bold text-blue-800 mb-3 flex items-center gap-2">
-                                  <span>🎯 Key Talking Points:</span>
-                                  <span className="px-2 py-0.5 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-xs rounded-full">
-                                    ✦ AI Generated
-                                  </span>
-                                </p>
-                                <div className="text-blue-800">
-                                  {formatTalkingPoints(bill.ai_talking_points)}
-                                </div>
+                    {/* Description - Always show */}
+                    <div className="px-6 pb-4">
+                      <p className="text-gray-700">{bill.description || 'No description available'}</p>
+                    </div>
+
+                    {/* ADDED: Expanded AI Content Section */}
+                    {isExpanded && (
+                      <div>
+                        {/* AI Talking Points */}
+                        {bill.ai_talking_points && (
+                          <div className="mb-4 mt-4 mx-6">
+                            <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h4 className="font-semibold text-blue-800">Key Talking Points</h4>
+                                <span className="text-blue-800">-</span>
+                                <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                  ✦ AI Generated
+                                </span>
+                              </div>
+                              <div className="text-sm text-blue-800 leading-relaxed">
+                                {formatTalkingPoints(bill.ai_talking_points)}
                               </div>
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* AI Business Impact */}
-                          {bill.ai_business_impact && (
-                            <div className="mb-4">
-                              <div className="bg-green-50 p-3 rounded-md border border-green-200">
-                                <p className="text-md font-bold text-green-800 mb-3 flex items-center gap-2">
-                                  <span>📈 Business Impact Analysis:</span>
-                                  <span className="px-2 py-0.5 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-xs rounded-full">
-                                    ✦ AI Generated
-                                  </span>
-                                </p>
-                                <div className="text-green-800">
-                                  {formatUniversalContent(bill.ai_business_impact)}
-                                </div>
+                        {/* AI Business Impact */}
+                        {bill.ai_business_impact && (
+                          <div className="mb-4 mt-4 mx-6">
+                            <div className="bg-green-50 p-4 rounded-md border border-green-200">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h4 className="font-semibold text-green-800">Business Impact Analysis</h4>
+                                <span className="text-green-800">-</span>
+                                <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                  ✦ AI Generated
+                                </span>
+                              </div>
+                              <div className="text-sm text-green-800 leading-relaxed">
+                                {formatUniversalContent(bill.ai_business_impact)}
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                       {/* Action Buttons */}
                       <div className="px-6 pb-6">
