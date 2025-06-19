@@ -41,6 +41,7 @@ const SettingsPage = ({
   const [clearingDatabase, setClearingDatabase] = useState(false);
   const [showClearWarning, setShowClearWarning] = useState(false);
   const [clearStatus, setClearStatus] = useState(null);
+  const [databaseDebugInfo, setDatabaseDebugInfo] = useState({ logs: [], success: false, loading: false });
   
   // Database modal states
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
@@ -91,6 +92,40 @@ const SettingsPage = ({
   const handleCancelVersionEdit = () => {
     setTempVersion(appVersion);
     setIsEditingVersion(false);
+  };
+
+  const debugDatabaseConnection = async () => {
+    try {
+      setDatabaseDebugInfo({ ...databaseDebugInfo, loading: true });
+      
+      const response = await fetch(`${API_URL}/api/debug/database-msi`);
+      const data = await response.json();
+      
+      setDatabaseDebugInfo({
+        success: data.success,
+        logs: data.logs || [],
+        timestamp: data.timestamp,
+        loading: false
+      });
+      
+      // Also update the general status
+      setIntegrationStatus(prev => ({
+        ...prev,
+        database: {
+          status: data.success ? 'healthy' : 'error',
+          message: data.success ? 'Database connected (MSI)' : 'Database connection failed (MSI)',
+          responseTime: null
+        }
+      }));
+      
+    } catch (error) {
+      console.error('Database debug failed:', error);
+      setDatabaseDebugInfo({
+        success: false,
+        logs: [`Error: ${error.message}`],
+        loading: false
+      });
+    }
   };
 
   // Database modal functions
@@ -151,46 +186,87 @@ const SettingsPage = ({
     }
   };
 
-  // Check all services health
-  const checkAllIntegrations = async () => {
-    setCheckingHealth(true);
-    
-    try {
-      const response = await fetch(`${API_URL}/api/status`);
+    // Check all services health
+    const checkAllIntegrations = async () => {
+      setCheckingHealth(true);
       
-      if (response.ok) {
-        const data = await response.json();
+      try {
+        // Call both endpoints
+        const [statusResponse, dbDebugResponse] = await Promise.allSettled([
+          fetch(`${API_URL}/api/status`),
+          fetch(`${API_URL}/api/debug/database-msi`)
+        ]);
         
-        const newStatus = {
-          database: {
-            status: data.database?.status === 'connected' ? 'healthy' : 'error',
-            message: data.database?.status === 'connected' ? 'Database connected' : 'Database connection failed',
-            responseTime: null
-          },
-          legiscan: {
-            status: data.integrations?.legiscan === 'connected' ? 'healthy' : 'error',
-            message: data.integrations?.legiscan === 'connected' ? 'LegiScan API connected' : 'LegiScan API not configured',
-            responseTime: null
-          },
-          azureAI: {
-            status: data.integrations?.ai_analysis === 'connected' ? 'healthy' : 'error',
-            message: data.integrations?.ai_analysis === 'connected' ? 'Azure AI connected' : 'Azure AI not configured',
-            responseTime: null
-          },
-          federalRegister: {
-            status: 'healthy',
-            message: 'Federal Register API operational',
-            responseTime: null
-          }
-        };
+        // Process status data
+        if (statusResponse.status === 'fulfilled' && statusResponse.value.ok) {
+          const data = await statusResponse.value.json();
+          
+          const newStatus = {
+            database: {
+              status: data.database?.status === 'connected' ? 'healthy' : 'error',
+              message: data.database?.status === 'connected' ? 'Database connected' : 'Database connection failed',
+              responseTime: null
+            },
+            legiscan: {
+              status: data.integrations?.legiscan === 'connected' ? 'healthy' : 'error',
+              message: data.integrations?.legiscan === 'connected' ? 'LegiScan API connected' : 'LegiScan API not configured',
+              responseTime: null
+            },
+            azureAI: {
+              status: data.integrations?.ai_analysis === 'connected' ? 'healthy' : 'error',
+              message: data.integrations?.ai_analysis === 'connected' ? 'Azure AI connected' : 'Azure AI not configured',
+              responseTime: null
+            },
+            federalRegister: {
+              status: 'healthy',
+              message: 'Federal Register API operational',
+              responseTime: null
+            }
+          };
+          
+          setIntegrationStatus(newStatus);
+          setLastHealthCheck(new Date());
+        } else {
+          const errorStatus = {
+            database: { status: 'error', message: 'Health check failed', responseTime: null },
+            legiscan: { status: 'error', message: 'Health check failed', responseTime: null },
+            azureAI: { status: 'error', message: 'Health check failed', responseTime: null },
+            federalRegister: { 
+              status: 'healthy', 
+              message: 'Federal Register API operational', 
+              responseTime: null 
+            }
+          };
+          setIntegrationStatus(errorStatus);
+        }
         
-        setIntegrationStatus(newStatus);
-        setLastHealthCheck(new Date());
-      } else {
+        // Process database debug data
+        if (dbDebugResponse.status === 'fulfilled' && dbDebugResponse.value.ok) {
+          const data = await dbDebugResponse.value.json();
+          setDatabaseDebugInfo({
+            success: data.success,
+            logs: data.logs || [],
+            timestamp: data.timestamp,
+            loading: false
+          });
+          
+          // Update database status based on MSI test
+          setIntegrationStatus(prev => ({
+            ...prev,
+            database: {
+              status: data.success ? 'healthy' : 'error',
+              message: data.success ? 'Database connected (MSI)' : 'Database connection failed (MSI)',
+              responseTime: null
+            }
+          }));
+        }
+        
+      } catch (error) {
+        console.error('Health check failed:', error);
         const errorStatus = {
-          database: { status: 'error', message: 'Health check failed', responseTime: null },
-          legiscan: { status: 'error', message: 'Health check failed', responseTime: null },
-          azureAI: { status: 'error', message: 'Health check failed', responseTime: null },
+          database: { status: 'error', message: 'Connection failed', responseTime: null },
+          legiscan: { status: 'error', message: 'Connection failed', responseTime: null },
+          azureAI: { status: 'error', message: 'Connection failed', responseTime: null },
           federalRegister: { 
             status: 'healthy', 
             message: 'Federal Register API operational', 
@@ -198,24 +274,10 @@ const SettingsPage = ({
           }
         };
         setIntegrationStatus(errorStatus);
+      } finally {
+        setCheckingHealth(false);
       }
-    } catch (error) {
-      console.error('Health check failed:', error);
-      const errorStatus = {
-        database: { status: 'error', message: 'Connection failed', responseTime: null },
-        legiscan: { status: 'error', message: 'Connection failed', responseTime: null },
-        azureAI: { status: 'error', message: 'Connection failed', responseTime: null },
-        federalRegister: { 
-          status: 'healthy', 
-          message: 'Federal Register API operational', 
-          responseTime: null 
-        }
-      };
-      setIntegrationStatus(errorStatus);
-    } finally {
-      setCheckingHealth(false);
-    }
-  };
+    };
 
   // Auto-check on component mount
   useEffect(() => {
@@ -646,6 +708,42 @@ const SettingsPage = ({
                   <p>• <strong>AI Engine:</strong> Azure OpenAI GPT-4 integration</p>
                   <p>• <strong>Data Sources:</strong> Federal Register API, LegiScan API</p>
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+      {/* MSI Database Debug Section */}
+        <div className="mt-4 bg-gray-50 border border-gray-200 rounded-md p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold text-gray-800">MSI Database Connection Debug</h4>
+            <button
+              onClick={debugDatabaseConnection}
+              disabled={databaseDebugInfo.loading}
+              className={`px-3 py-1 text-sm rounded-md ${databaseDebugInfo.loading ? 'bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            >
+              {databaseDebugInfo.loading ? 'Testing...' : 'Test MSI Connection'}
+            </button>
+          </div>
+          
+          {databaseDebugInfo.logs.length > 0 && (
+            <div className={`mt-3 p-3 rounded border text-sm font-mono ${databaseDebugInfo.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+              <div className="mb-2 flex items-center justify-between">
+                <span className={`font-medium ${databaseDebugInfo.success ? 'text-green-700' : 'text-red-700'}`}>
+                  {databaseDebugInfo.success ? '✅ Connection Successful' : '❌ Connection Failed'}
+                </span>
+                {databaseDebugInfo.timestamp && (
+                  <span className="text-xs text-gray-500">
+                    {new Date(databaseDebugInfo.timestamp).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+              <div className="bg-black bg-opacity-10 p-2 rounded max-h-64 overflow-y-auto">
+                {databaseDebugInfo.logs.map((log, index) => (
+                  <div key={index} className="whitespace-pre-wrap mb-1">
+                    {log}
+                  </div>
+                ))}
               </div>
             </div>
           )}

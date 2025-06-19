@@ -202,6 +202,7 @@ class HighlightUpdateRequest(BaseModel):
 # ===============================
 # DATABASE CONNECTION CLASS
 # ===============================
+
 class DatabaseConnection:
     def __init__(self):
         self.connection_string = self._build_connection_string()
@@ -217,15 +218,13 @@ class DatabaseConnection:
             # For production, use system-assigned MSI
             print("🔐 Using system-assigned managed identity for database connection")
             connection_string = (
-                f"Driver={{ODBC Driver 18 for SQL Server}};"
-                f"Server={server};"
+                "Driver={ODBC Driver 18 for SQL Server};"
+                f"Server=tcp:{server},1433;"
                 f"Database={database};"
-                f"Authentication=ActiveDirectoryMSI;"
-                f"Encrypt=yes;"
-                f"TrustServerCertificate=no;"
-                f"Connection Timeout=30;"
-                f"Command Timeout=30;"
-                f"MultipleActiveResultSets=True;"
+                "Authentication=ActiveDirectoryMSI;"
+                "Encrypt=yes;"
+                "TrustServerCertificate=no;"
+                "Connection Timeout=30;"
             )
             return connection_string
         else:
@@ -234,73 +233,51 @@ class DatabaseConnection:
             password = os.getenv('AZURE_SQL_PASSWORD')
             
             # Check that all required credentials are provided
-            if not all([server, database, username, password]):
-                missing = []
-                if not server: missing.append('AZURE_SQL_SERVER')
-                if not database: missing.append('AZURE_SQL_DATABASE')
-                if not username: missing.append('AZURE_SQL_USERNAME')
-                if not password: missing.append('AZURE_SQL_PASSWORD')
-                
-                print(f"❌ Missing required environment variables: {', '.join(missing)}")
-                print(f"   Please set these in your .env file or environment")
-                raise ValueError(f"Missing required database environment variables: {', '.join(missing)}")
-            
-            print(f"🔗 Database connection details:")
-            print(f"   Server: {server}")
-            print(f"   Database: {database}")
-            print(f"   Username: {username}")
-            print(f"   Password: {'*' * len(password)}")  # Show masked password
-            
-            # Standard SQL authentication for development
-            connection_string = (
-                f"Driver={{ODBC Driver 18 for SQL Server}};"
-                f"Server={server};"
-                f"Database={database};"
-                f"UID={username};"
-                f"PWD={password};"
-                f"Encrypt=yes;"
-                f"TrustServerCertificate=yes;"
-                f"Connection Timeout=30;"
-                f"Command Timeout=30;"
-                f"MultipleActiveResultSets=True;"
-            )
-            print(f"🔑 Using SQL authentication for development")
-            return connection_string
-    
-    def test_connection(self):
-        """Test database connection"""
-        try:
-            environment = os.getenv("ENVIRONMENT", "development")
-            print(f"🔍 Testing connection to Azure SQL ({environment} mode)...")
-            with pyodbc.connect(self.connection_string) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT 1 as test_value")
-                result = cursor.fetchone()
-                if result and result[0] == 1:
-                    logger.info(f"✅ Database connection successful using {'MSI' if environment == 'production' else 'SQL auth'}")
-                    return True
-                else:
-                    logger.error("❌ Database test query failed")
-                    return False
-        except pyodbc.Error as e:
-            logger.error(f"❌ Database connection failed: {e}")
-            print(f"❌ Full error details: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"❌ Unexpected database error: {e}")
-            print(f"❌ Unexpected error: {e}")
-            return False
+            if all([server, database, username, password]):
+                # Direct pyodbc connection string
+                connection_string = (
+                    "Driver={ODBC Driver 18 for SQL Server};"
+                    f"Server=tcp:{server},1433;"
+                    f"Database={database};"
+                    f"UID={username};"
+                    f"PWD={password};"
+                    "Encrypt=yes;"
+                    "TrustServerCertificate=no;"
+                    "Connection Timeout=30;"
+                )
+                print(f"🔑 Using SQL authentication for development")
+                return connection_string
+            else:
+                print("❌ Database connection failed - missing credentials")
+                return None
     
     def get_connection(self):
         """Get a database connection"""
         try:
-            return pyodbc.connect(self.connection_string)
-        except pyodbc.Error as e:
-            logger.error(f"Failed to get database connection: {e}")
-            raise
+            return pyodbc.connect(self.connection_string, timeout=30)
         except Exception as e:
-            logger.error(f"Unexpected error getting database connection: {e}")
+            print(f"Failed to get database connection: {e}")
             raise
+    
+    def test_connection(self):
+        """Test database connection"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 as test_value")
+            result = cursor.fetchone()
+            conn.close()
+            if result and result[0] == 1:
+                print("✅ Database connection successful")
+                return True
+            else:
+                print("❌ Database test query failed")
+                return False
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+            print(f"❌ Full error details: {e}")
+            return False
+
 
 # ===============================
 # IMPORTS WITH FALLBACKS
@@ -492,6 +469,116 @@ app.add_middleware(
 # ===============================
 # ESSENTIAL ENDPOINT - THIS IS WHAT YOUR FRONTEND IS CALLING
 # ===============================
+
+
+@app.get("/api/debug/database-msi")
+async def debug_database_msi_connection():
+    """Debug endpoint for testing MSI database connection"""
+    try:
+        # Environment check
+        environment = os.getenv("ENVIRONMENT", "development")
+        log_output = []
+        
+        log_output.append(f"🔍 Environment: {environment}")
+        log_output.append(f"🔍 Testing Azure SQL connection via MSI authentication...")
+        
+        # Connection parameters
+        server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+        database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+        
+        log_output.append(f"📊 Connection details:")
+        log_output.append(f"   Server: {server}")
+        log_output.append(f"   Database: {database}")
+        log_output.append(f"   Authentication: MSI (System-assigned)")
+        
+        # Build proper pyodbc connection string for MSI
+        connection_string = (
+            "Driver={ODBC Driver 18 for SQL Server};"
+            f"Server=tcp:{server},1433;"
+            f"Database={database};"
+            "Authentication=ActiveDirectoryMSI;"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+            "Connection Timeout=30;"
+        )
+        
+        log_output.append(f"🔗 Connection string: {connection_string}")
+        
+        # Try to connect
+        log_output.append("🔄 Attempting to connect...")
+        conn = pyodbc.connect(connection_string)
+        
+        # Test basic query
+        cursor = conn.cursor()
+        log_output.append("🔍 Executing test query: SELECT 1 as test_column")
+        cursor.execute("SELECT 1 as test_column")
+        row = cursor.fetchone()
+        
+        if row and row[0] == 1:
+            log_output.append("✅ Connection successful! Query returned: 1")
+            
+            # Test table access
+            try:
+                log_output.append("🔍 Testing table access to user_highlights...")
+                cursor.execute("SELECT TOP 1 * FROM user_highlights")
+                columns = [column[0] for column in cursor.description]
+                log_output.append(f"✅ Table access successful! Found columns: {', '.join(columns)}")
+                
+                # Get count of highlights
+                cursor.execute("SELECT COUNT(*) FROM user_highlights")
+                count = cursor.fetchone()[0]
+                log_output.append(f"📊 Total highlights in database: {count}")
+                
+            except Exception as table_error:
+                log_output.append(f"⚠️ Table access test failed: {str(table_error)}")
+                
+            conn.close()
+            success = True
+        else:
+            log_output.append("❌ Query didn't return expected result")
+            success = False
+            
+    except Exception as e:
+        log_output.append(f"❌ Connection failed: {str(e)}")
+        log_output.append(f"Error type: {type(e).__name__}")
+        
+        # Additional debugging for connection errors
+        if "ActiveDirectoryMSI" in str(e):
+            log_output.append("🔍 MSI authentication error detected!")
+            log_output.append("👉 Make sure system-assigned identity is enabled on your container app")
+            log_output.append("👉 Make sure identity has access to SQL Database")
+        
+        success = False
+    
+    return {
+        "success": success,
+        "logs": log_output,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.post("/api/executive-orders/fetch")
+async def fetch_executive_orders_endpoint(request: ExecutiveOrderFetchRequest):
+    """
+    Endpoint for executive orders fetch - redirects to the simple integration endpoint
+    This endpoint is needed by the frontend
+    """
+    try:
+        logger.info(f"🔄 Received request to /api/executive-orders/fetch - redirecting to simple integration")
+        
+        # Simply call the simple integration endpoint
+        result = await fetch_executive_orders_simple_endpoint(request)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in executive orders fetch endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch executive orders: {str(e)}"
+        )
+
 
 @app.post("/api/fetch-executive-orders-simple")
 async def fetch_executive_orders_simple_endpoint(request: ExecutiveOrderFetchRequest):
@@ -837,15 +924,15 @@ async def quick_executive_orders_pipeline():
             "message": str(e)
         }
 
+
 @app.post("/api/fetch-executive-orders")
-async def legacy_fetch_executive_orders():
+async def legacy_fetch_executive_orders(request: ExecutiveOrderFetchRequest):
     """Legacy endpoint for backward compatibility"""
     try:
-        logger.info("🔄 Legacy fetch executive orders endpoint")
+        logger.info("🔄 Legacy fetch executive orders endpoint - calling simple integration")
         
-        # Call the main pipeline
-        result = await run_executive_orders_pipeline()
-        
+        # Call the main implementation with the request
+        result = await fetch_executive_orders_simple_endpoint(request)
         return result
         
     except Exception as e:
@@ -854,6 +941,24 @@ async def legacy_fetch_executive_orders():
             "success": False,
             "message": str(e)
         }
+
+#@app.post("/api/fetch-executive-orders")
+#async def legacy_fetch_executive_orders():
+#    """Legacy endpoint for backward compatibility"""
+#    try:
+#        logger.info("🔄 Legacy fetch executive orders endpoint")
+#        
+#        # Call the main pipeline
+#        result = await run_executive_orders_pipeline()
+#        
+#        return result
+#        
+#    except Exception as e:
+#        logger.error(f"❌ Error in legacy fetch: {e}")
+#        return {
+#            "success": False,
+#            "message": str(e)
+#        }
 # ===============================
 # HIGHLIGHTS FUNCTIONS
 # ===============================

@@ -7,6 +7,8 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import urllib.parse
+from direct_db import get_db_cursor, get_db_connection, test_connection
+import pyodbc
 
 # Import database configuration (keep your existing import)
 try:
@@ -127,12 +129,13 @@ def get_database_url():
        # For production, use system-assigned MSI
        print("🔐 Using system-assigned managed identity for executive orders")
        connection_string = (
-           f"mssql+pyodbc://{server}:1433/{database}"
-           f"?driver=ODBC+Driver+18+for+SQL+Server"
-           f"&authentication=ActiveDirectoryMSI"
-           f"&Encrypt=yes"
-           f"&TrustServerCertificate=no"
-           f"&Connection+Timeout=30"
+           "Driver={ODBC Driver 18 for SQL Server};"
+           f"Server=tcp:{server},1433;"
+           f"Database={database};"
+           "Authentication=ActiveDirectoryMSI;"
+           "Encrypt=yes;"
+           "TrustServerCertificate=no;"
+           "Connection Timeout=30;"
        )
        return connection_string
    else:
@@ -141,17 +144,16 @@ def get_database_url():
        password = os.getenv('AZURE_SQL_PASSWORD')
        
        if all([server, database, username, password]):
-           # URL encode password for special characters
-           password_encoded = urllib.parse.quote_plus(password)
-           username_encoded = urllib.parse.quote_plus(username)
-           
            # Standard SQL authentication for development
            connection_string = (
-               f"mssql+pyodbc://{username_encoded}:{password_encoded}@{server}:1433/{database}"
-               f"?driver=ODBC+Driver+18+for+SQL+Server"
-               f"&Encrypt=yes"
-               f"&TrustServerCertificate=no"
-               f"&Connection+Timeout=30"
+               "Driver={ODBC Driver 18 for SQL Server};"
+               f"Server=tcp:{server},1433;"
+               f"Database={database};"
+               f"UID={username};"
+               f"PWD={password};"
+               "Encrypt=yes;"
+               "TrustServerCertificate=no;"
+               "Connection Timeout=30;"
            )
            print(f"🔑 Using SQL authentication for development")
            return connection_string
@@ -160,34 +162,51 @@ def get_database_url():
            print("ℹ️ Using SQLite fallback database")
            return "sqlite:///./executive_orders.db"
 
-DATABASE_URL = get_database_url()
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# New direct pyodbc code:
+CONNECTION_STRING = get_database_url()
+
+def get_connection():
+    """Get a pyodbc database connection"""
+    try:
+        return pyodbc.connect(CONNECTION_STRING, timeout=30)
+    except Exception as e:
+        print(f"❌ Error connecting to database: {e}")
+        raise
+
+#DATABASE_URL = get_database_url()
+#engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+#SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+#def init_executive_orders_db():
+#    """Initialize the executive orders database with all tables"""
+#    try:
+#        # Create all tables
+#        Base.metadata.create_all(bind=engine)
+#        print("✅ Executive orders database initialized with all tables")
+#        return True
+#    except Exception as e:
+#        print(f"❌ Error initializing executive orders database: {e}")
+#        return False
+
 
 def init_executive_orders_db():
     """Initialize the executive orders database with all tables"""
     try:
-        # Create all tables
-        Base.metadata.create_all(bind=engine)
-        print("✅ Executive orders database initialized with all tables")
-        return True
+        server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+        database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+        
+        # Test connection
+        connected = test_connection(server, database)
+        if connected:
+            print("✅ Executive orders database connected successfully")
+            return True
+        else:
+            print("❌ Could not connect to executive orders database")
+            return False
     except Exception as e:
         print(f"❌ Error initializing executive orders database: {e}")
         return False
-
-@contextmanager
-def get_db_session():
-    """Get database session with enhanced error handling"""
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        print(f"Database error: {e}")
-        raise
-    finally:
-        session.close()
 
 def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
     """Enhanced save with comprehensive result tracking"""
@@ -203,10 +222,15 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
         "error_details": []
     }
     
+    server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+    database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+    
     try:
-        with get_db_session() as session:
+        with get_db_connection(server, database) as conn:
             for order_data in orders:
                 try:
+                    cursor = conn.cursor()
+                    
                     # Use document_number as primary identifier
                     document_number = order_data.get('document_number', '')
                     if not document_number:
@@ -215,52 +239,53 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                         print(f"⚠️ Generated document number: {document_number}")
                     
                     # Check if order already exists
-                    existing_order = session.query(ExecutiveOrder).filter_by(document_number=document_number).first()
+                    cursor.execute("SELECT id FROM executive_orders WHERE document_number = ?", document_number)
+                    existing = cursor.fetchone()
                     
-                    if existing_order:
-                        # Update existing order with all new fields
+                    if existing:
+                        # Build update SQL with all fields
+                        update_sql = "UPDATE executive_orders SET "
+                        update_fields = []
+                        params = []
+                        
                         for key, value in order_data.items():
-                            if hasattr(existing_order, key) and value is not None:
-                                setattr(existing_order, key, value)
-                        existing_order.last_updated = datetime.utcnow()
-                        existing_order.last_scraped_at = datetime.utcnow()
+                            if key != 'document_number' and value is not None:
+                                update_fields.append(f"{key} = ?")
+                                params.append(value)
+                        
+                        update_sql += ", ".join(update_fields)
+                        update_sql += ", last_updated = ?, last_scraped_at = ? WHERE document_number = ?"
+                        
+                        # Add timestamp parameters
+                        now = datetime.utcnow()
+                        params.extend([now, now, document_number])
+                        
+                        cursor.execute(update_sql, params)
                         results["updated"] += 1
                         print(f"🔄 Updated EO {order_data.get('eo_number', 'Unknown')}")
                     else:
-                        # Create new order with comprehensive field mapping
-                        new_order = ExecutiveOrder(
-                            document_number=document_number,
-                            eo_number=order_data.get('eo_number', ''),
-                            title=order_data.get('title', ''),
-                            summary=order_data.get('summary', ''),
-                            signing_date=order_data.get('signing_date', ''),
-                            publication_date=order_data.get('publication_date', ''),
-                            citation=order_data.get('citation', ''),
-                            presidential_document_type=order_data.get('presidential_document_type', ''),
-                            category=order_data.get('category', 'not-applicable'),
-                            html_url=order_data.get('html_url', ''),
-                            pdf_url=order_data.get('pdf_url', ''),
-                            trump_2025_url=order_data.get('trump_2025_url', ''),
-                            
-                            # AI Analysis fields (with fallbacks)
-                            ai_summary=order_data.get('ai_summary', ''),
-                            ai_executive_summary=order_data.get('ai_executive_summary', order_data.get('ai_summary', '')),
-                            ai_key_points=order_data.get('ai_key_points', ''),
-                            ai_talking_points=order_data.get('ai_talking_points', order_data.get('ai_key_points', '')),
-                            ai_business_impact=order_data.get('ai_business_impact', ''),
-                            ai_potential_impact=order_data.get('ai_potential_impact', order_data.get('ai_business_impact', '')),
-                            ai_version=order_data.get('ai_version', 'azure_openai_v2'),
-                            
-                            # Metadata
-                            source=order_data.get('source', 'Federal Register API v1'),
-                            raw_data_available=order_data.get('raw_data_available', True),
-                            processing_status='completed',
-                            last_scraped_at=datetime.utcnow()
-                        )
-                        session.add(new_order)
+                        # Build insert SQL
+                        fields = ['document_number']
+                        values = [document_number]
+                        
+                        for key, value in order_data.items():
+                            if key != 'document_number' and value is not None:
+                                fields.append(key)
+                                values.append(value)
+                        
+                        # Add timestamps
+                        now = datetime.utcnow()
+                        fields.extend(['created_at', 'last_updated', 'last_scraped_at'])
+                        values.extend([now, now, now])
+                        
+                        placeholders = ','.join(['?'] * len(fields))
+                        insert_sql = f"INSERT INTO executive_orders ({','.join(fields)}) VALUES ({placeholders})"
+                        
+                        cursor.execute(insert_sql, values)
                         results["inserted"] += 1
                         print(f"✅ Added EO {order_data.get('eo_number', 'Unknown')}: {order_data.get('title', 'No title')[:50]}...")
                     
+                    conn.commit()
                     results["total_processed"] += 1
                     
                 except Exception as e:
@@ -278,6 +303,133 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
         results["errors"] = len(orders)
         results["error_details"].append(f"Critical database error: {str(e)}")
         return results
+
+
+
+@contextmanager
+def get_db_session():
+    """Get database session with enhanced error handling"""
+    conn = None
+    try:
+        # Get the connection string
+        connection_string = get_database_url()
+        # Connect using pyodbc
+        conn = pyodbc.connect(connection_string)
+        yield conn
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Database error: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+
+#@contextmanager
+#def get_db_session():
+#    """Get database session with enhanced error handling"""
+#    session = SessionLocal()
+#    try:
+#        yield session
+#        session.commit()
+#    except Exception as e:
+#        session.rollback()
+#        print(f"Database error: {e}")
+#        raise
+#    finally:
+#        session.close()
+
+#def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
+#    """Enhanced save with comprehensive result tracking"""
+#    
+#    if not orders:
+#        return {"total_processed": 0, "inserted": 0, "updated": 0, "errors": 0, "error_details": []}
+#    
+#    results = {
+#        "total_processed": 0,
+#        "inserted": 0,
+#        "updated": 0,
+#        "errors": 0,
+#        "error_details": []
+#    }
+#    
+#    try:
+#        with get_db_session() as session:
+#            for order_data in orders:
+#                try:
+#                    # Use document_number as primary identifier
+#                    document_number = order_data.get('document_number', '')
+#                    if not document_number:
+#                        # Generate a document number if not provided
+#                        document_number = f"EO-{order_data.get('eo_number', '')}-{int(datetime.now().timestamp())}"
+#                        print(f"⚠️ Generated document number: {document_number}")
+#                    
+#                    # Check if order already exists
+#                    existing_order = session.query(ExecutiveOrder).filter_by(document_number=document_number).first()
+#                    
+#                    if existing_order:
+#                        # Update existing order with all new fields
+#                        for key, value in order_data.items():
+#                            if hasattr(existing_order, key) and value is not None:
+#                                setattr(existing_order, key, value)
+#                        existing_order.last_updated = datetime.utcnow()
+#                        existing_order.last_scraped_at = datetime.utcnow()
+#                        results["updated"] += 1
+#                        print(f"🔄 Updated EO {order_data.get('eo_number', 'Unknown')}")
+#                    else:
+#                        # Create new order with comprehensive field mapping
+#                        new_order = ExecutiveOrder(
+#                            document_number=document_number,
+#                            eo_number=order_data.get('eo_number', ''),
+#                            title=order_data.get('title', ''),
+#                            summary=order_data.get('summary', ''),
+#                            signing_date=order_data.get('signing_date', ''),
+#                            publication_date=order_data.get('publication_date', ''),
+#                            citation=order_data.get('citation', ''),
+#                            presidential_document_type=order_data.get('presidential_document_type', ''),
+#                            category=order_data.get('category', 'not-applicable'),
+#                            html_url=order_data.get('html_url', ''),
+#                            pdf_url=order_data.get('pdf_url', ''),
+#                            trump_2025_url=order_data.get('trump_2025_url', ''),
+#                            
+#                            # AI Analysis fields (with fallbacks)
+#                            ai_summary=order_data.get('ai_summary', ''),
+#                            ai_executive_summary=order_data.get('ai_executive_summary', order_data.get('ai_summary', '')),
+#                            ai_key_points=order_data.get('ai_key_points', ''),
+#                            ai_talking_points=order_data.get('ai_talking_points', order_data.get('ai_key_points', '')),
+#                            ai_business_impact=order_data.get('ai_business_impact', ''),
+#                            ai_potential_impact=order_data.get('ai_potential_impact', order_data.get('ai_business_impact', '')),
+#                            ai_version=order_data.get('ai_version', 'azure_openai_v2'),
+#                            
+#                            # Metadata
+#                            source=order_data.get('source', 'Federal Register API v1'),
+#                            raw_data_available=order_data.get('raw_data_available', True),
+#                            processing_status='completed',
+#                            last_scraped_at=datetime.utcnow()
+#                        )
+#                        session.add(new_order)
+#                        results["inserted"] += 1
+#                        print(f"✅ Added EO {order_data.get('eo_number', 'Unknown')}: {order_data.get('title', 'No title')[:50]}...")
+#                    
+#                    results["total_processed"] += 1
+#                    
+#                except Exception as e:
+#                    results["errors"] += 1
+#                    error_msg = f"Error saving order {order_data.get('eo_number', 'unknown')}: {str(e)}"
+#                    results["error_details"].append(error_msg)
+#                    print(f"⚠️ {error_msg}")
+#                    continue
+#        
+#        print(f"💾 Saved {results['total_processed']} orders: {results['inserted']} new, {results['updated']} updated, {results['errors']} errors")
+#        return results
+#        
+#    except Exception as e:
+#        print(f"❌ Critical error saving executive orders: {e}")
+#        results["errors"] = len(orders)
+#        results["error_details"].append(f"Critical database error: {str(e)}")
+#        return results
 
 def add_user_highlight(user_id: str, order_id: str, notes: str = None, 
                       priority: int = 1, tags: str = None) -> bool:
@@ -573,67 +725,6 @@ def get_executive_order_by_number(eo_number: str):
         print(f"Error getting executive order by number: {e}")
         return None
 
-def get_executive_orders_stats():
-    """Your existing stats function"""
-
-def get_executive_orders_stats() -> Dict:
-    """Enhanced statistics with user activity"""
-    try:
-        with get_db_session() as session:
-            total_orders = session.query(ExecutiveOrder).count()
-            
-            # Recent orders (last 30 days)
-            thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-            recent_orders = session.query(ExecutiveOrder).filter(
-                ExecutiveOrder.signing_date >= thirty_days_ago
-            ).count()
-            
-            # This week
-            seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-            weekly_orders = session.query(ExecutiveOrder).filter(
-                ExecutiveOrder.signing_date >= seven_days_ago
-            ).count()
-            
-            # Orders by category
-            from sqlalchemy import func
-            categories = session.query(
-                ExecutiveOrder.category,
-                func.count(ExecutiveOrder.id).label('count')
-            ).group_by(ExecutiveOrder.category).all()
-            
-            category_stats = {}
-            for category, count in categories:
-                if category:
-                    category_stats[f"{category}_orders"] = count
-            
-            # Latest order date
-            latest_order = session.query(ExecutiveOrder).order_by(
-                ExecutiveOrder.signing_date.desc()
-            ).first()
-            
-            # User highlight stats
-            total_highlights = session.query(UserHighlight).filter_by(is_archived=False).count()
-            
-            return {
-                "total_orders": total_orders,
-                "orders_last_month": recent_orders,
-                "orders_last_week": weekly_orders,
-                "total_highlights": total_highlights,
-                "latest_order_date": latest_order.signing_date if latest_order else None,
-                "last_scraped": latest_order.last_scraped_at.isoformat() if latest_order and latest_order.last_scraped_at else None,
-                "has_data": total_orders > 0,
-                **category_stats
-            }
-    
-    except Exception as e:
-        print(f"Error getting executive orders stats: {e}")
-        return {
-            "total_orders": 0,
-            "orders_last_month": 0,
-            "orders_last_week": 0,
-            "total_highlights": 0,
-            "has_data": False
-        }
 
 def test_executive_orders_db() -> bool:
     """Enhanced database test"""

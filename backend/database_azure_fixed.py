@@ -16,7 +16,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# CORRECTED Azure SQL Connection String
+
 def build_azure_sql_connection():
     """Build proper Azure SQL connection string"""
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
@@ -28,18 +28,16 @@ def build_azure_sql_connection():
         print("❌ Missing Azure SQL configuration")
         return None
     
-    # URL encode the password properly
-    password_encoded = urllib.parse.quote_plus(password)
-    username_encoded = urllib.parse.quote_plus(username)
-    
-    # CORRECTED: Proper Azure SQL connection string format
+    # Direct pyodbc connection string
     connection_string = (
-        f"mssql+pyodbc://{username_encoded}:{password_encoded}@{server}:1433/{database}"
-        f"?driver=ODBC+Driver+18+for+SQL+Server"
-        f"&Encrypt=yes"
-        f"&TrustServerCertificate=no"
-        f"&Connection+Timeout=30"
-        f"&CommandTimeout=60"
+        "Driver={ODBC Driver 18 for SQL Server};"
+        f"Server=tcp:{server},1433;"
+        f"Database={database};"
+        f"UID={username};"
+        f"PWD={password};"
+        "Encrypt=yes;"
+        "TrustServerCertificate=no;"
+        "Connection Timeout=30;"
     )
     
     print(f"✅ Built Azure SQL connection string for server: {server}")
@@ -55,22 +53,79 @@ def build_connection_string_with_managed_identity():
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
     
     if environment == "production":
-        # Production environment - use system-assigned identity (simplest approach)
+        # Production environment - use system-assigned identity
         print("🔐 Using system-assigned managed identity authentication")
         
-        # For system-assigned identity, no client_id needed
+        # Direct pyodbc connection string with MSI
         connection_string = (
-            f"mssql+pyodbc://{server}:1433/{database}"
-            f"?driver=ODBC+Driver+18+for+SQL+Server"
-            f"&authentication=ActiveDirectoryMSI"  # System-assigned identity uses this
-            f"&Encrypt=yes"
-            f"&TrustServerCertificate=no"
-            f"&Connection+Timeout=30"
+            "Driver={ODBC Driver 18 for SQL Server};"
+            f"Server=tcp:{server},1433;"
+            f"Database={database};"
+            "Authentication=ActiveDirectoryMSI;"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+            "Connection Timeout=30;"
         )
         return connection_string
     else:
         # Use regular connection for development
         return build_azure_sql_connection()
+
+
+#def build_azure_sql_connection():
+#    """Build proper Azure SQL connection string"""
+#    server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+#    database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+#    username = os.getenv('AZURE_SQL_USERNAME', 'david.anderson')
+#    password = os.getenv('AZURE_SQL_PASSWORD', 'failed to pull SQL password')
+#    
+#    if not all([server, database, username, password]):
+#        print("❌ Missing Azure SQL configuration")
+#        return None
+#    
+#    # URL encode the password properly
+#    password_encoded = urllib.parse.quote_plus(password)
+#    username_encoded = urllib.parse.quote_plus(username)
+#    
+#    # CORRECTED: Proper Azure SQL connection string format
+#    connection_string = (
+#        f"mssql+pyodbc://{username_encoded}:{password_encoded}@{server}:1433/{database}"
+#        f"?driver=ODBC+Driver+18+for+SQL+Server"
+#        f"&Encrypt=yes"
+#        f"&TrustServerCertificate=no"
+#        f"&Connection+Timeout=30"
+#        f"&CommandTimeout=60"
+#    )
+#    
+#    print(f"✅ Built Azure SQL connection string for server: {server}")
+#    print(f"   Database: {database}")
+#    print(f"   Username: {username}")
+#    return connection_string
+#
+#
+#def build_connection_string_with_managed_identity():
+#    """Build Azure SQL connection string using system-assigned identity"""
+#    environment = os.getenv("ENVIRONMENT", "development")
+#    server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+#    database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+#    
+#    if environment == "production":
+#        # Production environment - use system-assigned identity (simplest approach)
+#        print("🔐 Using system-assigned managed identity authentication")
+#        
+#        # For system-assigned identity, no client_id needed
+#        connection_string = (
+#            f"mssql+pyodbc://{server}:1433/{database}"
+#            f"?driver=ODBC+Driver+18+for+SQL+Server"
+#            f"&authentication=ActiveDirectoryMSI"
+#            f"&Encrypt=yes"
+#            f"&TrustServerCertificate=no"
+#            f"&Connection+Timeout=30"
+#        )
+#        return connection_string
+#    else:
+#        # Use regular connection for development
+#        return build_azure_sql_connection()
 
 
 # Get database URL
