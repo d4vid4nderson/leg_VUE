@@ -608,7 +608,6 @@ async def fetch_executive_orders_simple_integration(
                             title=order.get('title', ''),
                             abstract=order.get('summary', ''),
                             order_number=eo_num,
-                            url=order.get('html_url', '')
                         )
                         
                         if ai_result and isinstance(ai_result, dict):
