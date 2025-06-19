@@ -18,8 +18,460 @@ import {
   Building,
   GraduationCap,
   Stethoscope,
-  Wrench
+  Wrench,
+  Settings,
+  Database,
+  Eye,
+  XCircle,
+  CheckCircle
 } from 'lucide-react';
+
+// ADDED: Debug Panel Component - Integrated directly into this file
+const HighlightsDebugPanel = ({ apiUrl }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [diagnosticData, setDiagnosticData] = useState(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [lastRun, setLastRun] = useState(null);
+
+  // Run diagnostic analysis
+  const runDiagnostic = async () => {
+    setIsRunning(true);
+    try {
+      console.log('🚀 Running diagnostic analysis...');
+      
+      // Fetch data from both endpoints
+      const [executiveOrders, stateLegislation, highlights] = await Promise.all([
+        fetchData('/api/executive-orders'),
+        fetchData('/api/state-legislation'), 
+        fetchData('/api/highlights?user_id=1')
+      ]);
+
+      // Analyze duplicates
+      const duplicates = findDuplicates(executiveOrders, stateLegislation);
+      
+      // Analyze metadata issues
+      const metadataIssues = analyzeMetadata(executiveOrders, stateLegislation);
+      
+      // Analyze highlights consistency
+      const highlightIssues = analyzeHighlights(highlights, executiveOrders, stateLegislation);
+
+      const results = {
+        timestamp: new Date().toISOString(),
+        summary: {
+          totalExecutiveOrders: executiveOrders.length,
+          totalStateLegislation: stateLegislation.length,
+          totalHighlights: highlights.length,
+          duplicatesFound: duplicates.length,
+          metadataIssues: Object.values(metadataIssues).flat().length,
+          highlightIssues: highlightIssues.length
+        },
+        duplicates,
+        metadataIssues,
+        highlightIssues,
+        rawData: {
+          executiveOrders: executiveOrders.slice(0, 3), // Sample data
+          stateLegislation: stateLegislation.slice(0, 3),
+          highlights: highlights.slice(0, 3)
+        }
+      };
+
+      setDiagnosticData(results);
+      setLastRun(new Date());
+      console.log('✅ Diagnostic complete:', results);
+      
+    } catch (error) {
+      console.error('❌ Diagnostic failed:', error);
+      setDiagnosticData({ error: error.message });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // Helper functions
+  const fetchData = async (endpoint) => {
+    const response = await fetch(`${apiUrl}${endpoint}`);
+    if (!response.ok) throw new Error(`${endpoint}: ${response.status}`);
+    
+    const data = await response.json();
+    return Array.isArray(data) ? data : data.results || data.data || data.highlights || [];
+  };
+
+  const findDuplicates = (eos, states) => {
+    const duplicates = [];
+    const titleMap = new Map();
+    
+    // Check executive orders
+    eos.forEach((eo, index) => {
+      const title = eo.title?.toLowerCase().trim();
+      if (!title) return;
+      
+      if (titleMap.has(title)) {
+        duplicates.push({
+          title: eo.title,
+          type: 'duplicate_title',
+          issue: 'Same title in multiple executive orders',
+          items: [titleMap.get(title), { type: 'executive_order', index, id: eo.id }]
+        });
+      } else {
+        titleMap.set(title, { type: 'executive_order', index, id: eo.id });
+      }
+    });
+
+    // Check for cross-contamination
+    states.forEach((state, index) => {
+      const title = state.title?.toLowerCase().trim();
+      if (title && titleMap.has(title)) {
+        duplicates.push({
+          title: state.title,
+          type: 'cross_contamination',
+          issue: 'Same title appears in both Executive Orders and State Legislation',
+          items: [titleMap.get(title), { type: 'state_legislation', index, id: state.id }],
+          sqlFix: `DELETE FROM documents WHERE title LIKE '%${state.title}%' AND document_type = 'State Legislation';`
+        });
+      }
+    });
+
+    return duplicates;
+  };
+
+  const analyzeMetadata = (eos, states) => {
+    const issues = {
+      wrongSources: [],
+      malformedSources: [],
+      missingIds: [],
+      typeErrors: []
+    };
+
+    // Check executive orders
+    eos.forEach((eo, index) => {
+      if (eo.source && eo.source.includes('Legislature')) {
+        issues.wrongSources.push({
+          type: 'executive_order',
+          title: eo.title,
+          issue: 'Executive Order has Legislature source',
+          current: eo.source,
+          expected: 'Executive Branch',
+          sqlFix: `UPDATE executive_orders SET source = 'Executive Branch' WHERE title = '${eo.title?.replace(/'/g, "''")}';`
+        });
+      }
+    });
+
+    // Check state legislation
+    states.forEach((state, index) => {
+      // Check for malformed sources like "5 Legislature"
+      if (state.source && /^\d+/.test(state.source)) {
+        issues.malformedSources.push({
+          type: 'state_legislation',
+          title: state.title,
+          issue: 'Source starts with number',
+          current: state.source,
+          expected: state.state ? `${state.state} Legislature` : 'State Legislature',
+          sqlFix: `UPDATE state_legislation SET source = '${state.state ? state.state + ' Legislature' : 'State Legislature'}' WHERE title = '${state.title?.replace(/'/g, "''")}';`
+        });
+      }
+
+      // Check for missing IDs
+      if (!state.bill_id && !state.id && !state.bill_number) {
+        issues.missingIds.push({
+          type: 'state_legislation',
+          title: state.title,
+          issue: 'Missing all ID fields'
+        });
+      }
+    });
+
+    return issues;
+  };
+
+  const analyzeHighlights = (highlights, eos, states) => {
+    const issues = [];
+    const allOrders = [...eos, ...states];
+    
+    highlights.forEach(highlight => {
+      const orderId = highlight.order_id;
+      const orderType = highlight.order_type;
+      
+      // Find corresponding order
+      const matchingOrder = allOrders.find(order => {
+        if (orderType === 'executive_order') {
+          return order.executive_order_number === orderId || order.id === orderId;
+        } else {
+          return order.bill_id === orderId || order.id === orderId;
+        }
+      });
+
+      if (!matchingOrder) {
+        issues.push({
+          type: 'orphaned_highlight',
+          orderId,
+          orderType,
+          issue: 'Highlight points to non-existent order'
+        });
+      }
+    });
+
+    return issues;
+  };
+
+  if (!isOpen) {
+    return (
+      <button
+        onClick={() => setIsOpen(true)}
+        className="fixed bottom-4 right-4 bg-red-600 text-white p-3 rounded-full shadow-lg hover:bg-red-700 transition-colors z-50"
+        title="Open Debug Panel"
+      >
+        <Settings size={20} />
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="bg-gray-800 text-white p-4 flex justify-between items-center">
+          <h2 className="text-xl font-bold">Highlights Data Quality Debugger</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={runDiagnostic}
+              disabled={isRunning}
+              className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={isRunning ? 'animate-spin' : ''} />
+              {isRunning ? 'Running...' : 'Run Diagnostic'}
+            </button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <div className="flex">
+            {[
+              { key: 'overview', label: 'Overview', icon: Eye },
+              { key: 'duplicates', label: 'Duplicates', icon: AlertTriangle },
+              { key: 'metadata', label: 'Metadata Issues', icon: Database },
+              { key: 'raw', label: 'Raw Data', icon: Settings }
+            ].map(tab => {
+              const IconComponent = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-4 py-3 font-medium text-sm flex items-center gap-2 ${
+                    activeTab === tab.key
+                      ? 'border-b-2 border-blue-500 text-blue-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <IconComponent size={16} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto max-h-[70vh]">
+          {!diagnosticData ? (
+            <div className="text-center py-12">
+              <Database size={48} className="mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-600 mb-2">No Diagnostic Data</h3>
+              <p className="text-gray-500 mb-4">Click "Run Diagnostic" to analyze data quality issues.</p>
+            </div>
+          ) : diagnosticData.error ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-red-800">
+                <XCircle size={20} />
+                <span className="font-semibold">Diagnostic Failed</span>
+              </div>
+              <p className="text-red-700 mt-2">{diagnosticData.error}</p>
+            </div>
+          ) : (
+            <div>
+              {/* Overview Tab */}
+              {activeTab === 'overview' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-blue-800">Executive Orders</h4>
+                      <p className="text-2xl font-bold text-blue-600">{diagnosticData.summary.totalExecutiveOrders}</p>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-green-800">State Legislation</h4>
+                      <p className="text-2xl font-bold text-green-600">{diagnosticData.summary.totalStateLegislation}</p>
+                    </div>
+                    <div className="bg-purple-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-purple-800">Highlights</h4>
+                      <p className="text-2xl font-bold text-purple-600">{diagnosticData.summary.totalHighlights}</p>
+                    </div>
+                    <div className="bg-red-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-red-800">Total Issues</h4>
+                      <p className="text-2xl font-bold text-red-600">
+                        {diagnosticData.summary.duplicatesFound + diagnosticData.summary.metadataIssues + diagnosticData.summary.highlightIssues}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-semibold text-gray-800 mb-2">Quick Summary</h4>
+                    <ul className="space-y-1 text-sm">
+                      <li className="flex items-center gap-2">
+                        {diagnosticData.summary.duplicatesFound > 0 ? (
+                          <XCircle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle size={16} className="text-green-500" />
+                        )}
+                        <span>{diagnosticData.summary.duplicatesFound} duplicate(s) found</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        {diagnosticData.summary.metadataIssues > 0 ? (
+                          <XCircle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle size={16} className="text-green-500" />
+                        )}
+                        <span>{diagnosticData.summary.metadataIssues} metadata issue(s) found</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        {diagnosticData.summary.highlightIssues > 0 ? (
+                          <XCircle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle size={16} className="text-green-500" />
+                        )}
+                        <span>{diagnosticData.summary.highlightIssues} highlight issue(s) found</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  {lastRun && (
+                    <p className="text-xs text-gray-500">Last run: {lastRun.toLocaleString()}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Duplicates Tab */}
+              {activeTab === 'duplicates' && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Duplicate Content Analysis</h3>
+                  
+                  {diagnosticData.duplicates.length === 0 ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-green-800">
+                        <CheckCircle size={20} />
+                        <span className="font-semibold">No Duplicates Found</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {diagnosticData.duplicates.map((dup, index) => (
+                        <div key={index} className="bg-red-50 border border-red-200 rounded-lg p-4">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle size={20} className="text-red-500 mt-0.5" />
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-red-800">{dup.title}</h4>
+                              <p className="text-red-700 text-sm">{dup.issue}</p>
+                              <p className="text-red-600 text-xs mt-1">Type: {dup.type}</p>
+                              {dup.sqlFix && (
+                                <div className="mt-2 bg-white p-2 rounded border">
+                                  <p className="text-xs text-gray-600 mb-1">Suggested SQL Fix:</p>
+                                  <p className="text-xs font-mono text-gray-700 break-all">
+                                    {dup.sqlFix}
+                                  </p>
+                                  <button
+                                    onClick={() => navigator.clipboard?.writeText(dup.sqlFix)}
+                                    className="mt-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                                  >
+                                    Copy SQL
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Metadata Tab */}
+              {activeTab === 'metadata' && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Metadata Issues</h3>
+                  
+                  {Object.entries(diagnosticData.metadataIssues).map(([category, issues]) => (
+                    issues.length > 0 && (
+                      <div key={category} className="space-y-2">
+                        <h4 className="font-medium text-gray-800 capitalize">{category.replace(/([A-Z])/g, ' $1')}</h4>
+                        {issues.map((issue, index) => (
+                          <div key={index} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <h5 className="font-medium text-yellow-800">{issue.title}</h5>
+                            <p className="text-yellow-700 text-sm">{issue.issue}</p>
+                            {issue.current && (
+                              <div className="mt-2 text-xs">
+                                <span className="text-gray-600">Current: </span>
+                                <span className="font-mono bg-white px-1 rounded">{issue.current}</span>
+                                {issue.expected && (
+                                  <>
+                                    <span className="text-gray-600 ml-2">→ Expected: </span>
+                                    <span className="font-mono bg-white px-1 rounded">{issue.expected}</span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                            {issue.sqlFix && (
+                              <div className="mt-2 bg-white p-2 rounded border">
+                                <p className="text-xs text-gray-600 mb-1">Suggested SQL Fix:</p>
+                                <p className="text-xs font-mono text-gray-700 break-all">
+                                  {issue.sqlFix}
+                                </p>
+                                <button
+                                  onClick={() => navigator.clipboard?.writeText(issue.sqlFix)}
+                                  className="mt-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                                >
+                                  Copy SQL
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
+
+              {/* Raw Data Tab */}
+              {activeTab === 'raw' && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Raw Data Sample</h3>
+                  
+                  {Object.entries(diagnosticData.rawData).map(([key, data]) => (
+                    <div key={key} className="space-y-2">
+                      <h4 className="font-medium text-gray-800 capitalize">{key.replace(/([A-Z])/g, ' $1')}</h4>
+                      <div className="bg-gray-50 p-3 rounded-lg overflow-x-auto">
+                        <pre className="text-xs text-gray-700">
+                          {JSON.stringify(data, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Backend API URL - Same as ExecutiveOrdersPage
 const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
@@ -82,6 +534,50 @@ const getOrderId = (order) => {
   
   if (order.index !== undefined) return `eo-index-${order.index}`;
   return `eo-fallback-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// ADDED: State bill ID generation (matching StatePage logic)
+const getStateBillId = (bill) => {
+  if (!bill) return null;
+  
+  // Priority order for ID selection to ensure consistency with highlights
+  if (bill.bill_id && typeof bill.bill_id === 'string') return bill.bill_id;
+  if (bill.id && typeof bill.id === 'string') return bill.id;
+  
+  // Create consistent ID format
+  if (bill.bill_number && bill.state) {
+    return `${bill.state}-${bill.bill_number}`;
+  }
+  if (bill.bill_number) {
+    return `${bill.state || 'unknown'}-${bill.bill_number}`;
+  }
+  
+  // Fallback using title hash for consistency
+  if (bill.title) {
+    const titleHash = bill.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+    return `state-bill-${titleHash}`;
+  }
+  
+  // Last resort
+  return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// ADDED: Universal ID generation that handles both types
+const getUniversalOrderId = (order) => {
+  if (!order) return null;
+  
+  // Determine order type and use appropriate ID generation
+  const isExecutiveOrder = !!(order.executive_order_number || order.document_number || order.eo_number);
+  const isStateLegislation = !!(order.bill_number && !isExecutiveOrder);
+  
+  if (isExecutiveOrder || order.order_type === 'executive_order') {
+    return getOrderId(order);
+  } else if (isStateLegislation || order.order_type === 'state_legislation') {
+    return getStateBillId(order);
+  } else {
+    // Fallback to executive order logic
+    return getOrderId(order);
+  }
 };
 
 const stripHtmlTags = (content) => {
@@ -378,7 +874,7 @@ const formatUniversalContent = (content) => {
   }}>{textContent}</div>;
 };
 
-// Simplified API service for highlights - FIXED RESPONSE HANDLING
+// UPDATED: Enhanced API service for highlights - NOW SUPPORTS BOTH TYPES
 class HighlightsAPI {
   static async getHighlights(userId = 1) {
     try {
@@ -548,9 +1044,99 @@ class HighlightsAPI {
       return [];
     }
   }
+
+  // NEW: Fetch all state legislation
+  static async getAllStateLegislation() {
+    try {
+      console.log('🔍 Fetching ALL state legislation from database...');
+      
+      const response = await fetch(`${API_URL}/api/state-legislation?per_page=100`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`❌ State legislation API failed: ${response.status}`);
+        
+        // Try basic endpoint
+        const basicResponse = await fetch(`${API_URL}/api/state-legislation`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!basicResponse.ok) {
+          console.error(`❌ Basic state legislation endpoint also failed: ${basicResponse.status}`);
+          return [];
+        }
+        
+        const basicData = await basicResponse.json();
+        let ordersArray = [];
+        
+        if (Array.isArray(basicData)) {
+          ordersArray = basicData;
+        } else if (basicData.results && Array.isArray(basicData.results)) {
+          ordersArray = basicData.results;
+        } else if (basicData.data && Array.isArray(basicData.data)) {
+          ordersArray = basicData.data;
+        }
+        
+        console.log(`✅ Basic state legislation endpoint returned ${ordersArray.length} bills`);
+        return ordersArray;
+      }
+
+      const data = await response.json();
+      console.log('🔍 State Legislation API Response:', data);
+
+      let ordersArray = [];
+      
+      if (Array.isArray(data)) {
+        ordersArray = data;
+      } else if (data.results && Array.isArray(data.results)) {
+        ordersArray = data.results;
+      } else if (data.data && Array.isArray(data.data)) {
+        ordersArray = data.data;
+      }
+
+      console.log(`✅ State legislation endpoint returned ${ordersArray.length} bills`);
+      return ordersArray;
+    } catch (error) {
+      console.error('❌ Error fetching state legislation:', error);
+      return [];
+    }
+  }
+
+  // NEW: Fetch ALL orders (executive orders + state legislation)
+  static async getAllOrders() {
+    try {
+      console.log('🔍 Fetching ALL orders (executive orders + state legislation)...');
+      
+      // Fetch executive orders
+      const executiveOrders = await this.getAllExecutiveOrders();
+      console.log(`📊 Got ${executiveOrders.length} executive orders`);
+      
+      // Fetch state legislation
+      const stateLegislation = await this.getAllStateLegislation();
+      console.log(`📊 Got ${stateLegislation.length} state bills`);
+      
+      // Combine both types
+      const allOrders = [...executiveOrders, ...stateLegislation];
+      console.log(`📊 Total combined orders: ${allOrders.length}`);
+      
+      return allOrders;
+    } catch (error) {
+      console.error('❌ Error fetching all orders:', error);
+      return [];
+    }
+  }
 }
 
-// Enhanced hook for managing highlights - COMPLETELY REWRITTEN with better debugging
+// UPDATED: Enhanced hook for managing highlights - NOW SUPPORTS BOTH TYPES
 const useHighlights = (userId = 1) => {
   const [highlights, setHighlights] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -573,47 +1159,97 @@ const useHighlights = (userId = 1) => {
         return;
       }
       
-      // Step 2: Get ALL executive orders from database - WITH FALLBACK
-      const allExecutiveOrders = await HighlightsAPI.getAllExecutiveOrders();
-      console.log(`📊 useHighlights: Got ${allExecutiveOrders.length} total executive orders from database`);
+      // Step 2: Get ALL orders (executive orders + state legislation)
+      const allOrders = await HighlightsAPI.getAllOrders();
+      console.log(`📊 useHighlights: Got ${allOrders.length} total orders from database`);
       
-      // FIX: If no orders from database, still complete the loading process
-      if (allExecutiveOrders.length === 0) {
-        console.log('⚠️ No executive orders found in database - this might be an API issue');
-        console.log('🔄 Setting empty highlights to complete loading process');
+      if (allOrders.length === 0) {
+        console.log('⚠️ No orders found in database - this might be an API issue');
         setHighlights([]);
         setLastRefresh(Date.now());
         return;
       }
       
-      // Step 3: Transform orders using EXACT same logic as ExecutiveOrdersPage
-      const allTransformedOrders = allExecutiveOrders.map((order, index) => {
-        // Use EXACT same ID generation logic as ExecutiveOrdersPage
-        const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-highlight-${index}`;
+      // Step 3: Transform ALL orders using appropriate logic
+      const allTransformedOrders = allOrders.map((order, index) => {
+        // Determine order type based on available fields
+        const isExecutiveOrder = !!(order.executive_order_number || order.document_number || order.eo_number);
+        const isStateLegislation = !!(order.bill_number && !isExecutiveOrder);
+        
+        let orderType = 'unknown';
+        if (isExecutiveOrder) {
+          orderType = 'executive_order';
+        } else if (isStateLegislation) {
+          orderType = 'state_legislation';
+        }
+        
+        // Use appropriate ID generation based on type
+        let uniqueId;
+        if (orderType === 'executive_order') {
+          uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `eo-${index}`;
+        } else {
+          // State legislation ID generation (matching StatePage logic)
+          if (order.bill_id && typeof order.bill_id === 'string') {
+            uniqueId = order.bill_id;
+          } else if (order.id && typeof order.id === 'string') {
+            uniqueId = order.id;
+          } else if (order.bill_number && order.state) {
+            uniqueId = `${order.state}-${order.bill_number}`;
+          } else if (order.bill_number) {
+            uniqueId = `${order.state || 'unknown'}-${order.bill_number}`;
+          } else if (order.title) {
+            const titleHash = order.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+            uniqueId = `state-bill-${titleHash}`;
+          } else {
+            uniqueId = `state-bill-${index}`;
+          }
+        }
         
         const transformedOrder = {
           id: uniqueId,
           bill_id: uniqueId,
-          eo_number: order.executive_order_number || order.document_number || 'Unknown',
-          executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
-          title: order.title || order.bill_title || 'Untitled Executive Order',
-          summary: order.description || order.summary || '',
-          signing_date: order.signing_date || order.introduced_date || '',
-          publication_date: order.publication_date || order.last_action_date || '',
-          html_url: order.html_url || order.legiscan_url || '',
-          pdf_url: order.pdf_url || '',
+          
+          // Common fields
+          title: order.title || order.bill_title || 'Untitled',
           category: order.category || 'civic',
-          formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
-          formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
           ai_summary: order.ai_summary || order.ai_executive_summary || '',
           ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
           ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
           ai_processed: !!(order.ai_summary || order.ai_executive_summary),
-          president: order.president || 'Donald Trump',
-          source: 'Database (Federal Register + Azure AI)',
+          
+          // Order type specific fields
+          order_type: orderType,
+          
+          // Executive Order specific
+          ...(orderType === 'executive_order' && {
+            eo_number: order.executive_order_number || order.document_number || 'Unknown',
+            executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
+            summary: order.description || order.summary || '',
+            signing_date: order.signing_date || order.introduced_date || '',
+            publication_date: order.publication_date || order.last_action_date || '',
+            html_url: order.html_url || order.legiscan_url || '',
+            pdf_url: order.pdf_url || '',
+            formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+            formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+            president: order.president || 'Donald Trump',
+            source: 'Database (Federal Register + Azure AI)'
+          }),
+          
+          // State Legislation specific
+          ...(orderType === 'state_legislation' && {
+            bill_number: order.bill_number,
+            state: order.state || 'Unknown',
+            status: order.status || 'Active',
+            description: order.description || order.ai_summary || 'No description available',
+            legiscan_url: order.legiscan_url || '',
+            introduced_date: order.introduced_date,
+            last_action_date: order.last_action_date,
+            formatted_signing_date: formatDate(order.introduced_date),
+            source: order.state ? `${order.state} Legislature` : 'State Legislature'
+          }),
+          
           is_highlighted: true,
-          index: index,
-          order_type: order.executive_order_number || order.document_number ? 'executive_order' : 'state_legislation'
+          index: index
         };
         
         return transformedOrder;
@@ -621,27 +1257,9 @@ const useHighlights = (userId = 1) => {
       
       console.log(`📊 useHighlights: Transformed ${allTransformedOrders.length} orders`);
       
-      // Step 4: Debug the first few orders to see their IDs
-      allTransformedOrders.slice(0, 3).forEach((order, index) => {
-        const calculatedOrderId = getOrderId(order);
-        console.log(`🔍 Order ${index + 1} ID Debug:`, {
-          title: order.title,
-          originalId: order.id,
-          calculatedOrderId: calculatedOrderId,
-          executive_order_number: order.executive_order_number,
-          document_number: order.document_number
-        });
-      });
-      
-      // Step 5: Debug the highlighted IDs from backend
+      // Step 4: Get highlighted order IDs
       const highlightedOrderIds = new Set();
-      fetchedHighlights.forEach((highlight, index) => {
-        console.log(`📋 Backend highlight ${index + 1}:`, {
-          order_id: highlight.order_id,
-          order_type: highlight.order_type,
-          user_id: highlight.user_id
-        });
-        
+      fetchedHighlights.forEach((highlight) => {
         if (highlight.order_id) {
           highlightedOrderIds.add(highlight.order_id);
         }
@@ -649,21 +1267,16 @@ const useHighlights = (userId = 1) => {
       
       console.log('📋 Highlighted order IDs from backend:', Array.from(highlightedOrderIds));
       
-      // Step 6: Find matching orders using EXACT ID matching
+      // Step 5: Find matching orders using ID matching
       const matchedOrders = [];
       
-      allTransformedOrders.forEach((order, index) => {
-        const orderId = getOrderId(order);
+      allTransformedOrders.forEach((order) => {
+        // Use the universal ID generation function
+        const orderId = getUniversalOrderId(order);
         
-        // Check if this order's ID is in the highlighted set
         if (highlightedOrderIds.has(orderId)) {
-          console.log(`✅ MATCH FOUND: Order "${order.title}" with ID "${orderId}"`);
+          console.log(`✅ MATCH FOUND: Order "${order.title}" with ID "${orderId}" (type: ${order.order_type})`);
           matchedOrders.push(order);
-        } else {
-          // Debug first few non-matches
-          if (index < 5) {
-            console.log(`❌ No match: Order "${order.title}" with ID "${orderId}"`);
-          }
         }
       });
       
@@ -675,7 +1288,8 @@ const useHighlights = (userId = 1) => {
         console.log('Sample order IDs from database:', 
           allTransformedOrders.slice(0, 5).map(order => ({
             title: order.title,
-            id: getOrderId(order)
+            type: order.order_type,
+            id: getUniversalOrderId(order)
           }))
         );
       }
@@ -685,23 +1299,20 @@ const useHighlights = (userId = 1) => {
       
     } catch (error) {
       console.error('❌ Error loading highlights:', error);
-      
-      // FIX: Always complete loading, even on error
       setHighlights([]);
       setLastRefresh(Date.now());
     } finally {
-      // FIX: Always stop loading, regardless of success/failure
       setLoading(false);
     }
   };
 
   const removeHighlight = async (highlight) => {
     try {
-      const orderId = getOrderId(highlight);
+      const orderId = getUniversalOrderId(highlight);
       console.log('🗑️ Removing highlight with ID:', orderId);
       
       await HighlightsAPI.removeHighlight(orderId, userId);
-      setHighlights(prev => prev.filter(item => getOrderId(item) !== orderId));
+      setHighlights(prev => prev.filter(item => getUniversalOrderId(item) !== orderId));
       setLastRefresh(Date.now());
       
       console.log('✅ Successfully removed highlight');
@@ -742,7 +1353,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(25);
   
-  // 🔧 FIX: Use the same highlight management as ExecutiveOrdersPage
+  // UPDATED: Use the same highlight management as ExecutiveOrdersPage/StatePage
   const [localHighlights, setLocalHighlights] = useState(new Set());
   const [highlightLoading, setHighlightLoading] = useState(new Set());
   
@@ -758,7 +1369,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     lastRefresh
   } = useHighlights(1);
 
-  // Load existing highlights on component mount - FIXED CIRCULAR DEPENDENCY
+  // UPDATED: Load existing highlights on component mount - SUPPORT BOTH TYPES
   useEffect(() => {
     const loadExistingHighlights = async () => {
       try {
@@ -768,17 +1379,13 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           const data = await response.json();
           console.log('🔍 HighlightsPage: Raw highlights response:', data);
           
-          // Extract highlights array from API response
           let highlightsArray = [];
           if (Array.isArray(data)) {
             highlightsArray = data;
-            console.log('🔍 Using data directly as array');
           } else if (data.highlights && Array.isArray(data.highlights)) {
             highlightsArray = data.highlights;
-            console.log('🔍 Using data.highlights array');
           } else if (data.results && Array.isArray(data.results)) {
             highlightsArray = data.results;
-            console.log('🔍 Using data.results array');
           } else {
             console.log('🔍 No valid highlights array found, using empty array');
             highlightsArray = [];
@@ -788,24 +1395,23 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           
           const orderIds = new Set();
           
-          // Process each highlight safely
+          // UPDATED: Process BOTH executive orders AND state legislation
           if (highlightsArray.length > 0) {
             for (let i = 0; i < highlightsArray.length; i++) {
               const highlight = highlightsArray[i];
               console.log(`🔍 HighlightsPage: Processing highlight ${i + 1}:`, highlight);
               
-              if (highlight && highlight.order_type === 'executive_order' && highlight.order_id) {
+              // Include both order types
+              if (highlight && highlight.order_id && 
+                  (highlight.order_type === 'executive_order' || highlight.order_type === 'state_legislation')) {
                 orderIds.add(highlight.order_id);
-                console.log(`   Added to local state: ${highlight.order_id}`);
+                console.log(`   Added to local state: ${highlight.order_id} (${highlight.order_type})`);
               }
             }
           }
           
           setLocalHighlights(orderIds);
           console.log('🌟 HighlightsPage: Final local highlights set:', Array.from(orderIds));
-          
-          // REMOVED: Don't call refreshHighlights() here to avoid circular dependency
-          console.log('🔄 HighlightsPage: Local highlights loaded, useHighlights hook will handle the main data');
         } else {
           console.error('🔍 HighlightsPage: Failed to load highlights, status:', response.status);
         }
@@ -814,9 +1420,8 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       }
     };
     
-    // Load highlights immediately
     loadExistingHighlights();
-  }, []); // FIXED: Empty dependency array to run only once
+  }, []);
 
   // Filter functions - updated to remove review status logic
   const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
@@ -930,7 +1535,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     return counts;
   }, [highlights]);
 
-  // Manual refresh handler - COMPLETELY REWRITTEN
+  // Manual refresh handler - UPDATED TO SUPPORT BOTH TYPES
   const handleManualRefresh = async () => {
     if (isRefreshing) return;
     
@@ -959,13 +1564,16 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         
         const orderIds = new Set();
         
-        // Process highlights safely with for loop
+        // UPDATED: Process highlights safely with for loop - BOTH TYPES
         for (let i = 0; i < highlightsArray.length; i++) {
           const highlight = highlightsArray[i];
           console.log(`🔄 Processing highlight ${i + 1}:`, highlight);
-          if (highlight && highlight.order_type === 'executive_order' && highlight.order_id) {
+          
+          // Include both order types
+          if (highlight && highlight.order_id && 
+              (highlight.order_type === 'executive_order' || highlight.order_type === 'state_legislation')) {
             orderIds.add(highlight.order_id);
-            console.log(`   Added to local highlights: ${highlight.order_id}`);
+            console.log(`   Added to local highlights: ${highlight.order_id} (${highlight.order_type})`);
           }
         }
         
@@ -981,11 +1589,12 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   };
 
-  // 🔧 FIX: Enhanced highlighting function - EXACT COPY FROM ExecutiveOrdersPage
+  // UPDATED: Enhanced highlighting function - SUPPORTS BOTH TYPES
   const handleOrderHighlight = useCallback(async (order) => {
     console.log('🌟 HighlightsPage highlight handler called for:', order.title);
     
-    const orderId = getOrderId(order);
+    // Use universal ID generation
+    const orderId = getUniversalOrderId(order);
     if (!orderId) {
       console.error('❌ No valid order ID found for highlighting');
       return;
@@ -995,14 +1604,12 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       title: order.title,
       id: order.id,
       bill_id: order.bill_id,
-      eo_number: order.eo_number,
-      executive_order_number: order.executive_order_number,
+      order_type: order.order_type,
       calculatedOrderId: orderId
     });
     
     const isCurrentlyHighlighted = localHighlights.has(orderId);
-    console.log('🌟 Current highlight status:', isCurrentlyHighlighted, 'Order ID:', orderId);
-    console.log('🌟 Current localHighlights set:', Array.from(localHighlights));
+    console.log('🌟 Current highlight status:', isCurrentlyHighlighted, 'Order ID:', orderId, 'Type:', order.order_type);
     
     // Add to loading state
     setHighlightLoading(prev => new Set([...prev, orderId]));
@@ -1012,7 +1619,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         // REMOVE highlight
         console.log('🗑️ Attempting to remove highlight for:', orderId);
         
-        // Optimistic UI update
         setLocalHighlights(prev => {
           const newSet = new Set(prev);
           newSet.delete(orderId);
@@ -1025,28 +1631,24 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         
         if (!response.ok) {
           console.error('❌ Failed to remove highlight from backend');
-          // Revert optimistic update
           setLocalHighlights(prev => new Set([...prev, orderId]));
         } else {
           console.log('✅ Successfully removed highlight from backend');
-          // Refresh the highlights list since we removed one
           await refreshHighlights();
           if (stableHandlers?.handleItemHighlight) {
-            stableHandlers.handleItemHighlight(order, 'executive_order');
+            stableHandlers.handleItemHighlight(order, order.order_type);
           }
         }
       } else {
         // ADD highlight
         console.log('⭐ Attempting to add highlight for:', orderId);
         
-        // Optimistic UI update
         setLocalHighlights(prev => new Set([...prev, orderId]));
         
-        // Use the EXACT same request body format as ExecutiveOrdersPage
         const requestBody = {
           user_id: 1,
           order_id: orderId,
-          order_type: 'executive_order',
+          order_type: order.order_type, // Use the actual order type
           notes: null,
           priority_level: 1,
           tags: null,
@@ -1063,8 +1665,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         
         if (!response.ok) {
           console.error('❌ Failed to add highlight');
-          if (response.status !== 409) { // 409 means already exists
-            // Revert optimistic update
+          if (response.status !== 409) {
             setLocalHighlights(prev => {
               const newSet = new Set(prev);
               newSet.delete(orderId);
@@ -1076,7 +1677,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         } else {
           console.log('✅ Successfully added highlight to backend');
           if (stableHandlers?.handleItemHighlight) {
-            stableHandlers.handleItemHighlight(order, 'executive_order');
+            stableHandlers.handleItemHighlight(order, order.order_type);
           }
         }
       }
@@ -1094,7 +1695,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         });
       }
     } finally {
-      // Remove from loading state
       setHighlightLoading(prev => {
         const newSet = new Set(prev);
         newSet.delete(orderId);
@@ -1103,10 +1703,10 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   }, [localHighlights, stableHandlers, refreshHighlights]);
 
-  // 🔧 FIX: Enhanced remove highlight handler
+  // Enhanced remove highlight handler
   const handleRemoveHighlight = async (highlight) => {
     try {
-      const orderId = getOrderId(highlight);
+      const orderId = getUniversalOrderId(highlight);
       
       // Remove from local state immediately
       setLocalHighlights(prev => {
@@ -1125,14 +1725,14 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     } catch (error) {
       console.error('Failed to remove highlight:', error);
       // Re-add to local state if backend removal failed
-      const orderId = getOrderId(highlight);
+      const orderId = getUniversalOrderId(highlight);
       setLocalHighlights(prev => new Set([...prev, orderId]));
     }
   };
 
-  // 🔧 FIX: Check if order is highlighted - EXACT COPY FROM ExecutiveOrdersPage 
+  // UPDATED: Check if order is highlighted - SUPPORTS BOTH TYPES
   const isOrderHighlighted = useCallback((order) => {
-    const orderId = getOrderId(order);
+    const orderId = getUniversalOrderId(order);
     if (!orderId) return false;
     
     // Check local state first for immediate UI feedback
@@ -1152,7 +1752,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
 
   // Check if order is currently being highlighted/unhighlighted
   const isOrderHighlightLoading = useCallback((order) => {
-    const orderId = getOrderId(order);
+    const orderId = getUniversalOrderId(order);
     return orderId ? highlightLoading.has(orderId) : false;
   }, [highlightLoading]);
 
@@ -1473,153 +2073,148 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
             </div>
           ) : (
             <div className="space-y-4">
-              {paginatedHighlights.map((highlight, index) => {
-                // Add index to highlight for unique ID generation
-                const globalIndex = (currentPage - 1) * itemsPerPage + index;
-                const highlightWithIndex = { ...highlight, index: globalIndex };
-                const orderId = getOrderId(highlightWithIndex);
-                const isExpanded = expandedOrders.has(orderId);
-                const source = getHighlightSourceInfo(highlight);
-                const SourceIcon = source.icon;
-                
-                return (
-                  <div key={`highlight-${orderId}-${globalIndex}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div 
-                          className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
-                          onClick={() => {
-                            setExpandedOrders(prev => {
-                              const newSet = new Set(prev);
-                              if (newSet.has(orderId)) {
-                                newSet.delete(orderId);
-                              } else {
-                                newSet.add(orderId);
-                              }
-                              return newSet;
-                            });
-                          }}
-                        >
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                            {globalIndex + 1}. {cleanOrderTitle(highlight.title)}
-                          </h3>
-                          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
-                            <span className="font-medium">
-                              {highlight.order_type === 'executive_order' 
-                                ? `Executive Order #: ${getExecutiveOrderNumber(highlight)}`
-                                : `Bill #: ${highlight.bill_number || 'Unknown'}`
-                              }
-                            </span>
-                            <span>-</span>
-                            <span className="font-medium">
-                              {highlight.order_type === 'executive_order' 
-                                ? `Signed Date: ${highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}`
-                                : `Date: ${highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}`
-                              }
-                            </span>
-                            <span>-</span>
-                            <CategoryTag category={highlight.category} />
-                            <span>-</span>
-                            {/* NEW: Order Type Tag instead of Review Status */}
-                            <OrderTypeTag orderType={highlight.order_type} />
-                            <span className={`inline-flex items-center gap-1.5 font-medium text-xs ${source.color} bg-gray-100 px-2 py-1 rounded-full`}>
-                              <SourceIcon size={12} />
-                              <span>From: {source.label}</span>
-                            </span>
-                            {highlight.state && (
-                              <>
-                                <span>-</span>
-                                <span className="text-xs bg-gray-100 px-2 py-1 rounded-full">{highlight.state}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2 ml-4">
-                          {/* Enhanced Highlight button with loading state */}
-                          <button
-                            type="button"
-                            className={`p-2 rounded-md transition-all duration-300 ${
-                              isOrderHighlighted(highlightWithIndex)
-                                ? 'text-yellow-500 bg-yellow-100 hover:bg-yellow-200'
-                                : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500'
-                            } ${isOrderHighlightLoading(highlightWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            onClick={async (e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (!isOrderHighlightLoading(highlightWithIndex)) {
-                                await handleOrderHighlight(highlightWithIndex);
-                              }
-                            }}
-                            disabled={isOrderHighlightLoading(highlightWithIndex)}
-                            title={
-                              isOrderHighlightLoading(highlightWithIndex) 
-                                ? "Processing..." 
-                                : isOrderHighlighted(highlightWithIndex) 
-                                  ? "Remove from highlights" 
-                                  : "Add to highlights"
-                            }
-                          >
-                            {isOrderHighlightLoading(highlightWithIndex) ? (
-                              <RotateCw size={16} className="animate-spin" />
-                            ) : (
-                              <Star 
-                                size={16} 
-                                className={isOrderHighlighted(highlightWithIndex) ? "fill-current" : ""} 
-                              />
-                            )}
-                          </button>
-                          
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setExpandedOrders(prev => {
-                                const newSet = new Set(prev);
-                                if (newSet.has(orderId)) {
-                                  newSet.delete(orderId);
-                                } else {
-                                  newSet.add(orderId);
-                                }
-                                return newSet;
-                              });
-                            }}
-                            className="p-2 hover:bg-gray-100 rounded-md transition-all duration-300"
-                            title={isExpanded ? "Collapse details" : "Expand details"}
-                          >
-                            <ChevronDown 
-                              size={20} 
-                              className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                            />
-                          </button>
-                        </div>
-                      </div>
 
-                      {/* Azure AI Summary (always visible if available) - EXACT match to ExecutiveOrdersPage */}
-                      {highlight.ai_processed && highlight.ai_summary && (
-                        <div className="mb-4 mt-4">
-                          <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
-                              <span className="text-purple-800">-</span>
-                              <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
-                                ✦ AI Generated
-                              </span>
-                            </div>
-                            <div className="text-sm text-violet-800 leading-relaxed">
-                              <div className="universal-text-content" style={{
-                                fontSize: '14px',
-                                lineHeight: '1.6',
-                                wordWrap: 'break-word',
-                                overflowWrap: 'break-word',
-                                whiteSpace: 'normal'
-                              }}>
-                                {stripHtmlTags(highlight.ai_summary)}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+{paginatedHighlights.map((highlight, index) => {
+  // Add index to highlight for unique ID generation
+  const globalIndex = (currentPage - 1) * itemsPerPage + index;
+  const highlightWithIndex = { ...highlight, index: globalIndex };
+  const orderId = getUniversalOrderId(highlightWithIndex);
+  const isExpanded = expandedOrders.has(orderId);
+  
+  return (
+    <div key={`highlight-${orderId}-${globalIndex}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <div 
+            className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
+            onClick={() => {
+              setExpandedOrders(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(orderId)) {
+                  newSet.delete(orderId);
+                } else {
+                  newSet.add(orderId);
+                }
+                return newSet;
+              });
+            }}
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              {globalIndex + 1}. {cleanOrderTitle(highlight.title)}
+            </h3>
+            
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
+              <span className="font-medium">
+                {highlight.order_type === 'executive_order' 
+                  ? `Executive Order #: ${getExecutiveOrderNumber(highlight)}`
+                  : `Bill #: ${highlight.bill_number || 'Unknown'}`
+                }
+              </span>
+              <span>-</span>
+              <span className="font-medium">
+                {highlight.order_type === 'executive_order' 
+                  ? `Signed Date: ${highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}`
+                  : `Date: ${highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}`
+                }
+              </span>
+              <span>-</span>
+              <CategoryTag category={highlight.category} />
+              <span>-</span>
+              {/* Single Order Type Tag - Clean pill style */}
+              <OrderTypeTag orderType={highlight.order_type} />
+              {/* Status for State Legislation only - but cleaner */}
+              {highlight.order_type === 'state_legislation' && highlight.status && highlight.status !== 'Unknown' && (
+                <>
+                </>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 ml-4">
+            {/* Enhanced Highlight button with loading state */}
+            <button
+              type="button"
+              className={`p-2 rounded-md transition-all duration-300 ${
+                isOrderHighlighted(highlightWithIndex)
+                  ? 'text-yellow-500 bg-yellow-100 hover:bg-yellow-200'
+                  : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500'
+              } ${isOrderHighlightLoading(highlightWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isOrderHighlightLoading(highlightWithIndex)) {
+                  await handleOrderHighlight(highlightWithIndex);
+                }
+              }}
+              disabled={isOrderHighlightLoading(highlightWithIndex)}
+              title={
+                isOrderHighlightLoading(highlightWithIndex) 
+                  ? "Processing..." 
+                  : isOrderHighlighted(highlightWithIndex) 
+                    ? "Remove from highlights" 
+                    : "Add to highlights"
+              }
+            >
+              {isOrderHighlightLoading(highlightWithIndex) ? (
+                <RotateCw size={16} className="animate-spin" />
+              ) : (
+                <Star 
+                  size={16} 
+                  className={isOrderHighlighted(highlightWithIndex) ? "fill-current" : ""} 
+                />
+              )}
+            </button>
+            
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setExpandedOrders(prev => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(orderId)) {
+                    newSet.delete(orderId);
+                  } else {
+                    newSet.add(orderId);
+                  }
+                  return newSet;
+                });
+              }}
+              className="p-2 hover:bg-gray-100 rounded-md transition-all duration-300"
+              title={isExpanded ? "Collapse details" : "Expand details"}
+            >
+              <ChevronDown 
+                size={20} 
+                className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Azure AI Summary (always visible if available) */}
+        {highlight.ai_processed && highlight.ai_summary && (
+          <div className="mb-4 mt-4">
+            <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
+                <span className="text-purple-800">-</span>
+                <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                  ✦ AI Generated
+                </span>
+              </div>
+              <div className="text-sm text-violet-800 leading-relaxed">
+                <div className="universal-text-content" style={{
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal'
+                }}>
+                  {stripHtmlTags(highlight.ai_summary)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
                       {/* Expanded Content */}
                       {isExpanded && (
@@ -2105,6 +2700,11 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           color: inherit;
         }
       `}</style>
+
+      {/* ADDED: Debug Panel - Only show in development mode */}
+      {process.env.NODE_ENV === 'development' && (
+        <HighlightsDebugPanel apiUrl={API_URL} />
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-// Updated StatePage.jsx with expand/collapse functionality for AI content
+// Complete StatePage.jsx with all original functionality plus fixed highlighting and cleaned meta tags
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -26,9 +26,151 @@ import {
   stripHtmlTags,
   generateUniqueId
 } from '../utils/helpers';
-import { CategoryTag } from './CommonComponents';
+
+// Create a custom CategoryTag component that handles not-applicable and uses FILTER icons
+const CustomCategoryTag = ({ category }) => {
+  const cleanedCategory = cleanCategory(category);
+  
+  // Find the matching filter to get the icon
+  const matchingFilter = FILTERS.find(filter => filter.key === cleanedCategory);
+  const IconComponent = matchingFilter?.icon || AlertTriangle; // Default to AlertTriangle for not-applicable
+  
+  const getCategoryStyle = (cat) => {
+    switch (cat) {
+      case 'civic':
+        return 'bg-blue-100 text-blue-800';
+      case 'education':
+        return 'bg-orange-100 text-orange-800';
+      case 'engineering':
+        return 'bg-green-100 text-green-800';
+      case 'healthcare':
+        return 'bg-red-100 text-red-800';
+      case 'not-applicable':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  const getCategoryLabel = (cat) => {
+    // First try to get label from FILTERS
+    const matchingFilter = FILTERS.find(filter => filter.key === cat);
+    if (matchingFilter) {
+      return matchingFilter.label;
+    }
+    
+    // Fallback labels
+    switch (cat) {
+      case 'civic': return 'Civic';
+      case 'education': return 'Education';
+      case 'engineering': return 'Engineering';
+      case 'healthcare': return 'Healthcare';
+      case 'not-applicable': return 'Not Applicable';
+      default: return 'General';
+    }
+  };
+  
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getCategoryStyle(cleanedCategory)}`}>
+      <IconComponent size={12} />
+      {getCategoryLabel(cleanedCategory)}
+    </span>
+  );
+};
 
 const API_URL = getApiUrl();
+
+// Function to clean and validate status values - only allow specific statuses
+const cleanStatus = (status) => {
+  if (!status || typeof status !== 'string') return 'Active';
+  
+  const trimmedStatus = status.trim().toLowerCase();
+  
+  // Define the only allowed status values
+  const validStatuses = ['active', 'inactive', 'fail', 'pass'];
+  
+  // Check if the trimmed status is already valid
+  if (validStatuses.includes(trimmedStatus)) {
+    // Capitalize first letter and return
+    return trimmedStatus.charAt(0).toUpperCase() + trimmedStatus.slice(1);
+  }
+  
+  // Check for any numbers in the status - if found, default to Active
+  if (/\d/.test(trimmedStatus)) {
+    return 'Active';
+  }
+  
+  // Map common variations to valid statuses
+  const statusMap = {
+    'pending': 'Active',
+    'in progress': 'Active',
+    'approved': 'Pass',
+    'passed': 'Pass',
+    'rejected': 'Fail',
+    'failed': 'Fail',
+    'denied': 'Fail',
+    'completed': 'Pass',
+    'cancelled': 'Inactive',
+    'canceled': 'Inactive',
+    'withdrawn': 'Inactive',
+    'expired': 'Inactive',
+    'unknown': 'Active',
+    'not applicable': 'Active',
+    'not reviewed': 'Active',
+    'null': 'Active',
+    '': 'Active'
+  };
+  
+  // Try to map the status, otherwise default to Active
+  return statusMap[trimmedStatus] || 'Active';
+};
+
+// Function to clean and validate category values
+const cleanCategory = (category) => {
+  if (!category || typeof category !== 'string') return 'not-applicable';
+  
+  const trimmedCategory = category.trim().toLowerCase();
+  
+  // Handle specific cases - convert unknown to not-applicable
+  if (trimmedCategory === 'unknown') {
+    return 'not-applicable';
+  }
+  
+  const unwantedValues = ['4', 'not reviewed', 'null', ''];
+  
+  if (unwantedValues.includes(trimmedCategory) || trimmedCategory.length === 0) {
+    return 'not-applicable'; // Default fallback
+  }
+  
+  // Keep "not-applicable" as is if it's already that
+  if (trimmedCategory === 'not applicable' || trimmedCategory === 'not-applicable') {
+    return 'not-applicable';
+  }
+  
+  // Map common variations to standard categories - these should match your FILTERS exactly
+  const categoryMap = {
+    'government': 'civic',
+    'public policy': 'civic',
+    'municipal': 'civic',
+    'school': 'education',
+    'university': 'education',
+    'learning': 'education',
+    'infrastructure': 'engineering',
+    'technology': 'engineering',
+    'construction': 'engineering',
+    'medical': 'healthcare',
+    'health': 'healthcare',
+    'hospital': 'healthcare'
+  };
+  
+  const mappedCategory = categoryMap[trimmedCategory] || trimmedCategory;
+  
+  // Get the valid category keys from your existing FILTERS
+  const validCategories = FILTERS.map(f => f.key);
+  validCategories.push('not-applicable'); // Add not-applicable as valid
+  
+  return validCategories.includes(mappedCategory) ? mappedCategory : 'not-applicable';
+};
 
 // Category-specific styling for fetch status bar
 const getCategoryStyles = (category) => {
@@ -85,7 +227,7 @@ const ReviewStatusTag = ({ isReviewed }) => {
   );
 };
 
-// Extended FILTERS array with review status options
+// Extended FILTERS array with review status options only
 const EXTENDED_FILTERS = [
   ...FILTERS,
   {
@@ -121,7 +263,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
   const [localHighlights, setLocalHighlights] = useState(new Set());
   const [highlightLoading, setHighlightLoading] = useState(new Set());
   
-  // ADDED: Expanded bills state for showing AI content
+  // Expanded bills state for showing AI content
   const [expandedBills, setExpandedBills] = useState(new Set());
   
   // UI state
@@ -135,13 +277,14 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
   
   const filterDropdownRef = useRef(null);
 
-  // ADDED: Function to capitalize first letter of text
+  // Function to capitalize first letter of text
   const capitalizeFirstLetter = (text) => {
     if (!text || typeof text !== 'string') return text;
     const trimmed = text.trim();
     if (trimmed.length === 0) return text;
     return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   };
+
   const cleanBillTitle = (title) => {
     if (!title) return 'Untitled Bill';
     
@@ -174,13 +317,22 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     
     return cleaned || 'Untitled Bill';
   };
+
+  // FIXED: Improved bill ID generation for consistency with highlights
   const getStateBillId = useCallback((bill) => {
     if (!bill) return null;
     
-    // Priority order for ID selection to ensure consistency
+    // Priority order for ID selection to ensure consistency with highlights
     if (bill.bill_id && typeof bill.bill_id === 'string') return bill.bill_id;
     if (bill.id && typeof bill.id === 'string') return bill.id;
-    if (bill.bill_number) return `${bill.state || stateName || 'unknown'}-bill-${bill.bill_number}`;
+    
+    // Create consistent ID format
+    if (bill.bill_number && bill.state) {
+      return `${bill.state}-${bill.bill_number}`;
+    }
+    if (bill.bill_number) {
+      return `${stateName || 'unknown'}-${bill.bill_number}`;
+    }
     
     // Fallback using title hash for consistency
     if (bill.title) {
@@ -192,7 +344,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
   }, [stateName]);
 
-  // ADDED: Expand/collapse functions for AI content
+  // Expand/collapse functions for AI content
   const toggleBillExpansion = useCallback((bill) => {
     const billId = getStateBillId(bill);
     if (!billId) return;
@@ -213,35 +365,37 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     return billId ? expandedBills.has(billId) : false;
   }, [expandedBills, getStateBillId]);
 
-  // ADDED: AI content formatting functions (similar to ExecutiveOrdersPage)
+  // AI content formatting functions (similar to ExecutiveOrdersPage)
   const formatTalkingPoints = (content) => {
     if (!content) return null;
 
     // Remove HTML tags first
     let textContent = content.replace(/<[^>]*>/g, '');
     
-    // Split by periods followed by numbers (e.g., "1. Point one. 2. Point two.")
+    // Split by periods followed by numbers, but be more careful about sentence boundaries
     const points = [];
     
-    // Try to split by numbered patterns first
-    const numberedMatches = textContent.match(/\d+\.\s*[^.]+(?:\.[^0-9][^.]*)*\./g);
+    // Try to split by numbered patterns first - improved regex
+    const numberedMatches = textContent.match(/\d+\.\s*[^.]*(?:\.[^0-9][^.]*)*(?=\s*\d+\.|$)/g);
     
     if (numberedMatches && numberedMatches.length > 1) {
       // Found numbered points, extract them
       numberedMatches.forEach((match) => {
-        const cleaned = match.replace(/^\d+\.\s*/, '').replace(/\.$/, '').trim();
-        if (cleaned.length > 5) {
+        let cleaned = match.replace(/^\d+\.\s*/, '').trim();
+        // Don't remove period if it's part of the sentence
+        if (cleaned.length > 10) { // Only include substantial content
           points.push(cleaned);
         }
       });
     } else {
-      // Fallback: split by sentence periods and look for patterns
-      const sentences = textContent.split(/\.\s+/).map(s => s.trim()).filter(s => s.length > 5);
+      // Fallback: split more intelligently by sentence patterns
+      // Look for content that starts with numbers
+      const sentences = textContent.split(/(?=\d+\.\s)/).filter(s => s.trim().length > 0);
       
       sentences.forEach((sentence) => {
-        // Remove leading numbers/bullets
-        const cleaned = sentence.replace(/^(\d+[\.\)]?\s*|[•\-*→·]\s*)/, '').trim();
-        if (cleaned.length > 5) {
+        // Remove leading numbers/bullets but keep the content intact
+        const cleaned = sentence.replace(/^\d+\.\s*/, '').trim();
+        if (cleaned.length > 10) {
           points.push(cleaned);
         }
       });
@@ -264,257 +418,143 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     return <div className="universal-text-content">{textContent}</div>;
   };
 
-const formatUniversalContent = (content) => {
-  if (!content) return null;
+  const formatUniversalContent = (content) => {
+    if (!content) return null;
 
-  // Remove HTML tags but preserve formatting indicators
-  let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
-  textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
-  
-  // Updated section keywords to include Summary and Market Opportunity
-  const sectionKeywords = [
-    'Risk Assessment', 
-    'Market Opportunity', 
-    'Implementation Requirements', 
-    'Financial Implications', 
-    'Competitive Implications', 
-    'Timeline Pressures',
-    'Summary'  // Added Summary to be treated as a section header
-  ];
-  
-  // Create a more flexible regex that handles both colons and periods after keywords
-  const headerPattern = new RegExp(`\\*?(${sectionKeywords.join('|')})\\*?[:.]?`, 'gi');
-  
-  // Also look for inline mentions like "Market Opportunity: text" or "Summary: text"
-  const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]\\s*([^.]*(?:\\.[^A-Z][^.]*)*)\\.?`, 'gi');
-  
-  // First, try to extract inline sections (like "Summary: text within paragraph")
-  const inlineMatches = [];
-  let match;
-  while ((match = inlinePattern.exec(textContent)) !== null) {
-    inlineMatches.push({
-      header: match[1].trim(),
-      content: match[2].trim(),
-      fullMatch: match[0]
-    });
-  }
-  
-  // If we found inline sections, process them
-  if (inlineMatches.length > 0) {
-    const sections = [];
+    // Remove HTML tags but preserve formatting indicators
+    let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
+    textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
     
-    inlineMatches.forEach(({ header, content, fullMatch }) => {
-      if (header && content && content.length > 5) {
-        // Clean up the header
-        let cleanHeader = header.trim();
-        if (!cleanHeader.endsWith(':')) {
-          cleanHeader += ':';
-        }
-        
-        // Split content into items if it contains multiple sentences or bullet indicators
-        const items = [];
-        
-        // Check if content has bullet-like patterns
-        if (content.includes('•') || content.includes('-') || content.includes('*')) {
-          const contentLines = content
-            .split(/[•\-*]\s*/)
-            .map(line => line.trim())
-            .filter(line => line.length > 3);
+    // Updated section keywords to include Summary and Market Opportunity
+    const sectionKeywords = [
+      'Risk Assessment', 
+      'Market Opportunity', 
+      'Implementation Requirements', 
+      'Financial Implications', 
+      'Competitive Implications', 
+      'Timeline Pressures',
+      'Summary'
+    ];
+    
+    // IMPROVED: Better regex that captures complete sentences until the next section
+    const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]?\\s*([^]*?)(?=\\s*(?:${sectionKeywords.join('|')}|$))`, 'gi');
+    
+    // First, try to extract inline sections
+    const inlineMatches = [];
+    let match;
+    while ((match = inlinePattern.exec(textContent)) !== null) {
+      inlineMatches.push({
+        header: match[1].trim(),
+        content: match[2].trim(),
+        fullMatch: match[0]
+      });
+    }
+    
+    // If we found inline sections, process them
+    if (inlineMatches.length > 0) {
+      const sections = [];
+      
+      inlineMatches.forEach(({ header, content }) => {
+        if (header && content && content.length > 5) {
+          // Clean up the header
+          let cleanHeader = header.trim();
+          if (!cleanHeader.endsWith(':')) {
+            cleanHeader += ':';
+          }
           
-          contentLines.forEach(line => {
-            const cleanLine = capitalizeFirstLetter(line.replace(/\.$/, ''));
-            if (cleanLine.length > 5) {
-              items.push(cleanLine);
+          // IMPROVED: Better content processing that preserves complete sentences
+          const items = [];
+          
+          // Check if content has explicit bullet patterns
+          if (content.includes('•') || (content.includes('-') && content.match(/^\s*-/m)) || (content.includes('*') && content.match(/^\s*\*/m))) {
+            // Split by explicit bullet indicators, but be more careful
+            const bulletPattern = /(?:^|\n)\s*[•\-*]\s*(.+?)(?=(?:\n\s*[•\-*]|\n\s*$|$))/gs;
+            const bulletMatches = [...content.matchAll(bulletPattern)];
+            
+            if (bulletMatches.length > 0) {
+              bulletMatches.forEach(bulletMatch => {
+                const bulletContent = bulletMatch[1].trim();
+                if (bulletContent.length > 5) {
+                  items.push(capitalizeFirstLetter(bulletContent));
+                }
+              });
+            } else {
+              // Fallback: split by line breaks and look for bullet-like content
+              const lines = content.split(/\n/).map(line => line.trim()).filter(line => line.length > 5);
+              lines.forEach(line => {
+                const cleanLine = line.replace(/^[•\-*]\s*/, '').trim();
+                if (cleanLine.length > 5) {
+                  items.push(capitalizeFirstLetter(cleanLine));
+                }
+              });
             }
-          });
-        } else {
-          // Treat as single content block
-          const cleanContent = capitalizeFirstLetter(content.replace(/\.$/, ''));
-          if (cleanContent.length > 5) {
-            items.push(cleanContent);
+          } else {
+            // IMPROVED: For non-bulleted content, check if it's a single sentence or multiple sentences
+            const sentences = content.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 5);
+            
+            if (sentences.length === 1 || content.length < 200) {
+              // Single sentence or short content - treat as one item
+              items.push(capitalizeFirstLetter(content.trim()));
+            } else {
+              // Multiple sentences - create bullet points
+              sentences.forEach(sentence => {
+                if (sentence.length > 10) {
+                  items.push(capitalizeFirstLetter(sentence));
+                }
+              });
+            }
+          }
+          
+          if (items.length > 0) {
+            sections.push({
+              title: cleanHeader,
+              items: items
+            });
           }
         }
-        
-        if (items.length > 0) {
-          sections.push({
-            title: cleanHeader,
-            items: items
-          });
-        }
-      }
-    });
-    
-    if (sections.length > 0) {
-      return (
-        <div>
-          {sections.map((section, idx) => (
-            <div key={idx} style={{ marginBottom: '16px' }}>
-              <div style={{ 
-                fontWeight: 'bold', 
-                marginBottom: '8px',
-                fontSize: '14px',
-                color: 'inherit'
-              }}>
-                {section.title}
-              </div>
-              {section.items.map((item, itemIdx) => (
-                <div key={itemIdx} style={{ 
-                  marginBottom: '4px',
-                  fontSize: '14px',
-                  lineHeight: '1.5',
-                  color: 'inherit',
-                  paddingLeft: '0px' // No bullet point for single content blocks
-                }}>
-                  {section.items.length === 1 ? item : `• ${item}`}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      );
-    }
-  }
-  
-  // Fallback to original section-based parsing
-  const parts = textContent.split(headerPattern);
-  
-  if (parts.length > 1) {
-    const sections = [];
-    
-    // Process parts: odd indices are headers, even indices are content
-    for (let i = 1; i < parts.length; i += 2) {
-      const header = parts[i];
-      const content = parts[i + 1] || '';
+      });
       
-      if (header && header.trim()) {
-        // Clean up the header - remove asterisks and ensure colon
-        let cleanHeader = header.trim().replace(/^\*+|\*+$/g, '');
-        if (!cleanHeader.endsWith(':')) {
-          cleanHeader += ':';
-        }
-        
-        // Parse the content into bullet points
-        const items = [];
-        if (content.trim()) {
-          // Split content by bullet indicators and clean up
-          const contentLines = content
-            .split(/[•\-*]\s*/)
-            .map(line => line.trim())
-            .filter(line => line.length > 3);
-          
-          contentLines.forEach(line => {
-            // Remove any section headers that got mixed in
-            const isNotHeader = !sectionKeywords.some(keyword => 
-              line.toLowerCase().includes(keyword.toLowerCase()) && line.includes(':')
-            );
-            
-            if (isNotHeader && line.length > 5) {
-              // Clean up any remaining asterisks that aren't meant for bold formatting
-              let cleanLine = line;
-              
-              // If the line starts with a potential header keyword followed by colon, skip it
-              if (!/^(Risk Assessment|Market Opportunity|Implementation Requirements|Financial Implications|Competitive Implications|Timeline Pressures|Summary):/i.test(cleanLine)) {
-                // Capitalize the first letter of the bullet point
-                cleanLine = capitalizeFirstLetter(cleanLine);
-                items.push(cleanLine);
-              }
-            }
-          });
-        }
-        
-        if (items.length > 0) {
-          sections.push({
-            title: cleanHeader,
-            items: items
-          });
-        }
+      if (sections.length > 0) {
+        return (
+          <div>
+            {sections.map((section, idx) => (
+              <div key={idx} style={{ marginBottom: '16px' }}>
+                <div style={{ 
+                  fontWeight: 'bold', 
+                  marginBottom: '8px',
+                  fontSize: '14px',
+                  color: 'inherit'
+                }}>
+                  {section.title}
+                </div>
+                {section.items.map((item, itemIdx) => (
+                  <div key={itemIdx} style={{ 
+                    marginBottom: '6px',
+                    fontSize: '14px',
+                    lineHeight: '1.6',
+                    color: 'inherit',
+                    paddingLeft: section.items.length === 1 ? '0px' : '0px',
+                    wordWrap: 'break-word',
+                    overflowWrap: 'break-word'
+                  }}>
+                    {section.items.length === 1 ? item : `• ${item}`}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        );
       }
     }
-    
-    if (sections.length > 0) {
-      return (
-        <div>
-          {sections.map((section, idx) => (
-            <div key={idx} style={{ marginBottom: '16px' }}>
-              <div style={{ 
-                fontWeight: 'bold', 
-                marginBottom: '8px',
-                fontSize: '14px',
-                color: 'inherit'
-              }}>
-                {section.title}
-              </div>
-              {section.items.map((item, itemIdx) => {
-                // Check if the item has bold formatting (preserve legitimate asterisks)
-                const hasBoldParts = item.includes('*') && item.match(/\*[^*]+\*/);
-                
-                if (hasBoldParts) {
-                  const parts = item.split(/(\*[^*]+\*)/);
-                  return (
-                    <div key={itemIdx} style={{ 
-                      marginBottom: '4px',
-                      fontSize: '14px',
-                      lineHeight: '1.5',
-                      color: 'inherit'
-                    }}>
-                      • {parts.map((part, partIdx) => {
-                        if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-                          return (
-                            <strong key={partIdx} style={{ fontWeight: 'bold' }}>
-                              {part.slice(1, -1)}
-                            </strong>
-                          );
-                        } else {
-                          return part;
-                        }
-                      })}
-                    </div>
-                  );
-                } else {
-                  return (
-                    <div key={itemIdx} style={{ 
-                      marginBottom: '4px',
-                      fontSize: '14px',
-                      lineHeight: '1.5',
-                      color: 'inherit'
-                    }}>
-                      • {item}
-                    </div>
-                  );
-                }
-              })}
-            </div>
-          ))}
-        </div>
-      );
-    }
-  }
 
-  // Final fallback: simple bullet list
-  const sentences = textContent
-    .split(/[.!?]\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 10);
-  
-  if (sentences.length > 1) {
-    return (
-      <div>
-        {sentences.map((sentence, idx) => (
-          <div key={idx} style={{ 
-            marginBottom: '4px',
-            fontSize: '14px',
-            lineHeight: '1.5',
-            color: 'inherit'
-          }}>
-            • {sentence.replace(/^[•\-*]\s*/, '')}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return <div className="universal-text-content">{textContent}</div>;
-};
+    // Fallback: display as simple text if no sections found
+    return <div className="universal-text-content" style={{ 
+      fontSize: '14px', 
+      lineHeight: '1.6',
+      wordWrap: 'break-word',
+      overflowWrap: 'break-word'
+    }}>{textContent}</div>;
+  };
 
   // Filter helper functions
   const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
@@ -533,34 +573,80 @@ const formatUniversalContent = (content) => {
     setStateSearchTerm('');
   };
 
-  // Load existing highlights on component mount
+  // FIXED: Load existing highlights on component mount - using same pattern as ExecutiveOrdersPage
   useEffect(() => {
     const loadExistingHighlights = async () => {
       try {
+        console.log('🔍 StatePage: Loading existing highlights...');
         const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
         if (response.ok) {
-          const highlights = await response.json();
+          const data = await response.json();
+          console.log('🔍 StatePage: Raw highlights response:', data);
+          
+          // Handle different response formats (same as ExecutiveOrdersPage)
+          let highlights = [];
+          if (Array.isArray(data)) {
+            highlights = data;
+          } else if (data.highlights && Array.isArray(data.highlights)) {
+            highlights = data.highlights;
+          } else if (data.results && Array.isArray(data.results)) {
+            highlights = data.results;
+          }
+          
           const stateBillIds = new Set();
           
           highlights.forEach(highlight => {
-            // Check if this highlight matches any of our state bills
-            if (highlight.order_type === 'state_legislation') {
+            if (highlight.order_type === 'state_legislation' && highlight.order_id) {
               stateBillIds.add(highlight.order_id);
             }
           });
           
           setLocalHighlights(stateBillIds);
-          console.log('🌟 Loaded existing highlights:', stateBillIds);
+          console.log('🌟 StatePage: Loaded highlights:', Array.from(stateBillIds));
         }
       } catch (error) {
         console.error('Error loading existing highlights:', error);
       }
     };
     
-    if (stateName && stateOrders.length > 0) {
+    // Load highlights immediately on mount
+    loadExistingHighlights();
+  }, []); // Empty dependency array - run once on mount
+
+  // ALSO load highlights when state orders are loaded
+  useEffect(() => {
+    if (stateOrders.length > 0) {
+      const loadExistingHighlights = async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+          if (response.ok) {
+            const data = await response.json();
+            let highlights = [];
+            if (Array.isArray(data)) {
+              highlights = data;
+            } else if (data.highlights && Array.isArray(data.highlights)) {
+              highlights = data.highlights;
+            } else if (data.results && Array.isArray(data.results)) {
+              highlights = data.results;
+            }
+            
+            const stateBillIds = new Set();
+            highlights.forEach(highlight => {
+              if (highlight.order_type === 'state_legislation' && highlight.order_id) {
+                stateBillIds.add(highlight.order_id);
+              }
+            });
+            
+            setLocalHighlights(stateBillIds);
+          }
+        } catch (error) {
+          console.error('Error loading highlights after state orders loaded:', error);
+        }
+      };
+      
       loadExistingHighlights();
     }
-  }, [stateName, stateOrders.length]);
+  }, [stateOrders.length]);
 
   // Load/save reviewed bills from localStorage
   useEffect(() => {
@@ -614,7 +700,7 @@ const formatUniversalContent = (content) => {
     }
   };
 
-  // Enhanced highlighting function with improved error handling and debugging
+  // FIXED: Enhanced highlighting function - exactly matching ExecutiveOrdersPage pattern
   const handleStateBillHighlight = useCallback(async (bill) => {
     console.log('🌟 StatePage highlight handler called for:', bill.title);
     
@@ -626,7 +712,6 @@ const formatUniversalContent = (content) => {
     
     const isCurrentlyHighlighted = localHighlights.has(billId);
     console.log('🌟 Current highlight status:', isCurrentlyHighlighted, 'Bill ID:', billId);
-    console.log('🌟 Current localHighlights set:', Array.from(localHighlights));
     
     // Add to loading state
     setHighlightLoading(prev => new Set([...prev, billId]));
@@ -636,11 +721,10 @@ const formatUniversalContent = (content) => {
         // REMOVE highlight
         console.log('🗑️ Attempting to remove highlight for:', billId);
         
-        // Optimistic UI update - remove from local state immediately
+        // Optimistic UI update
         setLocalHighlights(prev => {
           const newSet = new Set(prev);
-          const deleted = newSet.delete(billId);
-          console.log('🔄 Optimistically removed from local state:', deleted, 'New size:', newSet.size);
+          newSet.delete(billId);
           return newSet;
         });
         
@@ -649,29 +733,21 @@ const formatUniversalContent = (content) => {
         });
         
         if (!response.ok) {
-          console.error('❌ Failed to remove highlight from backend, status:', response.status);
-          // Revert optimistic update on error - add back to local state
-          setLocalHighlights(prev => {
-            console.log('🔄 Reverting optimistic update - adding back to local state');
-            return new Set([...prev, billId]);
-          });
+          console.error('❌ Failed to remove highlight from backend');
+          // Revert optimistic update
+          setLocalHighlights(prev => new Set([...prev, billId]));
         } else {
           console.log('✅ Successfully removed highlight from backend');
-          // Also call the stable handler to sync global state
           if (stableHandlers?.handleItemHighlight) {
-            stableHandlers.handleItemHighlight(bill, 'state-legislation');
+            stableHandlers.handleItemHighlight(bill, 'state_legislation');
           }
         }
       } else {
         // ADD highlight
         console.log('⭐ Attempting to add highlight for:', billId);
         
-        // Optimistic UI update - add to local state immediately
-        setLocalHighlights(prev => {
-          const newSet = new Set([...prev, billId]);
-          console.log('🔄 Optimistically added to local state, New size:', newSet.size);
-          return newSet;
-        });
+        // Optimistic UI update
+        setLocalHighlights(prev => new Set([...prev, billId]));
         
         const response = await fetch(`${API_URL}/api/highlights`, {
           method: 'POST',
@@ -688,24 +764,19 @@ const formatUniversalContent = (content) => {
         });
         
         if (!response.ok) {
-          const errorData = await response.json();
-          console.error('❌ Failed to add highlight, status:', response.status, 'Error:', errorData);
-          if (response.status !== 409) { // 409 means already exists, which is fine
-            // Revert optimistic update on error - remove from local state
+          console.error('❌ Failed to add highlight');
+          if (response.status !== 409) { // 409 means already exists
+            // Revert optimistic update
             setLocalHighlights(prev => {
               const newSet = new Set(prev);
-              const deleted = newSet.delete(billId);
-              console.log('🔄 Reverting optimistic update - removed from local state:', deleted);
+              newSet.delete(billId);
               return newSet;
             });
-          } else {
-            console.log('ℹ️ Highlight already exists in backend (409 conflict)');
           }
         } else {
           console.log('✅ Successfully added highlight to backend');
-          // Also call the stable handler to sync global state
           if (stableHandlers?.handleItemHighlight) {
-            stableHandlers.handleItemHighlight(bill, 'state-legislation');
+            stableHandlers.handleItemHighlight(bill, 'state_legislation');
           }
         }
       }
@@ -714,17 +785,11 @@ const formatUniversalContent = (content) => {
       console.error('❌ Error managing highlight:', error);
       // Revert optimistic update on error
       if (isCurrentlyHighlighted) {
-        // Was trying to remove, add it back
-        setLocalHighlights(prev => {
-          console.log('🔄 Error recovery - adding back to local state');
-          return new Set([...prev, billId]);
-        });
+        setLocalHighlights(prev => new Set([...prev, billId]));
       } else {
-        // Was trying to add, remove it
         setLocalHighlights(prev => {
           const newSet = new Set(prev);
-          const deleted = newSet.delete(billId);
-          console.log('🔄 Error recovery - removed from local state:', deleted);
+          newSet.delete(billId);
           return newSet;
         });
       }
@@ -735,11 +800,8 @@ const formatUniversalContent = (content) => {
         newSet.delete(billId);
         return newSet;
       });
-      
-      // Debug final state
-      console.log('🏁 Final highlight operation completed for:', billId);
     }
-  }, [localHighlights, getStateBillId, stableHandlers]);
+  }, [localHighlights, stableHandlers, getStateBillId]);
 
   // Enhanced check if bill is highlighted (using local state)
   const isStateBillHighlighted = useCallback((bill) => {
@@ -834,7 +896,7 @@ const formatUniversalContent = (content) => {
       
       const results = data?.results || [];
       
-      // Transform bills with enhanced compatibility
+      // Transform bills with enhanced compatibility and CLEANED META VALUES
       const transformedBills = results.map((bill, index) => {
         const uniqueId = getStateBillId(bill) || `fallback-${index}`;
         
@@ -843,12 +905,12 @@ const formatUniversalContent = (content) => {
           id: uniqueId,
           bill_id: uniqueId,
           
-          // Standard bill fields
+          // Standard bill fields with CLEANED VALUES
           title: bill?.title || 'Untitled Bill',
-          status: bill?.status || 'Active',
-          category: bill?.category || 'not-applicable',
+          status: cleanStatus(bill?.status), // ✅ CLEANED STATUS
+          category: cleanCategory(bill?.category), // ✅ CLEANED CATEGORY
           description: bill?.description || bill?.ai_summary || 'No description available',
-          tags: [bill?.category].filter(Boolean),
+          tags: [cleanCategory(bill?.category)].filter(Boolean), // ✅ CLEANED TAGS
           summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
           bill_number: bill?.bill_number,
           state: bill?.state || stateName,
@@ -899,7 +961,7 @@ const formatUniversalContent = (content) => {
         body: JSON.stringify({
           query: topic,
           state: stateAbbr,
-          limit: 15,
+          limit: 50,
           save_to_db: true
         })
       });
@@ -1073,7 +1135,12 @@ const formatUniversalContent = (content) => {
                         onClick={() => toggleFilter(filter.key)}
                         className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                           isActive
-                            ? 'bg-blue-50 text-blue-700 font-medium'
+                            ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
+                              filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
+                              filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
+                              filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
+                              filter.key === 'not-applicable' ? 'bg-gray-100 text-gray-700 font-medium' :
+                              'bg-blue-100 text-blue-700 font-medium'
                             : 'text-gray-700 hover:bg-gray-100'
                         }`}
                       >
@@ -1085,16 +1152,11 @@ const formatUniversalContent = (content) => {
                               filter.key === 'education' ? 'text-orange-600' :
                               filter.key === 'engineering' ? 'text-green-600' :
                               filter.key === 'healthcare' ? 'text-red-600' :
+                              filter.key === 'not-applicable' ? 'text-gray-600' :
                               'text-gray-600'
                             }
                           />
                           <span>{filter.label}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">({count})</span>
-                          {isActive && (
-                            <Check size={14} className="text-blue-600" />
-                          )}
                         </div>
                       </button>
                     );
@@ -1110,7 +1172,7 @@ const formatUniversalContent = (content) => {
                     onClick={() => toggleFilter('reviewed')}
                     className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                       isFilterActive('reviewed')
-                        ? 'bg-green-50 text-green-700 font-medium'
+                        ? 'bg-green-100 text-green-700 font-medium'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -1129,7 +1191,7 @@ const formatUniversalContent = (content) => {
                     onClick={() => toggleFilter('not_reviewed')}
                     className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                       isFilterActive('not_reviewed')
-                        ? 'bg-red-50 text-red-700 font-medium'
+                        ? 'bg-red-100 text-red-700 font-medium'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -1378,10 +1440,10 @@ const formatUniversalContent = (content) => {
                               </>
                             )}
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              {bill.status || 'Unknown Status'}
+                              {bill.status}
                             </span>
                             <span>-</span>
-                            <CategoryTag category={bill.category} />
+                            <CustomCategoryTag category={bill.category} />
                             <span>-</span>
                             <ReviewStatusTag isReviewed={isReviewed} />
                           </div>
@@ -1448,7 +1510,7 @@ const formatUniversalContent = (content) => {
                             )}
                           </button>
 
-                          {/* ADDED: Expand/Collapse Button */}
+                          {/* Expand/Collapse Button */}
                           <button
                             onClick={(e) => {
                               e.preventDefault();
@@ -1467,66 +1529,78 @@ const formatUniversalContent = (content) => {
                           </button>
                         </div>
                       </div>
-                    {bill.summary && bill.summary !== 'No AI summary available' && (
-                      <div className="mb-4 mt-4 mx-6">
-                        <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
-                            <span className="text-purple-800">-</span>
-                            <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
-                              ✦ AI Generated
-                            </span>
+
+                      {/* AI Summary - Always show if available */}
+                      {bill.summary && bill.summary !== 'No AI summary available' && (
+                        <div className="mb-4 mt-4 mx-6">
+                          <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
+                              <span className="text-purple-800">-</span>
+                              <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                ✦ AI Generated
+                              </span>
+                            </div>
+                            <div className="text-sm text-violet-800 leading-relaxed">
+                              <div className="universal-text-content" style={{
+                                fontSize: '14px',
+                                lineHeight: '1.6',
+                                wordWrap: 'break-word',
+                                overflowWrap: 'break-word',
+                                whiteSpace: 'normal'
+                              }}>
+                                {stripHtmlTags(bill.summary)}
+                              </div>
+                            </div>
                           </div>
-                          <p className="text-sm text-violet-800 leading-relaxed">{bill.summary}</p>
                         </div>
+                      )}
+
+                      {/* Description - Always show */}
+                      <div className="px-6 pb-4">
+                        <p className="text-gray-700">{bill.description || 'No description available'}</p>
                       </div>
-                    )}
 
-                    {/* Description - Always show */}
-                    <div className="px-6 pb-4">
-                      <p className="text-gray-700">{bill.description || 'No description available'}</p>
-                    </div>
-
-                    {/* ADDED: Expanded AI Content Section */}
-                    {isExpanded && (
-                      <div>
-                        {/* AI Talking Points */}
-                        {bill.ai_talking_points && (
-                          <div className="mb-4 mt-4 mx-6">
-                            <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
-                              <div className="flex items-center gap-2 mb-2">
-                                <h4 className="font-semibold text-blue-800">Key Talking Points</h4>
-                                <span className="text-blue-800">-</span>
-                                <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
-                                  ✦ AI Generated
-                                </span>
-                              </div>
-                              <div className="text-sm text-blue-800 leading-relaxed">
-                                {formatTalkingPoints(bill.ai_talking_points)}
+                      {/* Expanded AI Content Section */}
+                      {isExpanded && (
+                        <div>
+                          {/* AI Talking Points */}
+                          {bill.ai_talking_points && (
+                            <div className="mb-4 mt-4 mx-6">
+                              <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold text-blue-800">Key Talking Points</h4>
+                                  <span className="text-blue-800">-</span>
+                                  <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                    ✦ AI Generated
+                                  </span>
+                                </div>
+                                <div className="text-sm text-blue-800 leading-relaxed">
+                                  {formatTalkingPoints(bill.ai_talking_points)}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {/* AI Business Impact */}
-                        {bill.ai_business_impact && (
-                          <div className="mb-4 mt-4 mx-6">
-                            <div className="bg-green-50 p-4 rounded-md border border-green-200">
-                              <div className="flex items-center gap-2 mb-2">
-                                <h4 className="font-semibold text-green-800">Business Impact Analysis</h4>
-                                <span className="text-green-800">-</span>
-                                <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
-                                  ✦ AI Generated
-                                </span>
-                              </div>
-                              <div className="text-sm text-green-800 leading-relaxed">
-                                {formatUniversalContent(bill.ai_business_impact)}
+                          {/* AI Business Impact */}
+                          {bill.ai_business_impact && (
+                            <div className="mb-4 mt-4 mx-6">
+                              <div className="bg-green-50 p-4 rounded-md border border-green-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold text-green-800">Business Impact Analysis</h4>
+                                  <span className="text-green-800">-</span>
+                                  <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                    ✦ AI Generated
+                                  </span>
+                                </div>
+                                <div className="text-sm text-green-800 leading-relaxed">
+                                  {formatUniversalContent(bill.ai_business_impact)}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      )}
 
                       {/* Action Buttons */}
                       <div className="px-6 pb-6">
@@ -1616,6 +1690,27 @@ const formatUniversalContent = (content) => {
 
       {/* Universal CSS Styles - Same as ExecutiveOrdersPage */}
       <style>{`
+
+          .bg-purple-50 .text-violet-800,
+          .bg-blue-50 .text-blue-800, 
+          .bg-green-50 .text-green-800 {
+            word-break: normal;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+            text-align: justify;
+          }
+
+          /* Ensure numbered items don't break awkwardly */
+          .numbered-item {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          .numbered-text {
+            word-break: normal;
+            overflow-wrap: anywhere;
+          }
+
         .universal-ai-content,
         .universal-structured-content,
         .universal-text-content {
@@ -1791,6 +1886,36 @@ const formatUniversalContent = (content) => {
           margin-bottom: 0;
         }
 
+        .text-purple-800 .universal-ai-content,
+        .text-purple-800 .universal-structured-content,
+        .text-purple-800 .universal-text-content,
+        .text-purple-800 .number-bullet,
+        .text-purple-800 .numbered-text,
+        .text-purple-800 .bullet-point,
+        .text-purple-800 .bullet-text {
+          color: #5b21b6;
+        }
+
+        .text-blue-800 .universal-ai-content,
+        .text-blue-800 .universal-structured-content,
+        .text-blue-800 .universal-text-content,
+        .text-blue-800 .number-bullet,
+        .text-blue-800 .numbered-text,
+        .text-blue-800 .bullet-point,
+        .text-blue-800 .bullet-text {
+          color: #1e40af;
+        }
+
+        .text-green-800 .universal-ai-content,
+        .text-green-800 .universal-structured-content,
+        .text-green-800 .universal-text-content,
+        .text-green-800 .number-bullet,
+        .text-green-800 .numbered-text,
+        .text-green-800 .bullet-point,
+        .text-green-800 .bullet-text {
+          color: #166534;
+        }
+
         .text-violet-800 .universal-ai-content,
         .text-violet-800 .universal-structured-content,
         .text-violet-800 .universal-text-content,
@@ -1799,6 +1924,20 @@ const formatUniversalContent = (content) => {
         .text-violet-800 .bullet-point,
         .text-violet-800 .bullet-text {
           color: #5b21b6;
+        }
+
+        .section-header {
+          margin-bottom: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          color: inherit;
+        }
+
+        .section-item {
+          margin-bottom: 4px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
         }
       `}</style>
     </div>

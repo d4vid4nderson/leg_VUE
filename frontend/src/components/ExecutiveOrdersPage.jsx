@@ -21,9 +21,170 @@ import {
   Wrench
 } from 'lucide-react';
 
-
 // Backend API URL - Fixed for artifact environment
 const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
+
+// FIXED: Enhanced ID generation for Executive Orders - More robust and consistent
+const getExecutiveOrderId = (order) => {
+  if (!order) return null;
+  
+  // Use multiple fallbacks to ensure consistent ID generation
+  const candidates = [
+    order.executive_order_number,
+    order.document_number,
+    order.eo_number,
+    order.bill_number,
+    order.id,
+    order.bill_id
+  ];
+  
+  // Find the first valid candidate
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'string' && candidate.trim()) {
+      return `eo-${candidate.trim()}`;
+    }
+    if (candidate && typeof candidate === 'number') {
+      return `eo-${candidate}`;
+    }
+  }
+  
+  // Fallback using title hash for absolute consistency
+  if (order.title && typeof order.title === 'string') {
+    const titleHash = order.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 30); // Increased length for uniqueness
+    return `eo-title-${titleHash}`;
+  }
+  
+  // Last resort
+  console.warn('Could not generate stable ID for order:', order);
+  return null;
+};
+
+// FIXED: In-memory storage for review status (replaced localStorage)
+const ReviewStatusManager = {
+  // In-memory storage instead of localStorage
+  _storage: new Map(),
+  
+  saveReviewedItems: (reviewedSet, storageKey) => {
+    try {
+      if (!reviewedSet || typeof reviewedSet.has !== 'function') {
+        console.error('Invalid reviewedSet provided to saveReviewedItems');
+        return false;
+      }
+      
+      const itemsArray = Array.from(reviewedSet).filter(id => id && id.trim());
+      ReviewStatusManager._storage.set(storageKey, itemsArray);
+      console.log(`✅ Saved ${itemsArray.length} reviewed items to ${storageKey} (in-memory)`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error saving reviewed items to ${storageKey}:`, error);
+      return false;
+    }
+  },
+
+  loadReviewedItems: (storageKey) => {
+    try {
+      const saved = ReviewStatusManager._storage.get(storageKey);
+      if (!saved) {
+        console.log(`📋 No saved reviewed items found for ${storageKey}`);
+        return new Set();
+      }
+      
+      if (!Array.isArray(saved)) {
+        console.error(`❌ Invalid data format in ${storageKey}, expected array`);
+        return new Set();
+      }
+      
+      const validItems = saved.filter(id => id && typeof id === 'string' && id.trim());
+      console.log(`✅ Loaded ${validItems.length} reviewed items from ${storageKey} (in-memory)`);
+      return new Set(validItems);
+    } catch (error) {
+      console.error(`❌ Error loading reviewed items from ${storageKey}:`, error);
+      return new Set();
+    }
+  }
+};
+
+// ENHANCED: Review status hook for Executive Orders
+const useExecutiveOrderReviewStatus = () => {
+  const STORAGE_KEY = 'reviewedExecutiveOrders';
+  const [reviewedOrders, setReviewedOrders] = useState(new Set());
+  const [markingReviewed, setMarkingReviewed] = useState(new Set());
+
+  // Load from in-memory storage on mount
+  useEffect(() => {
+    console.log('🔄 Loading executive order review status from in-memory storage...');
+    const loaded = ReviewStatusManager.loadReviewedItems(STORAGE_KEY);
+    setReviewedOrders(loaded);
+  }, []);
+
+  // Save to in-memory storage whenever reviewedOrders changes
+  useEffect(() => {
+    ReviewStatusManager.saveReviewedItems(reviewedOrders, STORAGE_KEY);
+  }, [reviewedOrders]);
+
+  // Toggle review status function
+  const toggleReviewStatus = useCallback(async (order) => {
+    const orderId = getExecutiveOrderId(order);
+    if (!orderId) {
+      console.error('❌ Cannot toggle review status: invalid order ID');
+      return false;
+    }
+    
+    console.log(`🔄 Toggling review status for order: ${orderId}`);
+    
+    const isCurrentlyReviewed = reviewedOrders.has(orderId);
+    setMarkingReviewed(prev => new Set([...prev, orderId]));
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      setReviewedOrders(prev => {
+        const newSet = new Set(prev);
+        if (isCurrentlyReviewed) {
+          newSet.delete(orderId);
+          console.log(`✅ Marked order ${orderId} as NOT reviewed`);
+        } else {
+          newSet.add(orderId);
+          console.log(`✅ Marked order ${orderId} as reviewed`);
+        }
+        return newSet;
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error toggling review status:', error);
+      return false;
+    } finally {
+      setMarkingReviewed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
+    }
+  }, [reviewedOrders]);
+
+  // Check if order is reviewed
+  const isOrderReviewed = useCallback((order) => {
+    const orderId = getExecutiveOrderId(order);
+    return orderId ? reviewedOrders.has(orderId) : false;
+  }, [reviewedOrders]);
+
+  // Check if order is being marked
+  const isOrderMarking = useCallback((order) => {
+    const orderId = getExecutiveOrderId(order);
+    return orderId ? markingReviewed.has(orderId) : false;
+  }, [markingReviewed]);
+
+  return {
+    reviewedOrders,
+    toggleReviewStatus,
+    isOrderReviewed,
+    isOrderMarking
+  };
+};
 
 // Helper to extract executive order number from various fields
 const getExecutiveOrderNumber = (order) => {
@@ -92,30 +253,9 @@ const formatDate = (dateStr) => {
   }
 };
 
+// FIXED: Use the enhanced ID generation function
 const getOrderId = (order) => {
-  if (!order) return `fallback-${Math.random().toString(36).substr(2, 9)}`;
-  
-  // Priority order for ID selection to ensure uniqueness for Executive Orders
-  if (order.executive_order_number && typeof order.executive_order_number === 'string') {
-    return `eo-${order.executive_order_number}`;
-  }
-  if (order.document_number && typeof order.document_number === 'string') {
-    return `eo-doc-${order.document_number}`;
-  }
-  if (order.bill_id && typeof order.bill_id === 'string') return order.bill_id;
-  if (order.id && typeof order.id === 'string') return order.id;
-  if (order.bill_number) return `eo-${order.bill_number}`;
-  if (order.eo_number) return `eo-${order.eo_number}`;
-  
-  // Fallback using title hash for consistency
-  if (order.title) {
-    const titleHash = order.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
-    return `eo-title-${titleHash}`;
-  }
-  
-  // Last resort - use index if available, otherwise unique fallback
-  if (order.index !== undefined) return `eo-index-${order.index}`;
-  return `eo-fallback-${Math.random().toString(36).substr(2, 9)}`;
+  return getExecutiveOrderId(order) || `fallback-${Math.random().toString(36).substr(2, 9)}`;
 };
 
 const stripHtmlTags = (content) => {
@@ -405,6 +545,14 @@ const formatUniversalContent = (content) => {
 };
 
 const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
+  // FIXED: Use the enhanced review status hook
+  const {
+    reviewedOrders,
+    toggleReviewStatus,
+    isOrderReviewed,
+    isOrderMarking
+  } = useExecutiveOrderReviewStatus();
+
   // State management
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -414,10 +562,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   // Filter state
   const [selectedFilters, setSelectedFilters] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  
-  // Review status state
-  const [reviewedOrders, setReviewedOrders] = useState(new Set());
-  const [markingReviewed, setMarkingReviewed] = useState(new Set());
   
   // Highlights state - Local state for immediate UI feedback
   const [localHighlights, setLocalHighlights] = useState(new Set());
@@ -454,108 +598,49 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   // Refs
   const filterDropdownRef = useRef(null);
 
-  // Load saved state from localStorage
+  // Load existing highlights on component mount - FIXED
   useEffect(() => {
-    try {
-      const savedReviewed = localStorage?.getItem('reviewedExecutiveOrders');
-      
-      if (savedReviewed) {
-        setReviewedOrders(new Set(JSON.parse(savedReviewed)));
-      }
-    } catch (error) {
-      console.error('Error loading saved data:', error);
-    }
-  }, []);
-
-  // Save to localStorage
-  useEffect(() => {
-    try {
-      localStorage?.setItem('reviewedExecutiveOrders', JSON.stringify([...reviewedOrders]));
-    } catch (error) {
-      console.error('Error saving reviewed orders:', error);
-    }
-  }, [reviewedOrders]);
-
-// Load existing highlights on component mount - FIXED
-useEffect(() => {
-  const loadExistingHighlights = async () => {
-    try {
-      console.log('🔍 ExecutiveOrdersPage: Loading existing highlights...');
-      const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🔍 ExecutiveOrdersPage: Raw highlights response:', data);
-        
-        // FIX: Ensure we have an array before calling forEach
-        const highlights = Array.isArray(data) ? data : [];
-        const orderIds = new Set();
-        
-        highlights.forEach(highlight => {
-          if (highlight.order_type === 'executive_order' && highlight.order_id) {
-            orderIds.add(highlight.order_id);
-          }
-        });
-        
-        setLocalHighlights(orderIds);
-        console.log('🌟 ExecutiveOrdersPage: Loaded highlights:', Array.from(orderIds));
-      }
-    } catch (error) {
-      console.error('Error loading existing highlights:', error);
-    }
-  };
-  
-  // Load highlights immediately on mount
-  loadExistingHighlights();
-}, []); // Empty dependency array - run once on mount
-
-// ALSO load highlights when orders are loaded (keep existing functionality)
-useEffect(() => {
-  const loadExistingHighlights = async () => {
-    try {
-      console.log('🔍 ExecutiveOrdersPage: Loading existing highlights...');
-      const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🔍 ExecutiveOrdersPage: Raw highlights response:', data);
-        
-        // FIX: Extract highlights from the correct property
-        let highlights = [];
-        if (Array.isArray(data)) {
-          highlights = data;
-        } else if (data.highlights && Array.isArray(data.highlights)) {
-          highlights = data.highlights;
-        } else if (data.results && Array.isArray(data.results)) {
-          highlights = data.results;
-        }
-        
-        const orderIds = new Set();
-        
-        highlights.forEach(highlight => {
-          if (highlight.order_type === 'executive_order' && highlight.order_id) {
-            orderIds.add(highlight.order_id);
-          }
-        });
-        
-        setLocalHighlights(orderIds);
-        console.log('🌟 ExecutiveOrdersPage: Loaded highlights:', Array.from(orderIds));
-      }
-    } catch (error) {
-      console.error('Error loading existing highlights:', error);
-    }
-  };
-  
-  // Load highlights immediately on mount
-  loadExistingHighlights();
-}, []);
-
-// ALSO load highlights when orders are loaded
-useEffect(() => {
-  if (orders.length > 0) {
     const loadExistingHighlights = async () => {
       try {
+        console.log('🔍 ExecutiveOrdersPage: Loading existing highlights...');
         const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
         if (response.ok) {
           const data = await response.json();
+          console.log('🔍 ExecutiveOrdersPage: Raw highlights response:', data);
+          
+          // FIX: Ensure we have an array before calling forEach
+          const highlights = Array.isArray(data) ? data : [];
+          const orderIds = new Set();
+          
+          highlights.forEach(highlight => {
+            if (highlight.order_type === 'executive_order' && highlight.order_id) {
+              orderIds.add(highlight.order_id);
+            }
+          });
+          
+          setLocalHighlights(orderIds);
+          console.log('🌟 ExecutiveOrdersPage: Loaded highlights:', Array.from(orderIds));
+        }
+      } catch (error) {
+        console.error('Error loading existing highlights:', error);
+      }
+    };
+    
+    // Load highlights immediately on mount
+    loadExistingHighlights();
+  }, []); // Empty dependency array - run once on mount
+
+  // ALSO load highlights when orders are loaded (keep existing functionality)
+  useEffect(() => {
+    const loadExistingHighlights = async () => {
+      try {
+        console.log('🔍 ExecutiveOrdersPage: Loading existing highlights...');
+        const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('🔍 ExecutiveOrdersPage: Raw highlights response:', data);
+          
+          // FIX: Extract highlights from the correct property
           let highlights = [];
           if (Array.isArray(data)) {
             highlights = data;
@@ -566,6 +651,7 @@ useEffect(() => {
           }
           
           const orderIds = new Set();
+          
           highlights.forEach(highlight => {
             if (highlight.order_type === 'executive_order' && highlight.order_id) {
               orderIds.add(highlight.order_id);
@@ -573,15 +659,51 @@ useEffect(() => {
           });
           
           setLocalHighlights(orderIds);
+          console.log('🌟 ExecutiveOrdersPage: Loaded highlights:', Array.from(orderIds));
         }
       } catch (error) {
-        console.error('Error loading highlights after orders loaded:', error);
+        console.error('Error loading existing highlights:', error);
       }
     };
     
+    // Load highlights immediately on mount
     loadExistingHighlights();
-  }
-}, [orders.length]);
+  }, []);
+
+  // ALSO load highlights when orders are loaded
+  useEffect(() => {
+    if (orders.length > 0) {
+      const loadExistingHighlights = async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+          if (response.ok) {
+            const data = await response.json();
+            let highlights = [];
+            if (Array.isArray(data)) {
+              highlights = data;
+            } else if (data.highlights && Array.isArray(data.highlights)) {
+              highlights = data.highlights;
+            } else if (data.results && Array.isArray(data.results)) {
+              highlights = data.results;
+            }
+            
+            const orderIds = new Set();
+            highlights.forEach(highlight => {
+              if (highlight.order_type === 'executive_order' && highlight.order_id) {
+                orderIds.add(highlight.order_id);
+              }
+            });
+            
+            setLocalHighlights(orderIds);
+          }
+        } catch (error) {
+          console.error('Error loading highlights after orders loaded:', error);
+        }
+      };
+      
+      loadExistingHighlights();
+    }
+  }, [orders.length]);
 
   // 🚀 AUTO-LOAD: Auto-load data from database on component mount
   useEffect(() => {
@@ -772,17 +894,8 @@ useEffect(() => {
         console.log('📊 Scaled category counts:', categoryCounts);
       }
 
-      // Get reviewed counts from localStorage
-      const savedReviewed = localStorage?.getItem('reviewedExecutiveOrders');
-      let reviewedCount = 0;
-      if (savedReviewed) {
-        try {
-          const reviewedSet = new Set(JSON.parse(savedReviewed));
-          reviewedCount = reviewedSet.size;
-        } catch (e) {
-          console.error('Error parsing reviewed orders:', e);
-        }
-      }
+      // Get reviewed counts from in-memory storage
+      const reviewedCount = reviewedOrders.size;
 
       const newFilterCounts = {
         ...categoryCounts,
@@ -804,7 +917,7 @@ useEffect(() => {
       });
       
       const total = pagination.count || orders.length || 0; // Use pagination total if available
-      const reviewed = orders.filter(order => reviewedOrders.has(getOrderId(order))).length;
+      const reviewed = orders.filter(order => isOrderReviewed(order)).length;
       
       console.log('📊 Using fallback counts with pagination total:', total);
       
@@ -815,7 +928,7 @@ useEffect(() => {
         total: total
       });
     }
-  }, [orders, reviewedOrders, pagination.count]);
+  }, [orders, reviewedOrders, pagination.count, isOrderReviewed]);
 
   // 🔢 FILTER COUNTS: Dynamic filter counts based on current filtering state
   const updateFilterCounts = useCallback(async (activeFilters, searchTerm) => {
@@ -897,7 +1010,7 @@ useEffect(() => {
           fallbackCounts[filter.key] = orders.filter(order => order?.category === filter.key).length;
         });
         
-        const reviewed = orders.filter(order => reviewedOrders.has(getOrderId(order))).length;
+        const reviewed = orders.filter(order => isOrderReviewed(order)).length;
         
         setAllFilterCounts({
           ...fallbackCounts,
@@ -909,7 +1022,7 @@ useEffect(() => {
     } catch (error) {
       console.error('❌ Error updating filter counts:', error);
     }
-  }, [reviewedOrders, fetchFilterCounts, orders]);
+  }, [reviewedOrders, fetchFilterCounts, orders, isOrderReviewed]);
 
   // Update filter counts when filters or search changes
   useEffect(() => {
@@ -1174,7 +1287,7 @@ useEffect(() => {
     }, 100);
   };
 
-    // 🔍 FIXED: Get ALL filtered data, not just paginated results
+  // 🔍 FIXED: Get ALL filtered data, not just paginated results
   const fetchAllFilteredData = useCallback(async (filters, search) => {
     try {
       console.log(`🔍 Fetching ALL filtered data - Filters: ${filters.join(',')}, Search: "${search}"`);
@@ -1311,9 +1424,9 @@ useEffect(() => {
             const hasNotReviewedFilter = filters.includes('not_reviewed');
             
             if (hasReviewedFilter && !hasNotReviewedFilter) {
-              finalAllOrders = allTransformedOrders.filter(order => reviewedOrders.has(getOrderId(order)));
+              finalAllOrders = allTransformedOrders.filter(order => isOrderReviewed(order));
             } else if (hasNotReviewedFilter && !hasReviewedFilter) {
-              finalAllOrders = allTransformedOrders.filter(order => !reviewedOrders.has(getOrderId(order)));
+              finalAllOrders = allTransformedOrders.filter(order => !isOrderReviewed(order));
             }
 
             console.log(`🔍 Client-side filtered results: ${finalAllOrders.length} orders`);
@@ -1375,9 +1488,9 @@ useEffect(() => {
       const hasNotReviewedFilter = filters.includes('not_reviewed');
       
       if (hasReviewedFilter && !hasNotReviewedFilter) {
-        finalAllOrders = allTransformedOrders.filter(order => reviewedOrders.has(getOrderId(order)));
+        finalAllOrders = allTransformedOrders.filter(order => isOrderReviewed(order));
       } else if (hasNotReviewedFilter && !hasReviewedFilter) {
-        finalAllOrders = allTransformedOrders.filter(order => !reviewedOrders.has(getOrderId(order)));
+        finalAllOrders = allTransformedOrders.filter(order => !isOrderReviewed(order));
       }
 
       console.log(`🔍 All Filtered Results: ${finalAllOrders.length} orders`);
@@ -1466,7 +1579,7 @@ useEffect(() => {
       
       return [];
     }
-  }, [reviewedOrders]);
+  }, [isOrderReviewed]);
 
   // 🔍 NEW: Database-level filtering function with proper pagination
   const fetchFilteredData = useCallback(async (filters, search, pageNum = 1) => {
@@ -1537,7 +1650,7 @@ useEffect(() => {
     }
   }, [fetchAllFilteredData]);
 
-const handlePageChange = useCallback((newPage) => {
+  const handlePageChange = useCallback((newPage) => {
     console.log(`🔄 Changing to page ${newPage} with filters:`, selectedFilters);
     
     if (selectedFilters.length > 0 || searchTerm) {
@@ -1554,38 +1667,6 @@ const handlePageChange = useCallback((newPage) => {
       fetchFilteredData(selectedFilters, searchTerm, 1);
     }
   }, [searchTerm, selectedFilters, fetchFilteredData]);
-
-  // Toggle review status function
-  const handleToggleReviewStatus = async (order) => {
-    const orderId = getOrderId(order);
-    if (!orderId) return;
-    
-    const isCurrentlyReviewed = reviewedOrders.has(orderId);
-    setMarkingReviewed(prev => new Set([...prev, orderId]));
-    
-    try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      if (isCurrentlyReviewed) {
-        setReviewedOrders(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(orderId);
-          return newSet;
-        });
-      } else {
-        setReviewedOrders(prev => new Set([...prev, orderId]));
-      }
-      
-    } catch (error) {
-      console.error('Error toggling review status:', error);
-    } finally {
-      setMarkingReviewed(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(orderId);
-        return newSet;
-      });
-    }
-  };
 
   // Enhanced highlighting function
   const handleOrderHighlight = useCallback(async (order) => {
@@ -1711,13 +1792,13 @@ const handlePageChange = useCallback((newPage) => {
   }, [highlightLoading]);
 
   // Count functions for filter display
-    const reviewCounts = useMemo(() => {
-      return {
-        total: allFilterCounts.total || 0,
-        reviewed: allFilterCounts.reviewed || 0,
-        notReviewed: allFilterCounts.not_reviewed || 0
-      };
-    }, [allFilterCounts]);
+  const reviewCounts = useMemo(() => {
+    return {
+      total: allFilterCounts.total || 0,
+      reviewed: allFilterCounts.reviewed || 0,
+      notReviewed: allFilterCounts.not_reviewed || 0
+    };
+  }, [allFilterCounts]);
 
   const categoryCounts = useMemo(() => {
     return {
@@ -1755,6 +1836,16 @@ const handlePageChange = useCallback((newPage) => {
         <p className="text-gray-600">
           Retrieving executive orders from official federal sources, leveraging state-of-the-art AI models to extract summaries, strategic talking points, and potential business implications.
         </p>
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Database size={16} className="text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">Note: In-Memory Storage</span>
+          </div>
+          <p className="text-sm text-blue-700">
+            Review status is now stored in memory during your session (localStorage is not supported in this environment). 
+            In a full implementation, review status would be saved to a database for permanent persistence.
+          </p>
+        </div>
       </div>
 
       {/* Search Bar and Filter */}
@@ -2077,7 +2168,7 @@ const handlePageChange = useCallback((newPage) => {
               const orderWithIndex = { ...order, index };
               const orderId = getOrderId(orderWithIndex);
               const isExpanded = expandedOrders.has(orderId);
-              const isReviewed = reviewedOrders.has(orderId);
+              const isReviewed = isOrderReviewed(order);
               
               // 🔢 CONTINUOUS NUMBERING: Calculate the actual order number across all pages
               const actualOrderNumber = pagination.count - ((pagination.page - 1) * pagination.per_page + index);
@@ -2118,16 +2209,16 @@ const handlePageChange = useCallback((newPage) => {
                         </div>
                         
                         <div className="flex items-center gap-2 ml-4">
-                          {/* Toggle Review Status Button */}
+                          {/* FIXED: Toggle Review Status Button */}
                           <button
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              handleToggleReviewStatus(orderWithIndex);
+                              toggleReviewStatus(orderWithIndex);
                             }}
-                            disabled={markingReviewed.has(orderId)}
+                            disabled={isOrderMarking(orderWithIndex)}
                             className={`p-2 rounded-md transition-all duration-300 ${
-                              markingReviewed.has(orderId)
+                              isOrderMarking(orderWithIndex)
                                 ? 'text-gray-500 cursor-not-allowed'
                                 : isReviewed
                                 ? 'text-green-600 bg-green-100 hover:bg-green-200'
@@ -2135,7 +2226,7 @@ const handlePageChange = useCallback((newPage) => {
                             }`}
                             title={isReviewed ? "Mark as not reviewed" : "Mark as reviewed"}
                           >
-                            {markingReviewed.has(orderId) ? (
+                            {isOrderMarking(orderWithIndex) ? (
                               <RotateCw size={16} className="animate-spin" />
                             ) : (
                               <Check size={16} className={isReviewed ? "text-green-600" : ""} />
