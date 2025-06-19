@@ -595,6 +595,7 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            timeout=30,
             top_p=0.95,
             frequency_penalty=0.3,
             presence_penalty=0.2,

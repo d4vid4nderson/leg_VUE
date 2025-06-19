@@ -1,4 +1,3 @@
-# simple_executive_orders.py - UPDATED with improved error handling and robust data processing
 import requests
 import json
 import asyncio
@@ -6,11 +5,18 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import logging
 import re
+import hashlib
+import pyodbc
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 class SimpleExecutiveOrders:
-    """Simple executive orders fetcher using your specific Federal Register API URL"""
+    """Simple executive orders fetcher using Federal Register API with pagination support"""
     
     def __init__(self):
         self.session = requests.Session()
@@ -20,150 +26,187 @@ class SimpleExecutiveOrders:
         })
         self.base_url = "https://www.federalregister.gov/api/v1"
     
+    def convert_date_format(self, date_str: str) -> str:
+        """Convert MM/DD/YYYY to YYYY-MM-DD format for API"""
+        try:
+            if '/' in date_str:
+                dt = datetime.strptime(date_str, '%m/%d/%Y')
+                return dt.strftime('%Y-%m-%d')
+            elif '-' in date_str and len(date_str) == 10:
+                return date_str
+            else:
+                dt = datetime.strptime(date_str, '%m/%d/%Y')
+                return dt.strftime('%Y-%m-%d')
+        except Exception as e:
+            logger.warning(f"⚠️ Could not convert date format '{date_str}': {e}")
+            return date_str
+    
     def fetch_executive_orders_direct(self, start_date: str = "01/20/2025", end_date: str = None, limit: int = None) -> Dict:
         """
-        Fetch executive orders using your specific Federal Register API URL with improved error handling
+        Fetch ALL executive orders using pagination to get complete results
         """
         if not end_date:
             end_date = datetime.now().strftime('%m/%d/%Y')
         
-        logger.info(f"🔍 Fetching Executive Orders directly from Federal Register API")
+        logger.info(f"🔍 Fetching Executive Orders from Federal Register API")
         logger.info(f"📅 Date range: {start_date} to {end_date}")
-        if limit:
-            logger.info(f"📊 Limit set to: {limit}")
         
         try:
-            # Build the exact URL you provided with dynamic dates
-            params = {
+            # Base parameters - using YYYY-MM-DD format for the API
+            start_date_api = self.convert_date_format(start_date)
+            end_date_api = self.convert_date_format(end_date)
+            
+            base_params = {
                 'conditions[correction]': '0',
                 'conditions[president]': 'donald-trump',
                 'conditions[presidential_document_type]': 'executive_order',
-                'conditions[signing_date][gte]': start_date,
-                'conditions[signing_date][lte]': end_date,
+                'conditions[publication_date][gte]': start_date_api,
+                'conditions[publication_date][lte]': end_date_api,
                 'conditions[type][]': 'PRESDOCU',
-                'include_pre_1994_docs': 'true',
-                'maximum_per_page': str(limit) if limit else '10000',
-                'order': 'executive_order',
-                'per_page': str(limit) if limit else '10000'
+                'order': 'executive_order_number',
+                'per_page': '100',  # Use high per_page value for efficiency
+                'fields[]': [
+                    'citation', 'document_number', 'end_page', 'html_url', 'pdf_url',
+                    'type', 'subtype', 'publication_date', 'signing_date', 'start_page',
+                    'title', 'disposition_notes', 'executive_order_number',
+                    'not_received_for_publication', 'full_text_xml_url', 'body_html_url', 'json_url'
+                ]
             }
             
-            # Add all the fields you specified
-            fields = [
-                'citation', 'document_number', 'end_page', 'html_url', 'pdf_url',
-                'type', 'subtype', 'publication_date', 'signing_date', 'start_page',
-                'title', 'disposition_notes', 'executive_order_number',
-                'not_received_for_publication', 'full_text_xml_url', 'body_html_url', 'json_url'
-            ]
-            
-            # Add fields as separate parameters (this matches your original URL format)
-            for field in fields:
-                params[f'fields[]'] = field
-            
             url = f"{self.base_url}/documents.json"
-            logger.info(f"📡 Making request to Federal Register API: {url}")
-            logger.info(f"📋 Search parameters: Trump Executive Orders from {start_date} to {end_date}")
+            all_executive_orders = []
+            page = 1
+            total_count = 0
             
-            # Make the request with longer timeout
-            response = self.session.get(url, params=params, timeout=45)
-            logger.info(f"📊 Federal Register API response status: {response.status_code}")
-            
-            if response.status_code == 200:
+            while True:
+                # Add page parameter for pagination
+                params = base_params.copy()
+                params['page'] = str(page)
+                
+                logger.info(f"📡 Fetching page {page} from Federal Register API")
+                
+                response = self.session.get(url, params=params, timeout=45)
+                logger.info(f"📊 Page {page} response status: {response.status_code}")
+                
+                if response.status_code != 200:
+                    if page == 1:
+                        # If first page fails, return error
+                        try:
+                            error_data = response.json()
+                            error_message = error_data.get('message', 'Unknown API error')
+                        except:
+                            error_message = response.text[:500] if response.text else 'No response text'
+                        
+                        return {
+                            'success': False,
+                            'error': f'Federal Register API returned status {response.status_code}: {error_message}',
+                            'results': [],
+                            'count': 0,
+                            'api_url': url,
+                            'status_code': response.status_code
+                        }
+                    else:
+                        # If subsequent page fails, we might have reached the end
+                        logger.info(f"📄 Reached end of results at page {page}")
+                        break
+                
                 try:
                     data = response.json()
                 except json.JSONDecodeError as json_error:
-                    logger.error(f"❌ Failed to parse JSON response: {json_error}")
-                    return {
-                        'success': False,
-                        'error': f'Invalid JSON response from Federal Register API: {json_error}',
-                        'results': [],
-                        'count': 0
-                    }
+                    logger.error(f"❌ Failed to parse JSON response on page {page}: {json_error}")
+                    if page == 1:
+                        return {
+                            'success': False,
+                            'error': f'Invalid JSON response from Federal Register API: {json_error}',
+                            'results': [],
+                            'count': 0
+                        }
+                    else:
+                        break
                 
-                # Log the raw response structure for debugging
-                logger.info(f"📋 API Response keys: {list(data.keys())}")
-                logger.info(f"📊 Response count: {data.get('count', 'Unknown')}")
+                # Get results from this page
+                page_results = data.get('results', [])
                 
-                executive_orders = data.get('results', [])
-                if not executive_orders:
-                    logger.warning(f"⚠️ No results found in API response")
-                    logger.info(f"📋 Full response structure: {data}")
-                    return {
-                        'success': True,
-                        'results': [],
-                        'count': 0,
-                        'total_found': data.get('count', 0),
-                        'message': 'No executive orders found in the specified date range',
-                        'api_response': data
-                    }
+                if page == 1:
+                    total_count = data.get('count', 0)
+                    logger.info(f"📊 Total documents available: {total_count}")
                 
-                logger.info(f"📋 Found {len(executive_orders)} executive orders in API response")
+                if not page_results:
+                    logger.info(f"📄 No more results found on page {page}")
+                    break
                 
-                processed_orders = []
+                all_executive_orders.extend(page_results)
+                logger.info(f"✅ Page {page}: Found {len(page_results)} orders (Total so far: {len(all_executive_orders)})")
                 
-                for i, doc in enumerate(executive_orders):
-                    try:
-                        # Process each document
-                        processed_order = self.process_executive_order_direct(doc)
-                        if processed_order:
-                            processed_orders.append(processed_order)
-                            eo_num = processed_order.get('eo_number', 'Unknown')
-                            title = doc.get('title', 'No title')[:60]
-                            logger.info(f"✅ Processed EO #{eo_num}: {title}...")
-                            
-                            # Apply limit if specified
-                            if limit and len(processed_orders) >= limit:
-                                logger.info(f"🛑 Reached limit of {limit} orders")
-                                break
-                        else:
-                            logger.warning(f"⚠️ Failed to process document {i+1}")
-                    except Exception as doc_error:
-                        logger.warning(f"⚠️ Error processing document {i+1}: {doc_error}")
-                        continue
+                # Check if we've got all results
+                if len(page_results) < int(base_params['per_page']) or (limit and len(all_executive_orders) >= limit):
+                    logger.info(f"📄 Finished fetching. Got {len(all_executive_orders)} total orders")
+                    break
                 
-                # Sort by EO number (descending - newest first)
-                try:
-                    processed_orders.sort(key=lambda x: self.get_sort_key(x), reverse=True)
-                except Exception as sort_error:
-                    logger.warning(f"⚠️ Error sorting orders: {sort_error}")
+                page += 1
                 
-                logger.info(f"🎯 Total Executive Orders processed: {len(processed_orders)}")
-                
+                # Safety check to prevent infinite loops
+                if page > 50:  # Reasonable safety limit
+                    logger.warning(f"⚠️ Reached safety limit of 50 pages")
+                    break
+            
+            # Apply limit if specified
+            if limit and len(all_executive_orders) > limit:
+                all_executive_orders = all_executive_orders[:limit]
+            
+            logger.info(f"📋 Raw results found: {len(all_executive_orders)} executive orders")
+            
+            if not all_executive_orders:
                 return {
                     'success': True,
-                    'results': processed_orders,
-                    'count': len(processed_orders),
-                    'total_found': data.get('count', len(processed_orders)),
-                    'date_range': f"{start_date} to {end_date}",
-                    'api_response_count': data.get('count', 0),
-                    'message': f'Found {len(processed_orders)} Executive Orders from Federal Register API',
-                    'api_url': url,
-                    'search_params': {
-                        'president': 'donald-trump',
-                        'document_type': 'executive_order',
-                        'date_range': f"{start_date} to {end_date}"
-                    }
-                }
-                
-            else:
-                # Handle different error status codes
-                try:
-                    error_data = response.json()
-                    error_message = error_data.get('message', 'Unknown API error')
-                except:
-                    error_message = response.text[:500] if response.text else 'No response text'
-                
-                logger.error(f"❌ Federal Register API request failed: {response.status_code}")
-                logger.error(f"Response: {error_message}")
-                
-                return {
-                    'success': False,
-                    'error': f'Federal Register API returned status {response.status_code}: {error_message}',
                     'results': [],
                     'count': 0,
-                    'api_url': url,
-                    'status_code': response.status_code
+                    'total_found': total_count,
+                    'message': 'No executive orders found in the specified date range',
+                    'api_response_count': total_count
                 }
-                
+            
+            # Process all the orders
+            processed_orders = []
+            for i, doc in enumerate(all_executive_orders):
+                try:
+                    processed_order = self.process_executive_order_direct(doc)
+                    if processed_order:
+                        processed_orders.append(processed_order)
+                        eo_num = processed_order.get('eo_number', 'Unknown')
+                        title = doc.get('title', 'No title')[:60]
+                        logger.info(f"✅ Processed EO #{eo_num}: {title}...")
+                    else:
+                        logger.warning(f"⚠️ Failed to process document {i+1}")
+                except Exception as doc_error:
+                    logger.warning(f"⚠️ Error processing document {i+1}: {doc_error}")
+                    continue
+            
+            # Sort by EO number (descending - newest first)
+            try:
+                processed_orders.sort(key=lambda x: self.get_sort_key(x), reverse=True)
+            except Exception as sort_error:
+                logger.warning(f"⚠️ Error sorting orders: {sort_error}")
+            
+            logger.info(f"🎯 Total Executive Orders processed: {len(processed_orders)}")
+            
+            return {
+                'success': True,
+                'results': processed_orders,
+                'count': len(processed_orders),
+                'total_found': total_count,
+                'pages_fetched': page - 1,
+                'date_range': f"{start_date} to {end_date}",
+                'api_response_count': len(all_executive_orders),
+                'message': f'Found {len(processed_orders)} Executive Orders from Federal Register API',
+                'api_url': url,
+                'search_params': {
+                    'president': 'donald-trump',
+                    'document_type': 'executive_order',
+                    'date_range': f"{start_date} to {end_date}"
+                }
+            }
+            
         except requests.exceptions.Timeout:
             logger.error("❌ Request to Federal Register API timed out")
             return {
@@ -221,12 +264,15 @@ class SimpleExecutiveOrders:
                 logger.warning("⚠️ Invalid document data received")
                 return None
             
-            # Extract EO number - try multiple fields
+            # Extract EO number - FIXED to use actual executive_order_number field
             eo_number = self.extract_eo_number_from_doc(doc)
             
-            # Get dates with fallbacks
-            signing_date = doc.get('signing_date', '') or ''
+            # Get dates with fallbacks - FIXED to prioritize signing_date
+            signing_date = doc.get('signing_date', '') or ''  # This is the official signing date!
             publication_date = doc.get('publication_date', '') or ''
+            
+            # Log the actual dates we're getting
+            logger.debug(f"📅 EO {eo_number} dates - Signing: '{signing_date}', Publication: '{publication_date}'")
             
             # Get title with fallback
             title = doc.get('title', '') or f'Executive Order {eo_number}'
@@ -292,101 +338,69 @@ class SimpleExecutiveOrders:
     
     def extract_eo_number_from_doc(self, doc: Dict) -> str:
         """
-        Extract EO number from Federal Register document with improved logic
+        Extract EO number from Federal Register document with better debugging
         """
         try:
-            # Method 1: Direct executive_order_number field (most reliable)
+            logger.debug(f"🔍 Extracting EO number from document: {doc.get('title', 'No title')[:50]}...")
+            logger.debug(f"🔍 Available fields: {list(doc.keys())}")
+            
+            # Method 1: Direct executive_order_number field (THIS IS THE CORRECT FIELD!)
             eo_number = doc.get('executive_order_number')
             if eo_number:
                 eo_str = str(eo_number).strip()
-                if eo_str.isdigit() and int(eo_str) > 0:
-                    logger.debug(f"✅ Found direct EO number: {eo_str}")
-                    return eo_str
+                logger.debug(f"🎯 Found executive_order_number field: '{eo_str}'")
+                
+                # Clean up the EO number - remove any non-digit characters except spaces and dashes
+                clean_eo = re.sub(r'[^\d\-\s]', '', eo_str).strip()
+                
+                if clean_eo.isdigit() and int(clean_eo) > 0:
+                    logger.info(f"✅ Using actual EO number: {clean_eo}")
+                    return clean_eo
+                elif clean_eo:
+                    # Try to extract just the numeric part
+                    numbers = re.findall(r'\d+', clean_eo)
+                    if numbers:
+                        main_number = numbers[0]  # Take the first number found
+                        if int(main_number) > 0:
+                            logger.info(f"✅ Extracted EO number: {main_number}")
+                            return main_number
             
-            # Method 2: Extract from title
+            # Method 2: Extract from title as backup
             title = doc.get('title', '') or ''
+            logger.debug(f"🔍 Checking title for EO number: {title}")
+            
             if title:
-                # Pattern 1: "Executive Order 14XXX" or "Executive Order No. 14XXX"
+                # Look for explicit EO patterns in title
                 eo_patterns = [
                     r'Executive Order(?:\s+No\.?)?\s*(\d{4,5})',
-                    r'EO\s*(\d{4,5})',
-                    r'E\.O\.?\s*(\d{4,5})'
+                    r'EO\s*(?:No\.?)?\s*(\d{4,5})',
+                    r'E\.O\.?\s*(?:No\.?)?\s*(\d{4,5})'
                 ]
                 
                 for pattern in eo_patterns:
                     eo_match = re.search(pattern, title, re.IGNORECASE)
                     if eo_match:
                         found_number = eo_match.group(1)
-                        if int(found_number) >= 1000:
-                            logger.debug(f"✅ Found EO number in title: {found_number}")
-                            return found_number
-                
-                # Pattern 2: Look for 4-5 digit numbers that aren't years
-                number_matches = re.findall(r'\b(\d{4,5})\b', title)
-                for number in number_matches:
-                    num_int = int(number)
-                    # Exclude years and include valid EO ranges
-                    if not (1900 <= num_int <= 2100) and num_int >= 1000:
-                        logger.debug(f"✅ Found potential EO number in title: {number}")
-                        return number
+                        logger.info(f"✅ Found EO number in title: {found_number}")
+                        return found_number
             
-            # Method 3: Extract from citation
-            citation = doc.get('citation', '') or ''
-            if citation:
-                eo_patterns = [
-                    r'(?:EO|Executive Order)\s*(\d{4,5})',
-                    r'E\.O\.?\s*(\d{4,5})'
-                ]
-                
-                for pattern in eo_patterns:
-                    eo_match = re.search(pattern, citation, re.IGNORECASE)
-                    if eo_match:
-                        potential_eo = eo_match.group(1)
-                        if int(potential_eo) >= 1000:
-                            logger.debug(f"✅ Found EO number in citation: {potential_eo}")
-                            return potential_eo
-            
-            # Method 4: Extract from document number
+            # Method 3: Check document_number for clues
             doc_number = doc.get('document_number', '') or ''
+            logger.debug(f"🔍 Document number: {doc_number}")
+            
+            # Method 4: Last resort - use document_number as identifier
             if doc_number:
-                # Look for patterns like "2025-XXXXX" and generate EO number
-                date_match = re.search(r'2025-(\d+)', doc_number)
-                if date_match:
-                    day_num = int(date_match.group(1))
-                    # Trump 2025 EOs likely start around 14000
-                    generated_eo = 14000 + (day_num % 1000)  # Keep it reasonable
-                    logger.debug(f"✅ Generated EO number from doc number: {generated_eo}")
-                    return str(generated_eo)
-                
-                # Direct number extraction from document number
-                doc_numbers = re.findall(r'\d{4,5}', doc_number)
-                for num in doc_numbers:
-                    if int(num) >= 1000:
-                        logger.debug(f"✅ Found EO number in document number: {num}")
-                        return num
-            
-            # Method 5: Use disposition notes
-            disposition = doc.get('disposition_notes', '') or ''
-            if disposition:
-                eo_match = re.search(r'(?:EO|Executive Order)\s*(\d{4,5})', disposition, re.IGNORECASE)
-                if eo_match:
-                    potential_eo = eo_match.group(1)
-                    logger.debug(f"✅ Found EO number in disposition: {potential_eo}")
-                    return potential_eo
-            
-            # Fallback: generate a placeholder
-            title_short = (title[:30] if title else 'unknown')
-            logger.warning(f"⚠️ Could not extract EO number from document: {title_short}...")
-            
-            # Use document number as fallback if available
-            if doc_number:
+                # Use document number but make it clear it's not a real EO number
+                logger.warning(f"⚠️ No EO number found, using document number: {doc_number}")
                 return f"DOC-{doc_number}"
             
-            return "UNKNOWN"
+            # Final fallback
+            logger.warning(f"⚠️ Could not find EO number for document: {title[:50]}...")
+            return "UNKNOWN-EO"
                 
         except Exception as e:
             logger.error(f"❌ Error extracting EO number: {e}")
-            return "ERROR"
+            return "ERROR-EO"
     
     def extract_summary_from_doc(self, doc: Dict) -> str:
         """
@@ -418,7 +432,7 @@ class SimpleExecutiveOrders:
         except Exception as e:
             logger.error(f"❌ Error extracting summary: {e}")
             return "Executive Order summary not available."
-    
+
     def categorize_executive_order(self, doc: Dict) -> str:
         """
         Categorize executive order based on title and available content with improved keywords
@@ -478,7 +492,7 @@ class SimpleExecutiveOrders:
         except Exception as e:
             logger.error(f"❌ Error categorizing executive order: {e}")
             return 'civic'
-    
+
     def format_date(self, date_str: str) -> str:
         """Format date for display with improved error handling"""
         if not date_str or not isinstance(date_str, str):
@@ -505,50 +519,246 @@ class SimpleExecutiveOrders:
             logger.warning(f"⚠️ Could not format date '{date_str}': {e}")
             return date_str
 
-# Helper functions for different time periods
-def get_date_range_for_period(period: str) -> tuple:
-    """
-    Get start and end dates for different time periods in MM/DD/YYYY format
-    """
-    today = datetime.now()
-    
-    if period == "inauguration":
-        start_date = "01/20/2025"
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "last_90_days":
-        start_date = (today - timedelta(days=90)).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "last_30_days":
-        start_date = (today - timedelta(days=30)).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "last_7_days":
-        start_date = (today - timedelta(days=7)).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "this_week":
-        # Monday of current week
-        start_date = (today - timedelta(days=today.weekday())).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "this_month":
-        start_date = today.replace(day=1).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    else:
-        # Default to since inauguration
-        start_date = "01/20/2025"
-        end_date = today.strftime('%m/%d/%Y')
-    
-    return start_date, end_date
+# ===============================
+# DATABASE FUNCTIONS FOR dbo.executive_orders TABLE
+# ===============================
 
-# UPDATED Integration function with better error handling
+def get_db_connection():
+    """Get database connection using your credentials from .env"""
+    try:
+        server = os.getenv('AZURE_SQL_SERVER')
+        database = os.getenv('AZURE_SQL_DATABASE') 
+        username = os.getenv('AZURE_SQL_USERNAME')
+        password = os.getenv('AZURE_SQL_PASSWORD')
+        
+        if not all([server, database, username, password]):
+            raise Exception("Missing required database environment variables")
+        
+        driver = 'ODBC Driver 18 for SQL Server'
+        
+        connection_string = (
+            f"Driver={{{driver}}};"
+            f"Server={server};"
+            f"Database={database};"
+            f"UID={username};"
+            f"PWD={password};"
+            f"Encrypt=yes;"
+            f"TrustServerCertificate=yes;"
+            f"Connection Timeout=30;"
+            f"Command Timeout=30;"
+            f"MultipleActiveResultSets=True;"
+        )
+        
+        conn = pyodbc.connect(connection_string)
+        return conn
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        raise
+
+def check_executive_orders_table():
+    """Check if the executive_orders table exists and get its structure"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if executive_orders table exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
+        """)
+        
+        table_exists = cursor.fetchone()[0] > 0
+        
+        if table_exists:
+            logger.info("✅ dbo.executive_orders table exists")
+            
+            # Get table structure
+            cursor.execute("""
+                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
+                ORDER BY ORDINAL_POSITION
+            """)
+            
+            columns = cursor.fetchall()
+            logger.debug("📊 Table structure:")
+            for col in columns:
+                length_info = f"({col[3]})" if col[3] else ""
+                logger.debug(f"   {col[0]}: {col[1]}{length_info}, nullable: {col[2]}")
+            
+            cursor.close()
+            conn.close()
+            return True, [col[0] for col in columns]
+        else:
+            logger.error("❌ dbo.executive_orders table does not exist")
+            cursor.close()
+            conn.close()
+            return False, []
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking executive_orders table: {e}")
+        return False, []
+
+def executive_order_exists_in_db(eo_number: str) -> bool:
+    """Check if an executive order already exists in the dbo.executive_orders table"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check in the executive_orders table using the EO number
+        cursor.execute("""
+            SELECT COUNT(*) FROM dbo.executive_orders 
+            WHERE eo_number = ? OR document_number = ?
+        """, (eo_number, eo_number))
+        
+        count = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+        exists = count > 0
+        logger.debug(f"📋 EO {eo_number} exists in database: {exists}")
+        return exists
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking if EO {eo_number} exists: {e}")
+        return False
+
+def get_executive_order_from_db(eo_number: str) -> Optional[Dict]:
+    """Get an existing executive order from the dbo.executive_orders table"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the executive order from executive_orders table
+        cursor.execute("""
+            SELECT * FROM dbo.executive_orders 
+            WHERE eo_number = ? OR document_number = ?
+        """, (eo_number, eo_number))
+        
+        row = cursor.fetchone()
+        
+        if row:
+            # Get column names
+            columns = [column[0] for column in cursor.description]
+            
+            # Create dictionary from row data
+            result = dict(zip(columns, row))
+            
+            cursor.close()
+            conn.close()
+            
+            logger.debug(f"📋 Retrieved EO {eo_number} from database")
+            return result
+        else:
+            cursor.close()
+            conn.close()
+            return None
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting EO {eo_number} from database: {e}")
+        return None
+
+def save_single_executive_order_to_db(order: Dict) -> bool:
+    """Save a single executive order to the dbo.executive_orders table"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        eo_number = order.get('eo_number', 'unknown')
+        
+        # Map the order data to your database structure
+        field_mapping = {
+            'document_number': order.get('document_number', ''),
+            'eo_number': order.get('eo_number', ''),
+            'title': order.get('title', ''),
+            'summary': order.get('summary', ''),
+            'signing_date': process_date_for_db(order.get('signing_date', '')),
+            'publication_date': process_date_for_db(order.get('publication_date', '')),
+            'citation': order.get('citation', ''),
+            'presidential_document_type': 'executive_order',
+            'category': order.get('category', 'civic'),
+            'html_url': order.get('html_url', ''),
+            'pdf_url': order.get('pdf_url', ''),
+            'trump_2025_url': order.get('html_url', ''),
+            'ai_summary': order.get('ai_summary', ''),
+            'ai_executive_summary': order.get('ai_executive_summary', ''),
+            'ai_key_points': order.get('ai_key_points', ''),
+            'ai_talking_points': order.get('ai_talking_points', ''),
+            'ai_business_impact': order.get('ai_business_impact', ''),
+            'ai_potential_impact': order.get('ai_potential_impact', ''),
+            'ai_version': order.get('ai_version', ''),
+            'source': order.get('source', 'Federal Register API'),
+            'raw_data_available': True,
+            'processing_status': 'processed',
+            'error_message': '',
+            'content': json.dumps(order),
+            'tags': '',
+            'ai_analysis': order.get('ai_analysis', ''),
+            'created_at': datetime.now(),
+            'last_updated': datetime.now(),
+            'last_scraped_at': datetime.now()
+        }
+        
+        # Build dynamic INSERT query
+        field_names = list(field_mapping.keys())
+        placeholders = ', '.join(['?' for _ in field_names])
+        field_list = ', '.join(field_names)
+        
+        insert_query = f"""
+            INSERT INTO dbo.executive_orders ({field_list})
+            VALUES ({placeholders})
+        """
+        
+        values = tuple(field_mapping[field] for field in field_names)
+        
+        logger.debug(f"💾 Inserting EO {eo_number}")
+        
+        cursor.execute(insert_query, values)
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"💾 Successfully saved EO {eo_number} to dbo.executive_orders")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error saving EO {order.get('eo_number')} to database: {e}")
+        return False
+
+def process_date_for_db(date_str: str) -> Optional[str]:
+    """Process date for database storage (YYYY-MM-DD format)"""
+    if not date_str:
+        return None
+    
+    try:
+        if '/' in date_str:
+            dt = datetime.strptime(date_str, '%m/%d/%Y')
+        elif '-' in date_str:
+            dt = datetime.strptime(date_str, '%Y-%m-%d')
+        else:
+            return None
+        
+        return dt.strftime('%Y-%m-%d')
+    except:
+        return None
+
+# ===============================
+# MAIN INTEGRATION FUNCTION (for main.py compatibility)
+# ===============================
+
 async def fetch_executive_orders_simple_integration(
     start_date: str = None,
     end_date: str = None,
-    with_ai: bool = True,
+    with_ai: bool = False,
     limit: int = None,
     period: str = None,
     save_to_db: bool = True
 ) -> Dict:
     """
-    UPDATED Integration function using your Federal Register API URL with improved error handling
+    Main integration function for compatibility with main.py
     """
     # Handle period-based date selection
     if period:
@@ -567,8 +777,21 @@ async def fetch_executive_orders_simple_integration(
     if limit:
         logger.info(f"📊 Limit: {limit}")
     
+    successful_ai = 0
+    failed_ai = 0
+    orders_saved = 0
+    orders_skipped = 0
+    processed_orders = []
+    
     try:
-        # Use the direct Federal Register API fetcher
+        # Check database schema first if saving
+        if save_to_db:
+            schema_ok, columns = check_executive_orders_table()
+            if not schema_ok:
+                logger.warning("⚠️ Database schema check failed, disabling save to DB")
+                save_to_db = False
+        
+        # Use the direct Federal Register API fetcher to get raw data
         simple_eo = SimpleExecutiveOrders()
         result = simple_eo.fetch_executive_orders_direct(start_date, end_date, limit)
         
@@ -576,10 +799,10 @@ async def fetch_executive_orders_simple_integration(
             logger.error(f"❌ Federal Register API fetch failed: {result.get('error')}")
             return result
         
-        orders = result.get('results', [])
-        logger.info(f"✅ Federal Register API found {len(orders)} Executive Orders")
+        raw_orders = result.get('results', [])
+        logger.info(f"✅ Federal Register API found {len(raw_orders)} Executive Orders")
         
-        if not orders:
+        if not raw_orders:
             return {
                 'success': True,
                 'results': [],
@@ -589,96 +812,149 @@ async def fetch_executive_orders_simple_integration(
                 'api_response': result
             }
         
-        # Add AI analysis if requested
-        if with_ai and orders:
+        # Process each executive order individually
+        for i, order in enumerate(raw_orders):
             try:
-                from ai import analyze_executive_order
-                logger.info("✅ Successfully imported analyze_executive_order from ai.py")
+                eo_num = order.get('eo_number', 'Unknown')
+                title = order.get('title', 'No title')[:60]
                 
-                enhanced_orders = []
-                successful_ai = 0
-                failed_ai = 0
+                logger.info(f"📋 Checking EO {i+1}/{len(raw_orders)}: #{eo_num} - {title}...")
                 
-                for i, order in enumerate(orders):
+                # Step 0: Check if executive order already exists in database
+                if save_to_db and executive_order_exists_in_db(eo_num):
+                    logger.info(f"⏭️ EO {eo_num} already exists in database, skipping...")
+                    orders_skipped += 1
+                    # Still add to processed orders list from database
                     try:
-                        eo_num = order.get('eo_number', 'Unknown')
-                        logger.info(f"🤖 AI analysis {i+1}/{len(orders)}: EO {eo_num}")
-                        
-                        ai_result = await analyze_executive_order(
-                            title=order.get('title', ''),
-                            abstract=order.get('summary', ''),
-                            order_number=eo_num,
-                        )
-                        
-                        if ai_result and isinstance(ai_result, dict):
-                            order.update({
-                                'ai_summary': ai_result.get('ai_summary', ''),
-                                'ai_executive_summary': ai_result.get('ai_executive_summary', ''),
-                                'ai_key_points': ai_result.get('ai_key_points', ''),
-                                'ai_talking_points': ai_result.get('ai_talking_points', ''),
-                                'ai_business_impact': ai_result.get('ai_business_impact', ''),
-                                'ai_potential_impact': ai_result.get('ai_potential_impact', ''),
-                                'ai_version': ai_result.get('ai_version', 'azure_openai_enhanced_v1'),
-                                'ai_processed': True
-                            })
-                            successful_ai += 1
-                            logger.info(f"✅ AI analysis completed for EO {eo_num}")
+#                        eo_num = order.get('eo_number', 'Unknown')
+#                        logger.info(f"🤖 AI analysis {i+1}/{len(orders)}: EO {eo_num}")
+#                        
+#                        ai_result = await analyze_executive_order(
+#                            title=order.get('title', ''),
+#                            abstract=order.get('summary', ''),
+#                            order_number=eo_num,
+#                        )
+#                        
+#                        if ai_result and isinstance(ai_result, dict):
+#                            order.update({
+#                                'ai_summary': ai_result.get('ai_summary', ''),
+#                                'ai_executive_summary': ai_result.get('ai_executive_summary', ''),
+#                                'ai_key_points': ai_result.get('ai_key_points', ''),
+#                                'ai_talking_points': ai_result.get('ai_talking_points', ''),
+#                                'ai_business_impact': ai_result.get('ai_business_impact', ''),
+#                                'ai_potential_impact': ai_result.get('ai_potential_impact', ''),
+#                                'ai_version': ai_result.get('ai_version', 'azure_openai_enhanced_v1'),
+#                                'ai_processed': True
+#                            })
+#                            successful_ai += 1
+#                            logger.info(f"✅ AI analysis completed for EO {eo_num}")
+                        existing_order = get_executive_order_from_db(eo_num)
+                        if existing_order:
+                            processed_orders.append(existing_order)
                         else:
+                            processed_orders.append(order)  # Fallback to API data
+                    except:
+                        processed_orders.append(order)  # Fallback to API data
+                    continue
+                
+                logger.info(f"🆕 EO {eo_num} not in database, processing...")
+                
+                # Step 1: AI Analysis (if enabled)
+                if with_ai:
+                    try:
+                        logger.info(f"🤖 AI analysis for EO {eo_num}")
+                        
+                        # Import AI function if available
+                        try:
+                            from ai import analyze_executive_order
+                            ai_result = await analyze_executive_order(
+                                title=order.get('title', ''),
+                                abstract=order.get('summary', ''),
+                                order_number=eo_num
+                            )
+                            
+                            if ai_result and isinstance(ai_result, dict):
+                                # Update order with AI results
+                                order.update({
+                                    'ai_summary': ai_result.get('ai_summary', ''),
+                                    'ai_executive_summary': ai_result.get('ai_executive_summary', ''),
+                                    'ai_key_points': ai_result.get('ai_key_points', ''),
+                                    'ai_talking_points': ai_result.get('ai_talking_points', ''),
+                                    'ai_business_impact': ai_result.get('ai_business_impact', ''),
+                                    'ai_potential_impact': ai_result.get('ai_potential_impact', ''),
+                                    'ai_version': ai_result.get('ai_version', 'azure_openai_enhanced_v1'),
+                                    'ai_processed': True
+                                })
+                                successful_ai += 1
+                                logger.info(f"✅ AI analysis completed for EO {eo_num}")
+                            else:
+                                failed_ai += 1
+                                logger.warning(f"⚠️ AI analysis returned no data for EO {eo_num}")
+                        except ImportError:
+                            logger.warning(f"⚠️ AI module not available, skipping AI analysis")
                             failed_ai += 1
-                            logger.warning(f"⚠️ AI analysis returned no data for EO {eo_num}")
-                        
-                        enhanced_orders.append(order)
-                        
-                        # Rate limiting - be gentler on the AI service
-                        if i < len(orders) - 1:  # Don't delay after the last one
-                            delay = 2.0 if i < 5 else 3.0  # Longer delays for better reliability
-                            logger.debug(f"⏱️ Waiting {delay}s before next AI call...")
-                            await asyncio.sleep(delay)
-                        
+                            
                     except Exception as ai_error:
                         failed_ai += 1
                         logger.warning(f"⚠️ AI analysis error for EO {eo_num}: {ai_error}")
-                        enhanced_orders.append(order)
-                        
-                        # Still delay on error to avoid overwhelming the service
-                        if i < len(orders) - 1:
-                            await asyncio.sleep(3.0)
+                        # Continue without AI data
                 
-                orders = enhanced_orders
-                logger.info(f"🤖 AI Analysis Summary: {successful_ai} successful, {failed_ai} failed")
+                # Step 2: Save to Database (if enabled)
+                if save_to_db:
+                    try:
+                        saved_success = save_single_executive_order_to_db(order)
+                        if saved_success:
+                            orders_saved += 1
+                            logger.info(f"💾 Saved EO {eo_num} to database")
+                        else:
+                            logger.warning(f"⚠️ Failed to save EO {eo_num} to database")
+                    except Exception as db_error:
+                        logger.warning(f"⚠️ Database save error for EO {eo_num}: {db_error}")
                 
-            except ImportError as import_error:
-                logger.warning(f"⚠️ Could not import AI functions: {import_error}")
-                logger.info("📋 Continuing without AI analysis")
-            except Exception as ai_error:
-                logger.warning(f"⚠️ AI integration error: {ai_error}")
-                logger.info("📋 Continuing without AI analysis")
+                # Step 3: Add to processed orders list
+                processed_orders.append(order)
+                
+                # Step 4: Rate limiting between orders
+                if i < len(raw_orders) - 1:  # Don't delay after the last one
+                    delay = 1.0 if not with_ai else 2.0  # Shorter delay if no AI
+                    logger.debug(f"⏱️ Waiting {delay}s before next order...")
+                    await asyncio.sleep(delay)
+                
+                # Progress update every 10 orders
+                if (i + 1) % 10 == 0:
+                    logger.info(f"📊 Progress: {i+1}/{len(raw_orders)} orders processed, {orders_saved} saved, {orders_skipped} skipped")
+                
+                # Apply limit if specified
+                if limit and len(processed_orders) >= limit:
+                    logger.info(f"🛑 Reached specified limit of {limit} orders")
+                    break
+                    
+            except Exception as order_error:
+                logger.error(f"❌ Error processing EO {i+1}: {order_error}")
+                continue
         
-        # Save to database if requested
-        orders_saved = 0
-        if save_to_db and orders:
-            try:
-                # This would be implemented based on your database setup
-                logger.info(f"💾 Saving {len(orders)} orders to database...")
-                # from database import save_executive_orders
-                # orders_saved = save_executive_orders(orders)
-                orders_saved = len(orders)  # Placeholder
-                logger.info(f"✅ Saved {orders_saved} orders to database")
-            except Exception as db_error:
-                logger.warning(f"⚠️ Database save error: {db_error}")
+        # Final summary
+        logger.info(f"🎯 Processing completed!")
+        logger.info(f"   📋 Total orders processed: {len(processed_orders)}")
+        logger.info(f"   💾 Orders saved to database: {orders_saved}")
+        logger.info(f"   ⏭️ Orders skipped (duplicates): {orders_skipped}")
+        logger.info(f"   🤖 AI analysis successful: {successful_ai}")
+        logger.info(f"   ❌ AI analysis failed: {failed_ai}")
         
         return {
             'success': True,
-            'results': orders,
-            'count': len(orders),
+            'results': processed_orders,
+            'count': len(processed_orders),
             'orders_saved': orders_saved,
-            'total_found': result.get('total_found', len(orders)),
+            'orders_skipped': orders_skipped,
+            'total_found': result.get('total_found', len(processed_orders)),
             'ai_analysis_enabled': with_ai,
-            'ai_successful': successful_ai if with_ai else 0,
-            'ai_failed': failed_ai if with_ai else 0,
+            'ai_successful': successful_ai,
+            'ai_failed': failed_ai,
             'period_used': period,
             'date_range_used': f"{start_date} to {end_date}",
-            'message': f'Successfully fetched {len(orders)} Executive Orders using Federal Register API',
+            'pages_fetched': result.get('pages_fetched', 1),
+            'message': f'Successfully processed {len(processed_orders)} Executive Orders, saved {orders_saved} to database, skipped {orders_skipped} duplicates',
             'api_url': result.get('api_url', 'Federal Register API'),
             'search_params': result.get('search_params', {}),
             'api_response_count': result.get('api_response_count', 0)
@@ -689,32 +965,110 @@ async def fetch_executive_orders_simple_integration(
         return {
             'success': False,
             'error': str(e),
-            'results': [],
-            'count': 0,
+            'results': processed_orders,
+            'count': len(processed_orders),
+            'orders_saved': orders_saved,
+            'orders_skipped': orders_skipped,
             'date_range_used': f"{start_date} to {end_date}" if start_date and end_date else "Unknown"
         }
 
-# Test function with improved output
+# ===============================
+# HELPER FUNCTIONS
+# ===============================
+
+def get_date_range_for_period(period: str) -> tuple:
+    """Get start and end dates for different time periods in MM/DD/YYYY format"""
+    today = datetime.now()
+    
+    if period == "inauguration":
+        start_date = "01/20/2025"
+        end_date = today.strftime('%m/%d/%Y')
+    elif period == "last_90_days":
+        start_date = (today - timedelta(days=90)).strftime('%m/%d/%Y')
+        end_date = today.strftime('%m/%d/%Y')
+    elif period == "last_30_days":
+        start_date = (today - timedelta(days=30)).strftime('%m/%d/%Y')
+        end_date = today.strftime('%m/%d/%Y')
+    elif period == "last_7_days":
+        start_date = (today - timedelta(days=7)).strftime('%m/%d/%Y')
+        end_date = today.strftime('%m/%d/%Y')
+    elif period == "this_week":
+        start_date = (today - timedelta(days=today.weekday())).strftime('%m/%d/%Y')
+        end_date = today.strftime('%m/%d/%Y')
+    elif period == "this_month":
+        start_date = today.replace(day=1).strftime('%m/%d/%Y')
+        end_date = today.strftime('%m/%d/%Y')
+    else:
+        start_date = "01/20/2025"
+        end_date = today.strftime('%m/%d/%Y')
+    
+    return start_date, end_date
+
+def fetch_all_executive_orders_simple() -> Dict:
+    """Simple function to fetch ALL 161+ executive orders without any limits"""
+    logger.info("🚀 Fetching ALL Executive Orders from Trump administration")
+    
+    simple_eo = SimpleExecutiveOrders()
+    
+    result = simple_eo.fetch_executive_orders_direct(
+        start_date="01/20/2025",
+        end_date=None,
+        limit=None
+    )
+    
+    if result.get('success'):
+        logger.info(f"✅ Successfully fetched {result.get('count', 0)} executive orders")
+        logger.info(f"📊 Total found by API: {result.get('total_found', 0)}")
+        logger.info(f"📄 Pages fetched: {result.get('pages_fetched', 1)}")
+    else:
+        logger.error(f"❌ Failed to fetch executive orders: {result.get('error', 'Unknown error')}")
+    
+    return result
+
+# ===============================
+# TEST FUNCTIONS
+# ===============================
+
+async def test_database_integration():
+    """Test database functions"""
+    try:
+        print("🧪 Testing database integration...")
+        
+        # Test connection
+        conn = get_db_connection()
+        conn.close()
+        print("✅ Database connection works")
+        
+        # Test table check
+        exists, columns = check_executive_orders_table()
+        print(f"✅ executive_orders table exists: {exists}")
+        if columns:
+            print(f"✅ Table has {len(columns)} columns")
+        
+        return exists
+    except Exception as e:
+        print(f"❌ Database test failed: {e}")
+        return False
+
 async def test_federal_register_direct():
     """Test the direct Federal Register API fetch with comprehensive output"""
-    print("🧪 Testing Federal Register API - Direct URL\n")
+    print("🧪 Testing Federal Register API - Direct URL with Pagination\n")
     print("=" * 60)
     
-    # Test with the date range from your URL
     result = await fetch_executive_orders_simple_integration(
         start_date="01/20/2025",
-        end_date="06/17/2025",
-        with_ai=False,  # Disable AI for faster testing
-        limit=10  # Limit for testing
+        end_date=None,
+        with_ai=False,
+        save_to_db=True
     )
     
     print(f"📊 Test Results:")
     print(f"   Success: {result.get('success')}")
     print(f"   Count: {result.get('count', 0)}")
+    print(f"   Orders Saved: {result.get('orders_saved', 0)}")
+    print(f"   Orders Skipped: {result.get('orders_skipped', 0)}")
     print(f"   Total Found: {result.get('total_found', 0)}")
-    print(f"   API Response Count: {result.get('api_response_count', 0)}")
     print(f"   Date Range: {result.get('date_range_used', 'Unknown')}")
-    print(f"   API URL: {result.get('api_url', 'Unknown')}")
     
     if result.get('success') and result.get('results'):
         print(f"\n📋 Sample Executive Orders:")
@@ -722,83 +1076,39 @@ async def test_federal_register_direct():
         for i, order in enumerate(result['results'][:5], 1):
             print(f"{i}. EO #{order.get('eo_number')}: {order.get('title', 'No title')[:70]}...")
             print(f"   📅 Signing Date: {order.get('signing_date', 'Unknown')}")
-            print(f"   📰 Publication Date: {order.get('publication_date', 'Unknown')}")
-            print(f"   📄 Document Number: {order.get('document_number', 'Unknown')}")
-            print(f"   📂 Category: {order.get('category', 'Unknown')}")
-            print(f"   🔗 HTML URL: {order.get('html_url', 'None')[:50]}...")
+            print(f"   📂 Source: {order.get('source', 'Unknown')}")
             print()
-    
-    if not result.get('success'):
-        print(f"\n❌ Error Details:")
-        print(f"   Error: {result.get('error', 'Unknown error')}")
-        print(f"   Status Code: {result.get('status_code', 'Unknown')}")
     
     print("=" * 60)
     print("🏁 Test completed")
 
-# Additional test function for different date ranges
-async def test_different_periods():
-    """Test different time periods"""
-    print("🧪 Testing Different Time Periods\n")
-    
-    periods = ["last_7_days", "last_30_days", "inauguration"]
-    
-    for period in periods:
-        print(f"📅 Testing period: {period}")
-        result = await fetch_executive_orders_simple_integration(
-            period=period,
-            with_ai=False,
-            limit=5
-        )
-        
-        print(f"   Count: {result.get('count', 0)}")
-        print(f"   Date Range: {result.get('date_range_used', 'Unknown')}")
-        print(f"   Success: {result.get('success')}")
-        if not result.get('success'):
-            print(f"   Error: {result.get('error', 'Unknown')}")
-        print()
-
-# Quick validation function
-def validate_federal_register_url():
-    """Validate that the Federal Register API URL is working"""
-    print("🔍 Validating Federal Register API URL...")
-    
-    simple_eo = SimpleExecutiveOrders()
-    
-    # Test basic connectivity
-    try:
-        response = simple_eo.session.get(
-            f"{simple_eo.base_url}/documents.json?per_page=1",
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            print("✅ Federal Register API is accessible")
-            data = response.json()
-            print(f"📊 API returned {data.get('count', 0)} total documents")
-            return True
-        else:
-            print(f"❌ API returned status code: {response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Connection error: {e}")
-        return False
-
 if __name__ == "__main__":
-    print("🚀 Executive Orders Fetcher - Federal Register API")
-    print("=" * 50)
+    print("🚀 Executive Orders Fetcher - Complete Version with Database Integration")
+    print("=" * 70)
     
-    # First validate the API
-    if validate_federal_register_url():
-        print("\n" + "=" * 50)
-        
-        # Run the main test
-        asyncio.run(test_federal_register_direct())
-        
-        print("\n" + "=" * 50)
-        
-        # Test different periods
-        asyncio.run(test_different_periods())
-    else:
-        print("❌ Cannot proceed - Federal Register API is not accessible")
+#    # First validate the API
+#    if validate_federal_register_url():
+#        print("\n" + "=" * 50)
+#        
+#        # Run the main test
+#        asyncio.run(test_federal_register_direct())
+#        
+#        print("\n" + "=" * 50)
+#        
+#        # Test different periods
+#        asyncio.run(test_different_periods())
+#    else:
+#        print("❌ Cannot proceed - Federal Register API is not accessible")
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(levelname)s:%(name)s:%(message)s'
+    )
+    
+    # Test database integration
+    asyncio.run(test_database_integration())
+    
+    print("\n" + "=" * 70)
+    
+    # Test the full system
+    asyncio.run(test_federal_register_direct())

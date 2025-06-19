@@ -3,7 +3,7 @@ import {
   Search,
   ChevronDown,
   Download,
-  RotateCw as RefreshIcon,
+  RotateCw,
   ScrollText,
   Star,
   FileText,
@@ -21,8 +21,170 @@ import {
   Wrench
 } from 'lucide-react';
 
-// Backend API URL
-const API_URL = import.meta.env.VITE_API_URL || '';
+// Backend API URL - Fixed for artifact environment
+const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
+
+// FIXED: Enhanced ID generation for Executive Orders - More robust and consistent
+const getExecutiveOrderId = (order) => {
+  if (!order) return null;
+  
+  // Use multiple fallbacks to ensure consistent ID generation
+  const candidates = [
+    order.executive_order_number,
+    order.document_number,
+    order.eo_number,
+    order.bill_number,
+    order.id,
+    order.bill_id
+  ];
+  
+  // Find the first valid candidate
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'string' && candidate.trim()) {
+      return `eo-${candidate.trim()}`;
+    }
+    if (candidate && typeof candidate === 'number') {
+      return `eo-${candidate}`;
+    }
+  }
+  
+  // Fallback using title hash for absolute consistency
+  if (order.title && typeof order.title === 'string') {
+    const titleHash = order.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 30); // Increased length for uniqueness
+    return `eo-title-${titleHash}`;
+  }
+  
+  // Last resort
+  console.warn('Could not generate stable ID for order:', order);
+  return null;
+};
+
+// FIXED: In-memory storage for review status (replaced localStorage)
+const ReviewStatusManager = {
+  // In-memory storage instead of localStorage
+  _storage: new Map(),
+  
+  saveReviewedItems: (reviewedSet, storageKey) => {
+    try {
+      if (!reviewedSet || typeof reviewedSet.has !== 'function') {
+        console.error('Invalid reviewedSet provided to saveReviewedItems');
+        return false;
+      }
+      
+      const itemsArray = Array.from(reviewedSet).filter(id => id && id.trim());
+      ReviewStatusManager._storage.set(storageKey, itemsArray);
+      console.log(`✅ Saved ${itemsArray.length} reviewed items to ${storageKey} (in-memory)`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error saving reviewed items to ${storageKey}:`, error);
+      return false;
+    }
+  },
+
+  loadReviewedItems: (storageKey) => {
+    try {
+      const saved = ReviewStatusManager._storage.get(storageKey);
+      if (!saved) {
+        console.log(`📋 No saved reviewed items found for ${storageKey}`);
+        return new Set();
+      }
+      
+      if (!Array.isArray(saved)) {
+        console.error(`❌ Invalid data format in ${storageKey}, expected array`);
+        return new Set();
+      }
+      
+      const validItems = saved.filter(id => id && typeof id === 'string' && id.trim());
+      console.log(`✅ Loaded ${validItems.length} reviewed items from ${storageKey} (in-memory)`);
+      return new Set(validItems);
+    } catch (error) {
+      console.error(`❌ Error loading reviewed items from ${storageKey}:`, error);
+      return new Set();
+    }
+  }
+};
+
+// ENHANCED: Review status hook for Executive Orders
+const useExecutiveOrderReviewStatus = () => {
+  const STORAGE_KEY = 'reviewedExecutiveOrders';
+  const [reviewedOrders, setReviewedOrders] = useState(new Set());
+  const [markingReviewed, setMarkingReviewed] = useState(new Set());
+
+  // Load from in-memory storage on mount
+  useEffect(() => {
+    console.log('🔄 Loading executive order review status from in-memory storage...');
+    const loaded = ReviewStatusManager.loadReviewedItems(STORAGE_KEY);
+    setReviewedOrders(loaded);
+  }, []);
+
+  // Save to in-memory storage whenever reviewedOrders changes
+  useEffect(() => {
+    ReviewStatusManager.saveReviewedItems(reviewedOrders, STORAGE_KEY);
+  }, [reviewedOrders]);
+
+  // Toggle review status function
+  const toggleReviewStatus = useCallback(async (order) => {
+    const orderId = getExecutiveOrderId(order);
+    if (!orderId) {
+      console.error('❌ Cannot toggle review status: invalid order ID');
+      return false;
+    }
+    
+    console.log(`🔄 Toggling review status for order: ${orderId}`);
+    
+    const isCurrentlyReviewed = reviewedOrders.has(orderId);
+    setMarkingReviewed(prev => new Set([...prev, orderId]));
+    
+    try {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      setReviewedOrders(prev => {
+        const newSet = new Set(prev);
+        if (isCurrentlyReviewed) {
+          newSet.delete(orderId);
+          console.log(`✅ Marked order ${orderId} as NOT reviewed`);
+        } else {
+          newSet.add(orderId);
+          console.log(`✅ Marked order ${orderId} as reviewed`);
+        }
+        return newSet;
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error toggling review status:', error);
+      return false;
+    } finally {
+      setMarkingReviewed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
+    }
+  }, [reviewedOrders]);
+
+  // Check if order is reviewed
+  const isOrderReviewed = useCallback((order) => {
+    const orderId = getExecutiveOrderId(order);
+    return orderId ? reviewedOrders.has(orderId) : false;
+  }, [reviewedOrders]);
+
+  // Check if order is being marked
+  const isOrderMarking = useCallback((order) => {
+    const orderId = getExecutiveOrderId(order);
+    return orderId ? markingReviewed.has(orderId) : false;
+  }, [markingReviewed]);
+
+  return {
+    reviewedOrders,
+    toggleReviewStatus,
+    isOrderReviewed,
+    isOrderMarking
+  };
+};
 
 // Helper to extract executive order number from various fields
 const getExecutiveOrderNumber = (order) => {
@@ -91,30 +253,9 @@ const formatDate = (dateStr) => {
   }
 };
 
+// FIXED: Use the enhanced ID generation function
 const getOrderId = (order) => {
-  if (!order) return `fallback-${Math.random().toString(36).substr(2, 9)}`;
-  
-  // Priority order for ID selection to ensure uniqueness for Executive Orders
-  if (order.executive_order_number && typeof order.executive_order_number === 'string') {
-    return `eo-${order.executive_order_number}`;
-  }
-  if (order.document_number && typeof order.document_number === 'string') {
-    return `eo-doc-${order.document_number}`;
-  }
-  if (order.bill_id && typeof order.bill_id === 'string') return order.bill_id;
-  if (order.id && typeof order.id === 'string') return order.id;
-  if (order.bill_number) return `eo-${order.bill_number}`;
-  if (order.eo_number) return `eo-${order.eo_number}`;
-  
-  // Fallback using title hash for consistency
-  if (order.title) {
-    const titleHash = order.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
-    return `eo-title-${titleHash}`;
-  }
-  
-  // Last resort - use index if available, otherwise unique fallback
-  if (order.index !== undefined) return `eo-index-${order.index}`;
-  return `eo-fallback-${Math.random().toString(36).substr(2, 9)}`;
+  return getExecutiveOrderId(order) || `fallback-${Math.random().toString(36).substr(2, 9)}`;
 };
 
 const stripHtmlTags = (content) => {
@@ -213,35 +354,36 @@ const ReviewStatusTag = ({ isReviewed }) => {
   );
 };
 
-// AI Content Formatters (Updated to match StatePage)
 const formatTalkingPoints = (content) => {
   if (!content) return null;
 
   // Remove HTML tags first
   let textContent = content.replace(/<[^>]*>/g, '');
   
-  // Split by periods followed by numbers (e.g., "1. Point one. 2. Point two.")
+  // Split by periods followed by numbers, but be more careful about sentence boundaries
   const points = [];
   
-  // Try to split by numbered patterns first
-  const numberedMatches = textContent.match(/\d+\.\s*[^.]+(?:\.[^0-9][^.]*)*\./g);
+  // Try to split by numbered patterns first - improved regex
+  const numberedMatches = textContent.match(/\d+\.\s*[^.]*(?:\.[^0-9][^.]*)*(?=\s*\d+\.|$)/g);
   
   if (numberedMatches && numberedMatches.length > 1) {
     // Found numbered points, extract them
     numberedMatches.forEach((match) => {
-      const cleaned = match.replace(/^\d+\.\s*/, '').replace(/\.$/, '').trim();
-      if (cleaned.length > 5) {
+      let cleaned = match.replace(/^\d+\.\s*/, '').trim();
+      // Don't remove period if it's part of the sentence
+      if (cleaned.length > 10) { // Only include substantial content
         points.push(cleaned);
       }
     });
   } else {
-    // Fallback: split by sentence periods and look for patterns
-    const sentences = textContent.split(/\.\s+/).map(s => s.trim()).filter(s => s.length > 5);
+    // Fallback: split more intelligently by sentence patterns
+    // Look for content that starts with numbers
+    const sentences = textContent.split(/(?=\d+\.\s)/).filter(s => s.trim().length > 0);
     
     sentences.forEach((sentence) => {
-      // Remove leading numbers/bullets
-      const cleaned = sentence.replace(/^(\d+[\.\)]?\s*|[•\-*→·]\s*)/, '').trim();
-      if (cleaned.length > 5) {
+      // Remove leading numbers/bullets but keep the content intact
+      const cleaned = sentence.replace(/^\d+\.\s*/, '').trim();
+      if (cleaned.length > 10) {
         points.push(cleaned);
       }
     });
@@ -282,13 +424,10 @@ const formatUniversalContent = (content) => {
     'Summary'
   ];
   
-  // Create a more flexible regex that handles both colons and periods after keywords
-  const headerPattern = new RegExp(`\\*?(${sectionKeywords.join('|')})\\*?[:.]?`, 'gi');
+  // IMPROVED: Better regex that captures complete sentences until the next section
+  const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]?\\s*([^]*?)(?=\\s*(?:${sectionKeywords.join('|')}|$))`, 'gi');
   
-  // Also look for inline mentions like "Market Opportunity: text" or "Summary: text"
-  const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]\\s*([^.]*(?:\\.[^A-Z][^.]*)*)\\.?`, 'gi');
-  
-  // First, try to extract inline sections (like "Summary: text within paragraph")
+  // First, try to extract inline sections
   const inlineMatches = [];
   let match;
   while ((match = inlinePattern.exec(textContent)) !== null) {
@@ -303,7 +442,7 @@ const formatUniversalContent = (content) => {
   if (inlineMatches.length > 0) {
     const sections = [];
     
-    inlineMatches.forEach(({ header, content, fullMatch }) => {
+    inlineMatches.forEach(({ header, content }) => {
       if (header && content && content.length > 5) {
         // Clean up the header
         let cleanHeader = header.trim();
@@ -311,27 +450,47 @@ const formatUniversalContent = (content) => {
           cleanHeader += ':';
         }
         
-        // Split content into items but be more careful about sentence boundaries
+        // IMPROVED: Better content processing that preserves complete sentences
         const items = [];
         
-        // Check if content has bullet-like patterns or multiple sentences
-        if (content.includes('•') || content.includes('-') || content.includes('*')) {
-          // Handle explicit bullet points
-          const contentLines = content
-            .split(/[•\-*]\s*/)
-            .map(line => line.trim())
-            .filter(line => line.length > 10); // Increased minimum length
+        // Check if content has explicit bullet patterns
+        if (content.includes('•') || (content.includes('-') && content.match(/^\s*-/m)) || (content.includes('*') && content.match(/^\s*\*/m))) {
+          // Split by explicit bullet indicators, but be more careful
+          const bulletPattern = /(?:^|\n)\s*[•\-*]\s*(.+?)(?=(?:\n\s*[•\-*]|\n\s*$|$))/gs;
+          const bulletMatches = [...content.matchAll(bulletPattern)];
           
-          contentLines.forEach(line => {
-            const cleanLine = capitalizeFirstLetter(line.replace(/\.$/, ''));
-            if (cleanLine.length > 10) { // Increased minimum length
-              items.push(cleanLine);
-            }
-          });
+          if (bulletMatches.length > 0) {
+            bulletMatches.forEach(bulletMatch => {
+              const bulletContent = bulletMatch[1].trim();
+              if (bulletContent.length > 5) {
+                items.push(capitalizeFirstLetter(bulletContent));
+              }
+            });
+          } else {
+            // Fallback: split by line breaks and look for bullet-like content
+            const lines = content.split(/\n/).map(line => line.trim()).filter(line => line.length > 5);
+            lines.forEach(line => {
+              const cleanLine = line.replace(/^[•\-*]\s*/, '').trim();
+              if (cleanLine.length > 5) {
+                items.push(capitalizeFirstLetter(cleanLine));
+              }
+            });
+          }
         } else {
-          // Handle as complete sentences - don't break them up
-          const cleanContent = capitalizeFirstLetter(content.trim());
-          items.push(cleanContent);
+          // IMPROVED: For non-bulleted content, check if it's a single sentence or multiple sentences
+          const sentences = content.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 5);
+          
+          if (sentences.length === 1 || content.length < 200) {
+            // Single sentence or short content - treat as one item
+            items.push(capitalizeFirstLetter(content.trim()));
+          } else {
+            // Multiple sentences - create bullet points
+            sentences.forEach(sentence => {
+              if (sentence.length > 10) {
+                items.push(capitalizeFirstLetter(sentence));
+              }
+            });
+          }
         }
         
         if (items.length > 0) {
@@ -360,9 +519,11 @@ const formatUniversalContent = (content) => {
                 <div key={itemIdx} style={{ 
                   marginBottom: '6px',
                   fontSize: '14px',
-                  lineHeight: '1.5',
+                  lineHeight: '1.6',
                   color: 'inherit',
-                  paddingLeft: section.items.length === 1 ? '0px' : '12px'
+                  paddingLeft: section.items.length === 1 ? '0px' : '0px',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word'
                 }}>
                   {section.items.length === 1 ? item : `• ${item}`}
                 </div>
@@ -374,11 +535,24 @@ const formatUniversalContent = (content) => {
     }
   }
 
-  // Final fallback: display as single paragraph if no clear structure
-  return <div className="universal-text-content" style={{ fontSize: '14px', lineHeight: '1.5' }}>{textContent}</div>;
+  // Fallback: display as simple text if no sections found
+  return <div className="universal-text-content" style={{ 
+    fontSize: '14px', 
+    lineHeight: '1.6',
+    wordWrap: 'break-word',
+    overflowWrap: 'break-word'
+  }}>{textContent}</div>;
 };
 
 const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
+  // FIXED: Use the enhanced review status hook
+  const {
+    reviewedOrders,
+    toggleReviewStatus,
+    isOrderReviewed,
+    isOrderMarking
+  } = useExecutiveOrderReviewStatus();
+
   // State management
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -388,10 +562,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   // Filter state
   const [selectedFilters, setSelectedFilters] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  
-  // Review status state
-  const [reviewedOrders, setReviewedOrders] = useState(new Set());
-  const [markingReviewed, setMarkingReviewed] = useState(new Set());
   
   // Highlights state - Local state for immediate UI feedback
   const [localHighlights, setLocalHighlights] = useState(new Set());
@@ -414,58 +584,452 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     count: 0
   });
 
+  // 🔢 FILTER COUNTS STATE: Add new state for storing filter counts from entire database
+  const [allFilterCounts, setAllFilterCounts] = useState({
+    civic: 0,
+    education: 0,
+    engineering: 0,
+    healthcare: 0,
+    reviewed: 0,
+    not_reviewed: 0,
+    total: 0
+  });
+
   // Refs
   const filterDropdownRef = useRef(null);
 
-  // Load saved state from localStorage
-  useEffect(() => {
-    try {
-      const savedReviewed = localStorage.getItem('reviewedExecutiveOrders');
-      
-      if (savedReviewed) {
-        setReviewedOrders(new Set(JSON.parse(savedReviewed)));
-      }
-    } catch (error) {
-      console.error('Error loading saved data:', error);
-    }
-  }, []);
-
-  // Save to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('reviewedExecutiveOrders', JSON.stringify([...reviewedOrders]));
-    } catch (error) {
-      console.error('Error saving reviewed orders:', error);
-    }
-  }, [reviewedOrders]);
-
-  // Load existing highlights on component mount
+  // Load existing highlights on component mount - FIXED
   useEffect(() => {
     const loadExistingHighlights = async () => {
       try {
+        console.log('🔍 ExecutiveOrdersPage: Loading existing highlights...');
         const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
         if (response.ok) {
-          const highlights = await response.json();
+          const data = await response.json();
+          console.log('🔍 ExecutiveOrdersPage: Raw highlights response:', data);
+          
+          // FIX: Ensure we have an array before calling forEach
+          const highlights = Array.isArray(data) ? data : [];
           const orderIds = new Set();
           
           highlights.forEach(highlight => {
-            if (highlight.order_type === 'executive_order') {
+            if (highlight.order_type === 'executive_order' && highlight.order_id) {
               orderIds.add(highlight.order_id);
             }
           });
           
           setLocalHighlights(orderIds);
-          console.log('🌟 Loaded existing highlights:', orderIds);
+          console.log('🌟 ExecutiveOrdersPage: Loaded highlights:', Array.from(orderIds));
         }
       } catch (error) {
         console.error('Error loading existing highlights:', error);
       }
     };
     
+    // Load highlights immediately on mount
+    loadExistingHighlights();
+  }, []); // Empty dependency array - run once on mount
+
+  // ALSO load highlights when orders are loaded (keep existing functionality)
+  useEffect(() => {
+    const loadExistingHighlights = async () => {
+      try {
+        console.log('🔍 ExecutiveOrdersPage: Loading existing highlights...');
+        const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('🔍 ExecutiveOrdersPage: Raw highlights response:', data);
+          
+          // FIX: Extract highlights from the correct property
+          let highlights = [];
+          if (Array.isArray(data)) {
+            highlights = data;
+          } else if (data.highlights && Array.isArray(data.highlights)) {
+            highlights = data.highlights;
+          } else if (data.results && Array.isArray(data.results)) {
+            highlights = data.results;
+          }
+          
+          const orderIds = new Set();
+          
+          highlights.forEach(highlight => {
+            if (highlight.order_type === 'executive_order' && highlight.order_id) {
+              orderIds.add(highlight.order_id);
+            }
+          });
+          
+          setLocalHighlights(orderIds);
+          console.log('🌟 ExecutiveOrdersPage: Loaded highlights:', Array.from(orderIds));
+        }
+      } catch (error) {
+        console.error('Error loading existing highlights:', error);
+      }
+    };
+    
+    // Load highlights immediately on mount
+    loadExistingHighlights();
+  }, []);
+
+  // ALSO load highlights when orders are loaded
+  useEffect(() => {
     if (orders.length > 0) {
+      const loadExistingHighlights = async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+          if (response.ok) {
+            const data = await response.json();
+            let highlights = [];
+            if (Array.isArray(data)) {
+              highlights = data;
+            } else if (data.highlights && Array.isArray(data.highlights)) {
+              highlights = data.highlights;
+            } else if (data.results && Array.isArray(data.results)) {
+              highlights = data.results;
+            }
+            
+            const orderIds = new Set();
+            highlights.forEach(highlight => {
+              if (highlight.order_type === 'executive_order' && highlight.order_id) {
+                orderIds.add(highlight.order_id);
+              }
+            });
+            
+            setLocalHighlights(orderIds);
+          }
+        } catch (error) {
+          console.error('Error loading highlights after orders loaded:', error);
+        }
+      };
+      
       loadExistingHighlights();
     }
   }, [orders.length]);
+
+  // 🚀 AUTO-LOAD: Auto-load data from database on component mount
+  useEffect(() => {
+    console.log('🚀 Component mounted - attempting auto-load...');
+    
+    const autoLoad = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('📊 Auto-loading executive orders from database...');
+
+        const url = `${API_URL}/api/executive-orders?page=1&per_page=25`;
+        console.log('🔍 Auto-load fetching from URL:', url);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('🔍 Auto-load API Response:', data);
+
+        // Extract orders from response (same logic as your fetchFromDatabase)
+        let ordersArray = [];
+        let totalCount = 0;
+        
+        if (Array.isArray(data)) {
+          ordersArray = data;
+          totalCount = data.length;
+        } else if (data.results && Array.isArray(data.results)) {
+          ordersArray = data.results;
+          totalCount = data.total || data.count || 0;
+        } else if (data.data && Array.isArray(data.data)) {
+          ordersArray = data.data;
+          totalCount = data.total || data.count || 0;
+        } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
+          ordersArray = data.executive_orders;
+          totalCount = data.total || data.count || 0;
+        }
+
+        // Transform orders (same as your existing logic)
+        const transformedOrders = ordersArray.map((order, index) => {
+          const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-1-${index}`;
+          
+          return {
+            id: uniqueId,
+            bill_id: uniqueId,
+            eo_number: order.executive_order_number || order.document_number || 'Unknown',
+            executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
+            title: order.title || order.bill_title || 'Untitled Executive Order',
+            summary: order.description || order.summary || '',
+            signing_date: order.signing_date || order.introduced_date || '',
+            publication_date: order.publication_date || order.last_action_date || '',
+            html_url: order.html_url || order.legiscan_url || '',
+            pdf_url: order.pdf_url || '',
+            category: order.category || 'civic',
+            formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+            formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+            ai_summary: order.ai_summary || order.ai_executive_summary || '',
+            ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
+            ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
+            ai_processed: !!(order.ai_summary || order.ai_executive_summary),
+            president: order.president || 'Donald Trump',
+            source: 'Database (Federal Register + Azure AI)',
+            is_highlighted: false,
+            index: index
+          };
+        });
+
+        console.log(`🔍 Auto-load transformed ${transformedOrders.length} orders`);
+
+        setOrders(transformedOrders);
+        setPagination({
+          page: 1,
+          per_page: 25,
+          total_pages: data.total_pages || Math.ceil(totalCount / 25),
+          count: totalCount
+        });
+
+        setHasData(transformedOrders.length > 0);
+        console.log('✅ Auto-load completed successfully');
+
+      } catch (err) {
+        console.error('❌ Auto-load failed:', err);
+        // Don't show error for auto-load failure, just log it
+        setOrders([]);
+        setHasData(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Small delay to ensure component is fully mounted
+    const timeoutId = setTimeout(autoLoad, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, []); // Empty dependency array - runs once on mount
+
+  // 🔢 FILTER COUNTS: Function to fetch filter counts from entire database
+  const fetchFilterCounts = useCallback(async () => {
+    try {
+      console.log('📊 Fetching filter counts from entire database...');
+      
+      // Start with smaller sample sizes that your API can handle
+      let totalCount = 0;
+      let categoryCounts = { civic: 0, education: 0, engineering: 0, healthcare: 0 };
+      let allOrders = [];
+      
+      // Try different approaches in order of preference
+      const approaches = [
+        { per_page: 100, description: '100 items' },
+        { per_page: 50, description: '50 items' },
+        { per_page: 25, description: '25 items (fallback)' }
+      ];
+      
+      let successfulApproach = null;
+      
+      for (const approach of approaches) {
+        try {
+          console.log(`📊 Trying to fetch ${approach.description}...`);
+          
+          const sampleResponse = await fetch(`${API_URL}/api/executive-orders?page=1&per_page=${approach.per_page}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (sampleResponse.ok) {
+            const sampleData = await sampleResponse.json();
+            let sampleOrders = [];
+            
+            if (Array.isArray(sampleData)) {
+              sampleOrders = sampleData;
+              totalCount = sampleData.length;
+            } else if (sampleData.results && Array.isArray(sampleData.results)) {
+              sampleOrders = sampleData.results;
+              totalCount = sampleData.total || sampleData.count || 0;
+            } else if (sampleData.data && Array.isArray(sampleData.data)) {
+              sampleOrders = sampleData.data;
+              totalCount = sampleData.total || sampleData.count || 0;
+            } else if (sampleData.executive_orders && Array.isArray(sampleData.executive_orders)) {
+              sampleOrders = sampleData.executive_orders;
+              totalCount = sampleData.total || sampleData.count || 0;
+            }
+
+            allOrders = sampleOrders;
+            successfulApproach = approach;
+            console.log(`✅ Successfully fetched ${sampleOrders.length} orders using ${approach.description}`);
+            console.log(`📊 Total count from API: ${totalCount}`);
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ Failed to fetch ${approach.description}:`, err.message);
+          continue;
+        }
+      }
+      
+      if (!successfulApproach) {
+        throw new Error('All fetch approaches failed');
+      }
+
+      // Count categories from the sample we got
+      FILTERS.forEach(filter => {
+        categoryCounts[filter.key] = allOrders.filter(order => order?.category === filter.key).length;
+      });
+      
+      console.log('📊 Category counts from sample:', categoryCounts);
+
+      // If we only got a small sample but the total is larger, estimate the full counts
+      if (allOrders.length < totalCount && totalCount > 0) {
+        const scaleFactor = totalCount / allOrders.length;
+        console.log(`📊 Scaling factor: ${scaleFactor} (${totalCount} total / ${allOrders.length} sample)`);
+        
+        // Scale up the category counts proportionally
+        Object.keys(categoryCounts).forEach(key => {
+          categoryCounts[key] = Math.round(categoryCounts[key] * scaleFactor);
+        });
+        
+        console.log('📊 Scaled category counts:', categoryCounts);
+      }
+
+      // Get reviewed counts from in-memory storage
+      const reviewedCount = reviewedOrders.size;
+
+      const newFilterCounts = {
+        ...categoryCounts,
+        reviewed: reviewedCount,
+        not_reviewed: Math.max(0, totalCount - reviewedCount),
+        total: totalCount
+      };
+
+      console.log('📊 Final filter counts:', newFilterCounts);
+      setAllFilterCounts(newFilterCounts);
+
+    } catch (error) {
+      console.error('❌ Error fetching filter counts:', error);
+      
+      // Enhanced fallback using current page data
+      const fallbackCounts = {};
+      FILTERS.forEach(filter => {
+        fallbackCounts[filter.key] = orders.filter(order => order?.category === filter.key).length;
+      });
+      
+      const total = pagination.count || orders.length || 0; // Use pagination total if available
+      const reviewed = orders.filter(order => isOrderReviewed(order)).length;
+      
+      console.log('📊 Using fallback counts with pagination total:', total);
+      
+      setAllFilterCounts({
+        ...fallbackCounts,
+        reviewed: reviewed,
+        not_reviewed: Math.max(0, total - reviewed),
+        total: total
+      });
+    }
+  }, [orders, reviewedOrders, pagination.count, isOrderReviewed]);
+
+  // 🔢 FILTER COUNTS: Dynamic filter counts based on current filtering state
+  const updateFilterCounts = useCallback(async (activeFilters, searchTerm) => {
+    try {
+      if (activeFilters.length === 0 && !searchTerm) {
+        // No filters active - show total database counts
+        await fetchFilterCounts();
+        return;
+      }
+
+      console.log('📊 Updating filter counts for active filters:', activeFilters);
+      
+      // For filtered state, get ALL data and count client-side
+      try {
+        const response = await fetch(`${API_URL}/api/executive-orders?per_page=200`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          let allOrders = [];
+          
+          if (Array.isArray(data)) {
+            allOrders = data;
+          } else if (data.results && Array.isArray(data.results)) {
+            allOrders = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            allOrders = data.data;
+          } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
+            allOrders = data.executive_orders;
+          }
+
+          // Apply base filters (search term, but not the specific category we're counting)
+          let baseFilteredOrders = allOrders;
+          
+          // Apply search if present
+          if (searchTerm && searchTerm.trim()) {
+            const searchLower = searchTerm.toLowerCase();
+            baseFilteredOrders = baseFilteredOrders.filter(order =>
+              order.title?.toLowerCase().includes(searchLower) ||
+              order.ai_summary?.toLowerCase().includes(searchLower) ||
+              order.summary?.toLowerCase().includes(searchLower)
+            );
+          }
+
+          // Count categories from ALL filtered results (not just the active filter)
+          const newCategoryCounts = {};
+          FILTERS.forEach(filter => {
+            newCategoryCounts[filter.key] = baseFilteredOrders.filter(order => order?.category === filter.key).length;
+          });
+
+          // Count review status from filtered results
+          const reviewedCount = baseFilteredOrders.filter(order => {
+            const orderId = getOrderId(order);
+            return reviewedOrders.has(orderId);
+          }).length;
+
+          const totalFiltered = baseFilteredOrders.length;
+
+          const updatedCounts = {
+            ...newCategoryCounts,
+            reviewed: reviewedCount,
+            not_reviewed: totalFiltered - reviewedCount,
+            total: totalFiltered
+          };
+
+          console.log('📊 Updated filter counts:', updatedCounts);
+          setAllFilterCounts(updatedCounts);
+        }
+      } catch (countError) {
+        console.error('❌ Error updating filter counts, using fallback');
+        // Fallback to current data
+        const fallbackCounts = {};
+        FILTERS.forEach(filter => {
+          fallbackCounts[filter.key] = orders.filter(order => order?.category === filter.key).length;
+        });
+        
+        const reviewed = orders.filter(order => isOrderReviewed(order)).length;
+        
+        setAllFilterCounts({
+          ...fallbackCounts,
+          reviewed: reviewed,
+          not_reviewed: Math.max(0, orders.length - reviewed),
+          total: orders.length
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error updating filter counts:', error);
+    }
+  }, [reviewedOrders, fetchFilterCounts, orders, isOrderReviewed]);
+
+  // Update filter counts when filters or search changes
+  useEffect(() => {
+    if (orders.length > 0) {
+      updateFilterCounts(selectedFilters, searchTerm);
+    }
+  }, [selectedFilters, searchTerm, orders.length, updateFilterCounts]);
 
   // ✅ FIXED PAGINATION: Fetch from database with proper pagination
   const fetchFromDatabase = useCallback(async (pageNum = 1) => {
@@ -696,91 +1260,413 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       const newFilters = prev.includes(filterKey)
         ? prev.filter(f => f !== filterKey)
         : [...prev, filterKey];
+      
+      console.log('🔄 Filter toggled:', filterKey, 'New filters:', newFilters);
+      
+      // After updating filters, fetch filtered data from database
+      setTimeout(() => {
+        if (newFilters.length > 0 || searchTerm) {
+          fetchFilteredData(newFilters, searchTerm, 1);
+        } else {
+          fetchFromDatabase(1);
+        }
+      }, 100);
+      
       return newFilters;
     });
   };
 
   const clearAllFilters = () => {
+    console.log('🔄 Clearing all filters');
     setSelectedFilters([]);
     setSearchTerm('');
+    
+    // Fetch all data without filters
+    setTimeout(() => {
+      fetchFromDatabase(1);
+    }, 100);
   };
 
-  // Filter and search logic
-  const filteredOrders = useMemo(() => {
-    let filtered = orders;
-
-    // Apply category filters
-    const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
-    if (categoryFilters.length > 0) {
-      filtered = filtered.filter(order => categoryFilters.includes(order.category));
-    }
-
-    // Apply review status filters
-    const hasReviewedFilter = selectedFilters.includes('reviewed');
-    const hasNotReviewedFilter = selectedFilters.includes('not_reviewed');
-    
-    if (hasReviewedFilter && hasNotReviewedFilter) {
-      // Both selected, show all
-    } else if (hasReviewedFilter) {
-      filtered = filtered.filter(order => reviewedOrders.has(getOrderId(order)));
-    } else if (hasNotReviewedFilter) {
-      filtered = filtered.filter(order => !reviewedOrders.has(getOrderId(order)));
-    }
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(order => 
-        order.title.toLowerCase().includes(term) ||
-        order.eo_number.toLowerCase().includes(term) ||
-        order.summary.toLowerCase().includes(term) ||
-        (order.ai_summary && order.ai_summary.toLowerCase().includes(term))
-      );
-    }
-
-    return filtered;
-  }, [orders, selectedFilters, reviewedOrders, searchTerm]);
-
-  // ✅ FIXED PAGINATION: Event handlers
-  const handleSearch = useCallback(() => {
-    fetchFromDatabase(1); // Always start from page 1 on new search
-  }, [fetchFromDatabase]);
-
-  const handlePageChange = useCallback((newPage) => {
-    console.log(`🔄 Changing to page ${newPage}`);
-    fetchFromDatabase(newPage);
-  }, [fetchFromDatabase]);
-
-  // Toggle review status function
-  const handleToggleReviewStatus = async (order) => {
-    const orderId = getOrderId(order);
-    if (!orderId) return;
-    
-    const isCurrentlyReviewed = reviewedOrders.has(orderId);
-    setMarkingReviewed(prev => new Set([...prev, orderId]));
-    
+  // 🔍 FIXED: Get ALL filtered data, not just paginated results
+  const fetchAllFilteredData = useCallback(async (filters, search) => {
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log(`🔍 Fetching ALL filtered data - Filters: ${filters.join(',')}, Search: "${search}"`);
+
+      // Build URL to get ALL results (use reasonable page size instead of 1000)
+      let url = `${API_URL}/api/executive-orders?per_page=100`; // FIXED: Changed from 1000 to 100
       
-      if (isCurrentlyReviewed) {
-        setReviewedOrders(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(orderId);
-          return newSet;
-        });
-      } else {
-        setReviewedOrders(prev => new Set([...prev, orderId]));
+      // Add category filters - try different parameter formats
+      const categoryFilters = filters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
+      if (categoryFilters.length > 0) {
+        // Try multiple possible parameter formats your backend might expect
+        if (categoryFilters.length === 1) {
+          // Single category - try different formats
+          url += `&category=${categoryFilters[0]}`;
+          // Alternative formats your backend might expect:
+          // url += `&categories=${categoryFilters[0]}`;
+          // url += `&filter[category]=${categoryFilters[0]}`;
+        } else {
+          // Multiple categories
+          url += `&category=${categoryFilters.join(',')}`;
+          // Alternative: url += categoryFilters.map(cat => `&category=${cat}`).join('');
+        }
       }
       
-    } catch (error) {
-      console.error('Error toggling review status:', error);
-    } finally {
-      setMarkingReviewed(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(orderId);
-        return newSet;
+      // Add search parameter
+      if (search && search.trim()) {
+        url += `&search=${encodeURIComponent(search.trim())}`;
+        // Alternative: url += `&q=${encodeURIComponent(search.trim())}`;
+      }
+      
+      console.log('🔍 All Filtered URL:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
+
+      // Better error handling for 422
+      if (!response.ok) {
+        if (response.status === 422) {
+          console.error('❌ 422 Error - Backend rejected parameters. Trying without filters...');
+          
+          // Try fallback without category filter
+          const fallbackUrl = `${API_URL}/api/executive-orders?per_page=100`; // FIXED: Changed from 1000 to 100
+          const fallbackResponse = await fetch(fallbackUrl, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            console.log('✅ Fallback request successful, applying client-side filters');
+            
+            // Apply client-side filtering
+            let allOrdersArray = [];
+            if (Array.isArray(fallbackData)) {
+              allOrdersArray = fallbackData;
+            } else if (fallbackData.results && Array.isArray(fallbackData.results)) {
+              allOrdersArray = fallbackData.results;
+            } else if (fallbackData.data && Array.isArray(fallbackData.data)) {
+              allOrdersArray = fallbackData.data;
+            } else if (fallbackData.executive_orders && Array.isArray(fallbackData.executive_orders)) {
+              allOrdersArray = fallbackData.executive_orders;
+            }
+            
+            console.log(`🔍 Fallback got ${allOrdersArray.length} total orders from backend`);
+            
+            // Filter client-side by category
+            if (categoryFilters.length > 0) {
+              console.log(`🔍 Filtering for categories: ${categoryFilters.join(', ')}`);
+              const beforeFilter = allOrdersArray.length;
+              allOrdersArray = allOrdersArray.filter(order => {
+                const hasCategory = categoryFilters.includes(order?.category);
+                if (hasCategory) {
+                  console.log(`✅ Order "${order.title}" matches category "${order.category}"`);
+                } else {
+                  console.log(`❌ Order "${order.title}" has category "${order.category}" (not in ${categoryFilters.join(', ')})`);
+                }
+                return hasCategory;
+              });
+              console.log(`🔍 Category filtering: ${beforeFilter} -> ${allOrdersArray.length} orders`);
+            }
+            
+            // Filter by search term
+            if (search && search.trim()) {
+              const searchLower = search.toLowerCase();
+              const beforeSearch = allOrdersArray.length;
+              allOrdersArray = allOrdersArray.filter(order =>
+                order.title?.toLowerCase().includes(searchLower) ||
+                order.ai_summary?.toLowerCase().includes(searchLower) ||
+                order.summary?.toLowerCase().includes(searchLower)
+              );
+              console.log(`🔍 Search filtering: ${beforeSearch} -> ${allOrdersArray.length} orders`);
+            }
+            
+            // Transform the filtered orders
+            const allTransformedOrders = allOrdersArray.map((order, index) => {
+              const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-all-${index}`;
+              
+              return {
+                id: uniqueId,
+                bill_id: uniqueId,
+                eo_number: order.executive_order_number || order.document_number || 'Unknown',
+                executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
+                title: order.title || order.bill_title || 'Untitled Executive Order',
+                summary: order.description || order.summary || '',
+                signing_date: order.signing_date || order.introduced_date || '',
+                publication_date: order.publication_date || order.last_action_date || '',
+                html_url: order.html_url || order.legiscan_url || '',
+                pdf_url: order.pdf_url || '',
+                category: order.category || 'civic',
+                formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+                formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+                ai_summary: order.ai_summary || order.ai_executive_summary || '',
+                ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
+                ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
+                ai_processed: !!(order.ai_summary || order.ai_executive_summary),
+                president: order.president || 'Donald Trump',
+                source: 'Database (Federal Register + Azure AI)',
+                is_highlighted: false,
+                index: index
+              };
+            });
+
+            // Apply review status filtering
+            let finalAllOrders = allTransformedOrders;
+            const hasReviewedFilter = filters.includes('reviewed');
+            const hasNotReviewedFilter = filters.includes('not_reviewed');
+            
+            if (hasReviewedFilter && !hasNotReviewedFilter) {
+              finalAllOrders = allTransformedOrders.filter(order => isOrderReviewed(order));
+            } else if (hasNotReviewedFilter && !hasReviewedFilter) {
+              finalAllOrders = allTransformedOrders.filter(order => !isOrderReviewed(order));
+            }
+
+            console.log(`🔍 Client-side filtered results: ${finalAllOrders.length} orders`);
+            return finalAllOrders;
+          }
+        }
+        
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('🔍 All Filtered API Response:', data);
+
+      // Extract ALL orders from response
+      let allOrdersArray = [];
+      
+      if (Array.isArray(data)) {
+        allOrdersArray = data;
+      } else if (data.results && Array.isArray(data.results)) {
+        allOrdersArray = data.results;
+      } else if (data.data && Array.isArray(data.data)) {
+        allOrdersArray = data.data;
+      } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
+        allOrdersArray = data.executive_orders;
+      }
+
+      // Transform ALL orders
+      const allTransformedOrders = allOrdersArray.map((order, index) => {
+        const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-all-${index}`;
+        
+        return {
+          id: uniqueId,
+          bill_id: uniqueId,
+          eo_number: order.executive_order_number || order.document_number || 'Unknown',
+          executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
+          title: order.title || order.bill_title || 'Untitled Executive Order',
+          summary: order.description || order.summary || '',
+          signing_date: order.signing_date || order.introduced_date || '',
+          publication_date: order.publication_date || order.last_action_date || '',
+          html_url: order.html_url || order.legiscan_url || '',
+          pdf_url: order.pdf_url || '',
+          category: order.category || 'civic',
+          formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+          formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+          ai_summary: order.ai_summary || order.ai_executive_summary || '',
+          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
+          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
+          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
+          president: order.president || 'Donald Trump',
+          source: 'Database (Federal Register + Azure AI)',
+          is_highlighted: false,
+          index: index
+        };
+      });
+
+      // Apply client-side review status filtering
+      let finalAllOrders = allTransformedOrders;
+      const hasReviewedFilter = filters.includes('reviewed');
+      const hasNotReviewedFilter = filters.includes('not_reviewed');
+      
+      if (hasReviewedFilter && !hasNotReviewedFilter) {
+        finalAllOrders = allTransformedOrders.filter(order => isOrderReviewed(order));
+      } else if (hasNotReviewedFilter && !hasReviewedFilter) {
+        finalAllOrders = allTransformedOrders.filter(order => !isOrderReviewed(order));
+      }
+
+      console.log(`🔍 All Filtered Results: ${finalAllOrders.length} orders`);
+      return finalAllOrders;
+
+    } catch (err) {
+      console.error('❌ All filtered fetch failed:', err);
+      console.log('🔄 Falling back to client-side filtering only');
+      
+      // Ultimate fallback - try to get all data without any parameters
+      try {
+        const basicResponse = await fetch(`${API_URL}/api/executive-orders`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (basicResponse.ok) {
+          const basicData = await basicResponse.json();
+          let basicOrders = [];
+          
+          if (Array.isArray(basicData)) {
+            basicOrders = basicData;
+          } else if (basicData.results && Array.isArray(basicData.results)) {
+            basicOrders = basicData.results;
+          } else if (basicData.data && Array.isArray(basicData.data)) {
+            basicOrders = basicData.data;
+          } else if (basicData.executive_orders && Array.isArray(basicData.executive_orders)) {
+            basicOrders = basicData.executive_orders;
+          }
+          
+          // Apply all filtering client-side
+          const categoryFilters = filters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
+          
+          let filteredOrders = basicOrders;
+          
+          // Filter by category
+          if (categoryFilters.length > 0) {
+            filteredOrders = filteredOrders.filter(order => 
+              categoryFilters.includes(order?.category)
+            );
+          }
+          
+          // Filter by search
+          if (search && search.trim()) {
+            const searchLower = search.toLowerCase();
+            filteredOrders = filteredOrders.filter(order =>
+              order.title?.toLowerCase().includes(searchLower) ||
+              order.ai_summary?.toLowerCase().includes(searchLower) ||
+              order.summary?.toLowerCase().includes(searchLower)
+            );
+          }
+          
+          console.log(`🔄 Ultimate fallback: ${filteredOrders.length} filtered orders`);
+          
+          // Transform and return
+          return filteredOrders.map((order, index) => ({
+            id: order.executive_order_number || order.document_number || order.id || order.bill_id || `order-all-${index}`,
+            bill_id: order.executive_order_number || order.document_number || order.id || order.bill_id || `order-all-${index}`,
+            eo_number: order.executive_order_number || order.document_number || 'Unknown',
+            executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
+            title: order.title || order.bill_title || 'Untitled Executive Order',
+            summary: order.description || order.summary || '',
+            signing_date: order.signing_date || order.introduced_date || '',
+            publication_date: order.publication_date || order.last_action_date || '',
+            html_url: order.html_url || order.legiscan_url || '',
+            pdf_url: order.pdf_url || '',
+            category: order.category || 'civic',
+            formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+            formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+            ai_summary: order.ai_summary || order.ai_executive_summary || '',
+            ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
+            ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
+            ai_processed: !!(order.ai_summary || order.ai_executive_summary),
+            president: order.president || 'Donald Trump',
+            source: 'Database (Federal Register + Azure AI)',
+            is_highlighted: false,
+            index: index
+          }));
+        }
+      } catch (ultimateError) {
+        console.error('❌ Ultimate fallback also failed:', ultimateError);
+      }
+      
+      return [];
     }
-  };
+  }, [isOrderReviewed]);
+
+  // 🔍 NEW: Database-level filtering function with proper pagination
+  const fetchFilteredData = useCallback(async (filters, search, pageNum = 1) => {
+    try {
+      setLoading(true);
+      setError(null);
+      setFetchStatus('🔍 Filtering executive orders...');
+
+      console.log(`🔍 fetchFilteredData called with filters: ${filters}, search: "${search}", page: ${pageNum}`);
+
+      // First, get ALL filtered results to show correct total count
+      const allFilteredOrders = await fetchAllFilteredData(filters, search);
+      const totalFilteredCount = allFilteredOrders.length;
+
+      console.log(`🔍 Got ${totalFilteredCount} total filtered orders from fetchAllFilteredData`);
+
+      if (totalFilteredCount === 0) {
+        console.log('🔍 No filtered results found');
+        setOrders([]);
+        setPagination({
+          page: 1,
+          per_page: 25,
+          total_pages: 0,
+          count: 0
+        });
+        setFetchStatus(`❌ No results found for selected filters`);
+        setHasData(false);
+        setTimeout(() => setFetchStatus(null), 4000);
+        return;
+      }
+
+      // Now paginate the results client-side for correct display
+      const perPage = 25;
+      const startIndex = (pageNum - 1) * perPage;
+      const endIndex = startIndex + perPage;
+      const paginatedOrders = allFilteredOrders.slice(startIndex, endIndex);
+      
+      console.log(`🔍 Paginating: showing items ${startIndex + 1}-${Math.min(endIndex, totalFilteredCount)} of ${totalFilteredCount} total`);
+      console.log(`🔍 Paginated orders count: ${paginatedOrders.length}`);
+
+      // Calculate correct pagination
+      const totalPages = Math.ceil(totalFilteredCount / perPage);
+
+      // Update state with paginated results but correct total count
+      setOrders(paginatedOrders);
+      setPagination({
+        page: pageNum,
+        per_page: perPage,
+        total_pages: totalPages,
+        count: totalFilteredCount
+      });
+
+      console.log(`🔍 Set pagination: page ${pageNum}/${totalPages}, total count: ${totalFilteredCount}`);
+
+      setFetchStatus(`✅ Found ${totalFilteredCount} filtered orders, showing page ${pageNum} of ${totalPages}`);
+      setHasData(paginatedOrders.length > 0);
+      setTimeout(() => setFetchStatus(null), 4000);
+
+    } catch (err) {
+      console.error('❌ Filtered fetch failed:', err);
+      setError(`Failed to filter executive orders: ${err.message}`);
+      setFetchStatus(`❌ Filter error: ${err.message}`);
+      setTimeout(() => setFetchStatus(null), 5000);
+      setOrders([]);
+      setHasData(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAllFilteredData]);
+
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`🔄 Changing to page ${newPage} with filters:`, selectedFilters);
+    
+    if (selectedFilters.length > 0 || searchTerm) {
+      fetchFilteredData(selectedFilters, searchTerm, newPage);
+    } else {
+      fetchFromDatabase(newPage);
+    }
+  }, [selectedFilters, searchTerm, fetchFromDatabase, fetchFilteredData]);
+
+  // Handle search
+  const handleSearch = useCallback(() => {
+    console.log(`🔍 Searching for: "${searchTerm}"`);
+    if (selectedFilters.length > 0 || searchTerm) {
+      fetchFilteredData(selectedFilters, searchTerm, 1);
+    }
+  }, [searchTerm, selectedFilters, fetchFilteredData]);
 
   // Enhanced highlighting function
   const handleOrderHighlight = useCallback(async (order) => {
@@ -907,19 +1793,21 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
   // Count functions for filter display
   const reviewCounts = useMemo(() => {
-    const total = orders.length || 0;
-    const reviewed = orders.filter(order => reviewedOrders.has(getOrderId(order))).length;
-    const notReviewed = total - reviewed;
-    return { total, reviewed, notReviewed };
-  }, [orders, reviewedOrders]);
+    return {
+      total: allFilterCounts.total || 0,
+      reviewed: allFilterCounts.reviewed || 0,
+      notReviewed: allFilterCounts.not_reviewed || 0
+    };
+  }, [allFilterCounts]);
 
   const categoryCounts = useMemo(() => {
-    const counts = {};
-    FILTERS.forEach(filter => {
-      counts[filter.key] = orders.filter(order => order?.category === filter.key).length;
-    });
-    return counts;
-  }, [orders]);
+    return {
+      civic: allFilterCounts.civic || 0,
+      education: allFilterCounts.education || 0,
+      engineering: allFilterCounts.engineering || 0,
+      healthcare: allFilterCounts.healthcare || 0
+    };
+  }, [allFilterCounts]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -948,6 +1836,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         <p className="text-gray-600">
           Retrieving executive orders from official federal sources, leveraging state-of-the-art AI models to extract summaries, strategic talking points, and potential business implications.
         </p>
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Database size={16} className="text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">Note: In-Memory Storage</span>
+          </div>
+          <p className="text-sm text-blue-700">
+            Review status is now stored in memory during your session (localStorage is not supported in this environment). 
+            In a full implementation, review status would be saved to a database for permanent persistence.
+          </p>
+        </div>
       </div>
 
       {/* Search Bar and Filter */}
@@ -1013,7 +1911,11 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                         onClick={() => toggleFilter(filter.key)}
                         className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                           isActive
-                            ? 'bg-blue-50 text-blue-700 font-medium'
+                            ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
+                              filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
+                              filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
+                              filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
+                              'bg-blue-100 text-blue-700 font-medium'
                             : 'text-gray-700 hover:bg-gray-100'
                         }`}
                       >
@@ -1030,12 +1932,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           />
                           <span>{filter.label}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">({count})</span>
-                          {isActive && (
-                            <Check size={14} className="text-blue-600" />
-                          )}
-                        </div>
                       </button>
                     );
                   })}
@@ -1050,7 +1946,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                     onClick={() => toggleFilter('reviewed')}
                     className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                       isFilterActive('reviewed')
-                        ? 'bg-green-50 text-green-700 font-medium'
+                        ? 'bg-green-100 text-green-700 font-medium'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -1058,18 +1954,13 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                       <Check size={16} className="text-green-600" />
                       <span>Reviewed</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">({reviewCounts.reviewed})</span>
-                      {isFilterActive('reviewed') && (
-                        <Check size={14} className="text-green-600" />
-                      )}
-                    </div>
+                    <span className="text-xs text-gray-500">({reviewCounts.reviewed})</span>
                   </button>
                   <button
                     onClick={() => toggleFilter('not_reviewed')}
                     className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                       isFilterActive('not_reviewed')
-                        ? 'bg-red-50 text-red-700 font-medium'
+                        ? 'bg-red-100 text-red-700 font-medium'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -1077,12 +1968,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                       <AlertTriangle size={16} className="text-red-600" />
                       <span>Not Reviewed</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">({reviewCounts.notReviewed})</span>
-                      {isFilterActive('not_reviewed') && (
-                        <Check size={14} className="text-red-600" />
-                      )}
-                    </div>
+                    <span className="text-xs text-gray-500">({reviewCounts.notReviewed})</span>
                   </button>
                 </div>
               </div>
@@ -1103,7 +1989,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
             {searchTerm && (
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                 <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                  {filteredOrders.length} found
+                  {orders.length} found
                 </span>
               </div>
             )}
@@ -1155,7 +2041,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-center gap-2">
                     {(fetchingData || loading) && (
-                      <RefreshIcon size={16} className="animate-spin text-blue-600" />
+                      <RotateCw size={16} className="animate-spin text-blue-600" />
                     )}
                     <span className="text-sm text-blue-700 font-medium">
                       {fetchStatus || (fetchingData ? 'Fetching and analyzing...' : 'Loading...')}
@@ -1219,7 +2105,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         <div className="p-6">
           {loading ? (
             <div className="py-12 text-center">
-              <div className="w-16 h-16 mx-auto bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center animate-pulse mb-4">
+              <div className="w-16 h-16 mx-auto bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center animate-pulse mb-4">
                 <Database size={32} className="text-white" />
               </div>
               <h3 className="text-lg font-bold text-gray-800 mb-2">Loading from Database</h3>
@@ -1244,7 +2130,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 </button>
               </div>
             </div>
-          ) : filteredOrders.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="text-center py-12">
               <Database size={48} className="mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold text-gray-800 mb-2">No Executive Orders Found</h3>
@@ -1277,34 +2163,37 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredOrders.map((order, index) => {
-                // Add index to order for unique ID generation
-                const orderWithIndex = { ...order, index };
-                const orderId = getOrderId(orderWithIndex);
-                const isExpanded = expandedOrders.has(orderId);
-                const isReviewed = reviewedOrders.has(orderId);
-                
-                return (
-                  <div key={`order-${orderId}-${index}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div 
-                          className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
-                          onClick={() => {
-                            setExpandedOrders(prev => {
-                              const newSet = new Set(prev);
-                              if (newSet.has(orderId)) {
-                                newSet.delete(orderId);
-                              } else {
-                                newSet.add(orderId);
-                              }
-                              return newSet;
-                            });
-                          }}
-                        >
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                            {index + 1}. {cleanOrderTitle(order.title)}
-                          </h3>
+            {orders.map((order, index) => {
+              // Add index to order for unique ID generation
+              const orderWithIndex = { ...order, index };
+              const orderId = getOrderId(orderWithIndex);
+              const isExpanded = expandedOrders.has(orderId);
+              const isReviewed = isOrderReviewed(order);
+              
+              // 🔢 CONTINUOUS NUMBERING: Calculate the actual order number across all pages
+              const actualOrderNumber = pagination.count - ((pagination.page - 1) * pagination.per_page + index);
+              
+              return (
+                <div key={`order-${orderId}-${index}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
+                  <div className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div 
+                        className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
+                        onClick={() => {
+                          setExpandedOrders(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(orderId)) {
+                              newSet.delete(orderId);
+                            } else {
+                              newSet.add(orderId);
+                            }
+                            return newSet;
+                          });
+                        }}
+                      >
+                        <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                          {actualOrderNumber}. {cleanOrderTitle(order.title)}
+                        </h3>
                           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
                             <span className="font-medium">Executive Order #: {getExecutiveOrderNumber(order)}</span>
                             <span>-</span>
@@ -1320,16 +2209,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                         </div>
                         
                         <div className="flex items-center gap-2 ml-4">
-                          {/* Toggle Review Status Button */}
+                          {/* FIXED: Toggle Review Status Button */}
                           <button
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              handleToggleReviewStatus(orderWithIndex);
+                              toggleReviewStatus(orderWithIndex);
                             }}
-                            disabled={markingReviewed.has(orderId)}
+                            disabled={isOrderMarking(orderWithIndex)}
                             className={`p-2 rounded-md transition-all duration-300 ${
-                              markingReviewed.has(orderId)
+                              isOrderMarking(orderWithIndex)
                                 ? 'text-gray-500 cursor-not-allowed'
                                 : isReviewed
                                 ? 'text-green-600 bg-green-100 hover:bg-green-200'
@@ -1337,8 +2226,8 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                             }`}
                             title={isReviewed ? "Mark as not reviewed" : "Mark as reviewed"}
                           >
-                            {markingReviewed.has(orderId) ? (
-                              <RefreshIcon size={16} className="animate-spin" />
+                            {isOrderMarking(orderWithIndex) ? (
+                              <RotateCw size={16} className="animate-spin" />
                             ) : (
                               <Check size={16} className={isReviewed ? "text-green-600" : ""} />
                             )}
@@ -1369,7 +2258,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                             }
                           >
                             {isOrderHighlightLoading(orderWithIndex) ? (
-                              <RefreshIcon size={16} className="animate-spin" />
+                              <RotateCw size={16} className="animate-spin" />
                             ) : (
                               <Star 
                                 size={16} 
@@ -1415,7 +2304,15 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               </span>
                             </div>
                             <div className="text-sm text-violet-800 leading-relaxed">
-                              <div dangerouslySetInnerHTML={{ __html: order.ai_summary }} />
+                              <div className="universal-text-content" style={{
+                                fontSize: '14px',
+                                lineHeight: '1.6',
+                                wordWrap: 'break-word',
+                                overflowWrap: 'break-word',
+                                whiteSpace: 'normal'
+                              }}>
+                                {stripHtmlTags(order.ai_summary)}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1560,67 +2457,127 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       </div>
 
       {/* ✅ FIXED PAGINATION: Always show if there are orders and multiple pages */}
-      {!loading && !error && orders.length > 0 && pagination.total_pages > 1 && (
-        <div className="mt-6 flex justify-center">
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => handlePageChange(pagination.page - 1)}
-              disabled={pagination.page <= 1}
-              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            
-            <div className="flex items-center space-x-1">
-              {Array.from({ length: Math.min(pagination.total_pages, 5) }, (_, i) => {
-                const pageNum = i + 1;
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => handlePageChange(pageNum)}
-                    className={`px-3 py-2 text-sm font-medium rounded-md ${
-                      pagination.page === pageNum
-                        ? 'text-blue-600 bg-blue-50 border border-blue-300'
-                        : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-              
-              {/* Show more pages info if there are many pages */}
-              {pagination.total_pages > 5 && (
-                <>
-                  <span className="px-2 text-gray-500">...</span>
-                  <button
-                    onClick={() => handlePageChange(pagination.total_pages)}
-                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                  >
-                    {pagination.total_pages}
-                  </button>
-                </>
-              )}
+      {!loading && !error && (
+        <>
+          {/* Show pagination if there are multiple pages */}
+          {orders.length > 0 && pagination.total_pages > 1 && (
+            <div className="mt-6 flex justify-center">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page <= 1}
+                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(pagination.total_pages, 5) }, (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-2 text-sm font-medium rounded-md ${
+                          pagination.page === pageNum
+                            ? 'text-blue-600 bg-blue-50 border border-blue-300'
+                            : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  
+                  {/* Show more pages info if there are many pages */}
+                  {pagination.total_pages > 5 && (
+                    <>
+                      <span className="px-2 text-gray-500">...</span>
+                      <button
+                        onClick={() => handlePageChange(pagination.total_pages)}
+                        className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                      >
+                        {pagination.total_pages}
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                <button
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page >= pagination.total_pages}
+                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+                
+                {/* Page info */}
+                <div className="ml-4 text-sm text-gray-600">
+                  {selectedFilters.length > 0 || searchTerm ? (
+                    <>
+                      Showing {Math.min((pagination.page - 1) * pagination.per_page + 1, pagination.count)}-{Math.min(pagination.page * pagination.per_page, pagination.count)} of {pagination.count} filtered results
+                      {pagination.total_pages > 1 && ` (Page ${pagination.page} of ${pagination.total_pages})`}
+                    </>
+                  ) : (
+                    <>
+                      Page {pagination.page} of {pagination.total_pages} ({pagination.count} total orders)
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
-            
-            <button
-              onClick={() => handlePageChange(pagination.page + 1)}
-              disabled={pagination.page >= pagination.total_pages}
-              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-            
-            {/* Page info */}
-            <div className="ml-4 text-sm text-gray-600">
-              Page {pagination.page} of {pagination.total_pages} ({pagination.count} total orders)
+          )}
+          
+          {/* Show filter summary when filtering */}
+          {(selectedFilters.length > 0 || searchTerm) && (
+            <div className="mt-4 text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                <span>
+                  {orders.length === 0 ? 'No results' : `${pagination.count} total results`} for: 
+                  {selectedFilters.length > 0 && (
+                    <span className="font-medium ml-1">
+                      {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
+                    </span>
+                  )}
+                  {searchTerm && (
+                    <span className="font-medium ml-1">"{searchTerm}"</span>
+                  )}
+                </span>
+                {pagination.count > 25 && (
+                  <span className="text-xs bg-blue-100 px-2 py-1 rounded">
+                    {pagination.total_pages} pages
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+          
+        </>
       )}
 
       {/* Universal CSS Styles - Same as StatePage */}
       <style>{`
+
+          .bg-purple-50 .text-violet-800,
+          .bg-blue-50 .text-blue-800, 
+          .bg-green-50 .text-green-800 {
+            word-break: normal;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+            text-align: justify;
+          }
+
+          /* Ensure numbered items don't break awkwardly */
+          .numbered-item {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          .numbered-text {
+            word-break: normal;
+            overflow-wrap: anywhere;
+          }
+
         .universal-ai-content,
         .universal-structured-content,
         .universal-text-content {

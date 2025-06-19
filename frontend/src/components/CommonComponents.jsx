@@ -38,20 +38,37 @@ export const CategoryTag = ({ category }) => {
   if (!category) return null;
   
   const filter = FILTERS.find(f => f.key === category);
-  const style = filterStyles[category];
   
-  if (!filter || !style) {
+  if (!filter) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-gray-700">
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 text-xs font-medium rounded-full">
         <ScrollText size={12} />
         <span>Unknown</span>
       </span>
     );
   }
   
+  // Get pill-style backgrounds based on category
+  const getPillStyles = (cat) => {
+    switch (cat) {
+      case 'civic':
+        return 'bg-blue-100 text-blue-800';
+      case 'education':
+        return 'bg-orange-100 text-orange-800';
+      case 'engineering':
+        return 'bg-green-100 text-green-800';
+      case 'healthcare':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
   const IconComponent = filter.icon;
+  const pillStyles = getPillStyles(category);
+  
   return (
-    <span className={`inline-flex items-center gap-1.5 font-medium text-xs ${style}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-1 ${pillStyles} text-xs font-medium rounded-full`}>
       <IconComponent size={12} />
       <span>{filter.label}</span>
     </span>

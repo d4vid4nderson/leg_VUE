@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -10,29 +10,900 @@ import {
   ScrollText,
   Compass,
   Loader,
-  RefreshCw
+  RefreshCw,
+  ChevronDown,
+  Check,
+  AlertTriangle,
+  RotateCw,
+  Building,
+  GraduationCap,
+  Stethoscope,
+  Wrench,
+  Settings,
+  Database,
+  Eye,
+  XCircle,
+  CheckCircle
 } from 'lucide-react';
 
-// Simple API service for highlights
+// ADDED: Debug Panel Component - Integrated directly into this file
+const HighlightsDebugPanel = ({ apiUrl }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [diagnosticData, setDiagnosticData] = useState(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [lastRun, setLastRun] = useState(null);
+
+  // Run diagnostic analysis
+  const runDiagnostic = async () => {
+    setIsRunning(true);
+    try {
+      console.log('🚀 Running diagnostic analysis...');
+      
+      // Fetch data from both endpoints
+      const [executiveOrders, stateLegislation, highlights] = await Promise.all([
+        fetchData('/api/executive-orders'),
+        fetchData('/api/state-legislation'), 
+        fetchData('/api/highlights?user_id=1')
+      ]);
+
+      // Analyze duplicates
+      const duplicates = findDuplicates(executiveOrders, stateLegislation);
+      
+      // Analyze metadata issues
+      const metadataIssues = analyzeMetadata(executiveOrders, stateLegislation);
+      
+      // Analyze highlights consistency
+      const highlightIssues = analyzeHighlights(highlights, executiveOrders, stateLegislation);
+
+      const results = {
+        timestamp: new Date().toISOString(),
+        summary: {
+          totalExecutiveOrders: executiveOrders.length,
+          totalStateLegislation: stateLegislation.length,
+          totalHighlights: highlights.length,
+          duplicatesFound: duplicates.length,
+          metadataIssues: Object.values(metadataIssues).flat().length,
+          highlightIssues: highlightIssues.length
+        },
+        duplicates,
+        metadataIssues,
+        highlightIssues,
+        rawData: {
+          executiveOrders: executiveOrders.slice(0, 3), // Sample data
+          stateLegislation: stateLegislation.slice(0, 3),
+          highlights: highlights.slice(0, 3)
+        }
+      };
+
+      setDiagnosticData(results);
+      setLastRun(new Date());
+      console.log('✅ Diagnostic complete:', results);
+      
+    } catch (error) {
+      console.error('❌ Diagnostic failed:', error);
+      setDiagnosticData({ error: error.message });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // Helper functions
+  const fetchData = async (endpoint) => {
+    const response = await fetch(`${apiUrl}${endpoint}`);
+    if (!response.ok) throw new Error(`${endpoint}: ${response.status}`);
+    
+    const data = await response.json();
+    return Array.isArray(data) ? data : data.results || data.data || data.highlights || [];
+  };
+
+  const findDuplicates = (eos, states) => {
+    const duplicates = [];
+    const titleMap = new Map();
+    
+    // Check executive orders
+    eos.forEach((eo, index) => {
+      const title = eo.title?.toLowerCase().trim();
+      if (!title) return;
+      
+      if (titleMap.has(title)) {
+        duplicates.push({
+          title: eo.title,
+          type: 'duplicate_title',
+          issue: 'Same title in multiple executive orders',
+          items: [titleMap.get(title), { type: 'executive_order', index, id: eo.id }]
+        });
+      } else {
+        titleMap.set(title, { type: 'executive_order', index, id: eo.id });
+      }
+    });
+
+    // Check for cross-contamination
+    states.forEach((state, index) => {
+      const title = state.title?.toLowerCase().trim();
+      if (title && titleMap.has(title)) {
+        duplicates.push({
+          title: state.title,
+          type: 'cross_contamination',
+          issue: 'Same title appears in both Executive Orders and State Legislation',
+          items: [titleMap.get(title), { type: 'state_legislation', index, id: state.id }],
+          sqlFix: `DELETE FROM documents WHERE title LIKE '%${state.title}%' AND document_type = 'State Legislation';`
+        });
+      }
+    });
+
+    return duplicates;
+  };
+
+  const analyzeMetadata = (eos, states) => {
+    const issues = {
+      wrongSources: [],
+      malformedSources: [],
+      missingIds: [],
+      typeErrors: []
+    };
+
+    // Check executive orders
+    eos.forEach((eo, index) => {
+      if (eo.source && eo.source.includes('Legislature')) {
+        issues.wrongSources.push({
+          type: 'executive_order',
+          title: eo.title,
+          issue: 'Executive Order has Legislature source',
+          current: eo.source,
+          expected: 'Executive Branch',
+          sqlFix: `UPDATE executive_orders SET source = 'Executive Branch' WHERE title = '${eo.title?.replace(/'/g, "''")}';`
+        });
+      }
+    });
+
+    // Check state legislation
+    states.forEach((state, index) => {
+      // Check for malformed sources like "5 Legislature"
+      if (state.source && /^\d+/.test(state.source)) {
+        issues.malformedSources.push({
+          type: 'state_legislation',
+          title: state.title,
+          issue: 'Source starts with number',
+          current: state.source,
+          expected: state.state ? `${state.state} Legislature` : 'State Legislature',
+          sqlFix: `UPDATE state_legislation SET source = '${state.state ? state.state + ' Legislature' : 'State Legislature'}' WHERE title = '${state.title?.replace(/'/g, "''")}';`
+        });
+      }
+
+      // Check for missing IDs
+      if (!state.bill_id && !state.id && !state.bill_number) {
+        issues.missingIds.push({
+          type: 'state_legislation',
+          title: state.title,
+          issue: 'Missing all ID fields'
+        });
+      }
+    });
+
+    return issues;
+  };
+
+  const analyzeHighlights = (highlights, eos, states) => {
+    const issues = [];
+    const allOrders = [...eos, ...states];
+    
+    highlights.forEach(highlight => {
+      const orderId = highlight.order_id;
+      const orderType = highlight.order_type;
+      
+      // Find corresponding order
+      const matchingOrder = allOrders.find(order => {
+        if (orderType === 'executive_order') {
+          return order.executive_order_number === orderId || order.id === orderId;
+        } else {
+          return order.bill_id === orderId || order.id === orderId;
+        }
+      });
+
+      if (!matchingOrder) {
+        issues.push({
+          type: 'orphaned_highlight',
+          orderId,
+          orderType,
+          issue: 'Highlight points to non-existent order'
+        });
+      }
+    });
+
+    return issues;
+  };
+
+  if (!isOpen) {
+    return (
+      <button
+        onClick={() => setIsOpen(true)}
+        className="fixed bottom-4 right-4 bg-red-600 text-white p-3 rounded-full shadow-lg hover:bg-red-700 transition-colors z-50"
+        title="Open Debug Panel"
+      >
+        <Settings size={20} />
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="bg-gray-800 text-white p-4 flex justify-between items-center">
+          <h2 className="text-xl font-bold">Highlights Data Quality Debugger</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={runDiagnostic}
+              disabled={isRunning}
+              className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={isRunning ? 'animate-spin' : ''} />
+              {isRunning ? 'Running...' : 'Run Diagnostic'}
+            </button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <div className="flex">
+            {[
+              { key: 'overview', label: 'Overview', icon: Eye },
+              { key: 'duplicates', label: 'Duplicates', icon: AlertTriangle },
+              { key: 'metadata', label: 'Metadata Issues', icon: Database },
+              { key: 'raw', label: 'Raw Data', icon: Settings }
+            ].map(tab => {
+              const IconComponent = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-4 py-3 font-medium text-sm flex items-center gap-2 ${
+                    activeTab === tab.key
+                      ? 'border-b-2 border-blue-500 text-blue-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <IconComponent size={16} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto max-h-[70vh]">
+          {!diagnosticData ? (
+            <div className="text-center py-12">
+              <Database size={48} className="mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-600 mb-2">No Diagnostic Data</h3>
+              <p className="text-gray-500 mb-4">Click "Run Diagnostic" to analyze data quality issues.</p>
+            </div>
+          ) : diagnosticData.error ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-red-800">
+                <XCircle size={20} />
+                <span className="font-semibold">Diagnostic Failed</span>
+              </div>
+              <p className="text-red-700 mt-2">{diagnosticData.error}</p>
+            </div>
+          ) : (
+            <div>
+              {/* Overview Tab */}
+              {activeTab === 'overview' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-blue-800">Executive Orders</h4>
+                      <p className="text-2xl font-bold text-blue-600">{diagnosticData.summary.totalExecutiveOrders}</p>
+                    </div>
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-green-800">State Legislation</h4>
+                      <p className="text-2xl font-bold text-green-600">{diagnosticData.summary.totalStateLegislation}</p>
+                    </div>
+                    <div className="bg-purple-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-purple-800">Highlights</h4>
+                      <p className="text-2xl font-bold text-purple-600">{diagnosticData.summary.totalHighlights}</p>
+                    </div>
+                    <div className="bg-red-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-red-800">Total Issues</h4>
+                      <p className="text-2xl font-bold text-red-600">
+                        {diagnosticData.summary.duplicatesFound + diagnosticData.summary.metadataIssues + diagnosticData.summary.highlightIssues}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-semibold text-gray-800 mb-2">Quick Summary</h4>
+                    <ul className="space-y-1 text-sm">
+                      <li className="flex items-center gap-2">
+                        {diagnosticData.summary.duplicatesFound > 0 ? (
+                          <XCircle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle size={16} className="text-green-500" />
+                        )}
+                        <span>{diagnosticData.summary.duplicatesFound} duplicate(s) found</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        {diagnosticData.summary.metadataIssues > 0 ? (
+                          <XCircle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle size={16} className="text-green-500" />
+                        )}
+                        <span>{diagnosticData.summary.metadataIssues} metadata issue(s) found</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        {diagnosticData.summary.highlightIssues > 0 ? (
+                          <XCircle size={16} className="text-red-500" />
+                        ) : (
+                          <CheckCircle size={16} className="text-green-500" />
+                        )}
+                        <span>{diagnosticData.summary.highlightIssues} highlight issue(s) found</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  {lastRun && (
+                    <p className="text-xs text-gray-500">Last run: {lastRun.toLocaleString()}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Duplicates Tab */}
+              {activeTab === 'duplicates' && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Duplicate Content Analysis</h3>
+                  
+                  {diagnosticData.duplicates.length === 0 ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="flex items-center gap-2 text-green-800">
+                        <CheckCircle size={20} />
+                        <span className="font-semibold">No Duplicates Found</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {diagnosticData.duplicates.map((dup, index) => (
+                        <div key={index} className="bg-red-50 border border-red-200 rounded-lg p-4">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle size={20} className="text-red-500 mt-0.5" />
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-red-800">{dup.title}</h4>
+                              <p className="text-red-700 text-sm">{dup.issue}</p>
+                              <p className="text-red-600 text-xs mt-1">Type: {dup.type}</p>
+                              {dup.sqlFix && (
+                                <div className="mt-2 bg-white p-2 rounded border">
+                                  <p className="text-xs text-gray-600 mb-1">Suggested SQL Fix:</p>
+                                  <p className="text-xs font-mono text-gray-700 break-all">
+                                    {dup.sqlFix}
+                                  </p>
+                                  <button
+                                    onClick={() => navigator.clipboard?.writeText(dup.sqlFix)}
+                                    className="mt-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                                  >
+                                    Copy SQL
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Metadata Tab */}
+              {activeTab === 'metadata' && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Metadata Issues</h3>
+                  
+                  {Object.entries(diagnosticData.metadataIssues).map(([category, issues]) => (
+                    issues.length > 0 && (
+                      <div key={category} className="space-y-2">
+                        <h4 className="font-medium text-gray-800 capitalize">{category.replace(/([A-Z])/g, ' $1')}</h4>
+                        {issues.map((issue, index) => (
+                          <div key={index} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                            <h5 className="font-medium text-yellow-800">{issue.title}</h5>
+                            <p className="text-yellow-700 text-sm">{issue.issue}</p>
+                            {issue.current && (
+                              <div className="mt-2 text-xs">
+                                <span className="text-gray-600">Current: </span>
+                                <span className="font-mono bg-white px-1 rounded">{issue.current}</span>
+                                {issue.expected && (
+                                  <>
+                                    <span className="text-gray-600 ml-2">→ Expected: </span>
+                                    <span className="font-mono bg-white px-1 rounded">{issue.expected}</span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                            {issue.sqlFix && (
+                              <div className="mt-2 bg-white p-2 rounded border">
+                                <p className="text-xs text-gray-600 mb-1">Suggested SQL Fix:</p>
+                                <p className="text-xs font-mono text-gray-700 break-all">
+                                  {issue.sqlFix}
+                                </p>
+                                <button
+                                  onClick={() => navigator.clipboard?.writeText(issue.sqlFix)}
+                                  className="mt-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                                >
+                                  Copy SQL
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
+
+              {/* Raw Data Tab */}
+              {activeTab === 'raw' && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Raw Data Sample</h3>
+                  
+                  {Object.entries(diagnosticData.rawData).map(([key, data]) => (
+                    <div key={key} className="space-y-2">
+                      <h4 className="font-medium text-gray-800 capitalize">{key.replace(/([A-Z])/g, ' $1')}</h4>
+                      <div className="bg-gray-50 p-3 rounded-lg overflow-x-auto">
+                        <pre className="text-xs text-gray-700">
+                          {JSON.stringify(data, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Backend API URL - Same as ExecutiveOrdersPage
+const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
+
+// Import the same helper functions from ExecutiveOrdersPage
+const getExecutiveOrderNumber = (order) => {
+  if (order.executive_order_number) return order.executive_order_number;
+  if (order.document_number) return order.document_number;
+  if (order.eo_number) return order.eo_number;
+  if (order.bill_number) return order.bill_number;
+  
+  if (order.title) {
+    const titleMatch = order.title.match(/Executive Order\s*#?\s*(\d+)/i);
+    if (titleMatch) return titleMatch[1];
+  }
+  
+  if (order.ai_summary) {
+    const summaryMatch = order.ai_summary.match(/Executive Order\s*#?\s*(\d{4,5})/i);
+    if (summaryMatch) return summaryMatch[1];
+  }
+  
+  if (order.id && /^\d+$/.test(order.id)) return order.id;
+  if (order.bill_id && /^\d+$/.test(order.bill_id)) return order.bill_id;
+  
+  return 'Unknown';
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
+const getOrderId = (order) => {
+  if (!order) return `fallback-${Math.random().toString(36).substr(2, 9)}`;
+  
+  if (order.executive_order_number && typeof order.executive_order_number === 'string') {
+    return `eo-${order.executive_order_number}`;
+  }
+  if (order.document_number && typeof order.document_number === 'string') {
+    return `eo-doc-${order.document_number}`;
+  }
+  if (order.bill_id && typeof order.bill_id === 'string') return order.bill_id;
+  if (order.id && typeof order.id === 'string') return order.id;
+  if (order.bill_number) return `eo-${order.bill_number}`;
+  if (order.eo_number) return `eo-${order.eo_number}`;
+  
+  if (order.title) {
+    const titleHash = order.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+    return `eo-title-${titleHash}`;
+  }
+  
+  if (order.index !== undefined) return `eo-index-${order.index}`;
+  return `eo-fallback-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// ADDED: State bill ID generation (matching StatePage logic)
+const getStateBillId = (bill) => {
+  if (!bill) return null;
+  
+  // Priority order for ID selection to ensure consistency with highlights
+  if (bill.bill_id && typeof bill.bill_id === 'string') return bill.bill_id;
+  if (bill.id && typeof bill.id === 'string') return bill.id;
+  
+  // Create consistent ID format
+  if (bill.bill_number && bill.state) {
+    return `${bill.state}-${bill.bill_number}`;
+  }
+  if (bill.bill_number) {
+    return `${bill.state || 'unknown'}-${bill.bill_number}`;
+  }
+  
+  // Fallback using title hash for consistency
+  if (bill.title) {
+    const titleHash = bill.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+    return `state-bill-${titleHash}`;
+  }
+  
+  // Last resort
+  return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// ADDED: Universal ID generation that handles both types
+const getUniversalOrderId = (order) => {
+  if (!order) return null;
+  
+  // Determine order type and use appropriate ID generation
+  const isExecutiveOrder = !!(order.executive_order_number || order.document_number || order.eo_number);
+  const isStateLegislation = !!(order.bill_number && !isExecutiveOrder);
+  
+  if (isExecutiveOrder || order.order_type === 'executive_order') {
+    return getOrderId(order);
+  } else if (isStateLegislation || order.order_type === 'state_legislation') {
+    return getStateBillId(order);
+  } else {
+    // Fallback to executive order logic
+    return getOrderId(order);
+  }
+};
+
+const stripHtmlTags = (content) => {
+  if (!content) return '';
+  return content.replace(/<[^>]*>/g, '');
+};
+
+const cleanOrderTitle = (title) => {
+  if (!title) return 'Untitled Executive Order';
+  
+  let cleaned = title
+    .replace(/^\s*["'"']|["'"']\s*$/g, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\u2018|\u2019/g, "'")
+    .replace(/\u201C|\u201D/g, '"')
+    .replace(/\u2013|\u2014/g, '-')
+    .replace(/\.\s*\.\s*\.+/g, '...')
+    .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '')
+    .trim();
+  
+  if (cleaned.endsWith('.') && !cleaned.includes('etc.') && !cleaned.includes('Inc.')) {
+    cleaned = cleaned.slice(0, -1).trim();
+  }
+  
+  if (cleaned.length > 0) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+  
+  return cleaned || 'Untitled Executive Order';
+};
+
+const capitalizeFirstLetter = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return text;
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+};
+
+// Category filters with icons (same as ExecutiveOrdersPage)
+const FILTERS = [
+  { key: 'civic', label: 'Civic', icon: Building },
+  { key: 'education', label: 'Education', icon: GraduationCap },
+  { key: 'engineering', label: 'Engineering', icon: Wrench },
+  { key: 'healthcare', label: 'Healthcare', icon: Stethoscope }
+];
+
+// Updated FILTERS array - removed review status options, added order type filters
+const EXTENDED_FILTERS = [
+  ...FILTERS,
+  {
+    key: 'executive_order',
+    label: 'Executive Orders',
+    icon: ScrollText,
+    type: 'order_type'
+  },
+  {
+    key: 'state_legislation',
+    label: 'State Legislation',
+    icon: FileText,
+    type: 'order_type'
+  }
+];
+
+// Category Tag Component with Icon (same as ExecutiveOrdersPage)
+const CategoryTag = ({ category }) => {
+  const getTagInfo = (cat) => {
+    const filter = FILTERS.find(f => f.key === cat);
+    if (!filter) return { color: 'bg-gray-100 text-gray-800', icon: FileText, label: cat };
+    
+    const colors = {
+      civic: 'bg-blue-100 text-blue-800',
+      healthcare: 'bg-red-100 text-red-800',
+      education: 'bg-orange-100 text-orange-800',
+      engineering: 'bg-green-100 text-green-800'
+    };
+    
+    return {
+      color: colors[cat] || 'bg-gray-100 text-gray-800',
+      icon: filter.icon,
+      label: filter.label
+    };
+  };
+
+  const tagInfo = getTagInfo(category);
+  const IconComponent = tagInfo.icon;
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${tagInfo.color}`}>
+      <IconComponent size={12} />
+      {tagInfo.label}
+    </span>
+  );
+};
+
+// Order Type Tag Component - NEW
+const OrderTypeTag = ({ orderType }) => {
+  if (orderType === 'executive_order') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+        <ScrollText size={12} />
+        Executive Order
+      </span>
+    );
+  }
+  
+  if (orderType === 'state_legislation') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+        <FileText size={12} />
+        State Legislation
+      </span>
+    );
+  }
+  
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 text-xs font-medium rounded-full">
+      <FileText size={12} />
+      Unknown Type
+    </span>
+  );
+};
+
+// Format talking points (same as ExecutiveOrdersPage)
+const formatTalkingPoints = (content) => {
+  if (!content) return null;
+
+  let textContent = content.replace(/<[^>]*>/g, '');
+  
+  const points = [];
+  const numberedMatches = textContent.match(/\d+\.\s*[^.]*(?:\.[^0-9][^.]*)*(?=\s*\d+\.|$)/g);
+  
+  if (numberedMatches && numberedMatches.length > 1) {
+    numberedMatches.forEach((match) => {
+      let cleaned = match.replace(/^\d+\.\s*/, '').trim();
+      if (cleaned.length > 10) {
+        points.push(cleaned);
+      }
+    });
+  } else {
+    const sentences = textContent.split(/(?=\d+\.\s)/).filter(s => s.trim().length > 0);
+    
+    sentences.forEach((sentence) => {
+      const cleaned = sentence.replace(/^\d+\.\s*/, '').trim();
+      if (cleaned.length > 10) {
+        points.push(cleaned);
+      }
+    });
+  }
+
+  if (points.length > 0) {
+    return (
+      <div className="universal-numbered-content">
+        {points.slice(0, 5).map((point, idx) => (
+          <div key={idx} className="numbered-item">
+            <span className="number-bullet">{idx + 1}.</span>
+            <span className="numbered-text">{point}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <div className="universal-text-content">{textContent}</div>;
+};
+
+// Format universal content (same as ExecutiveOrdersPage)
+const formatUniversalContent = (content) => {
+  if (!content) return null;
+
+  let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
+  textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
+  
+  const sectionKeywords = [
+    'Risk Assessment', 
+    'Market Opportunity', 
+    'Implementation Requirements', 
+    'Financial Implications', 
+    'Competitive Implications', 
+    'Timeline Pressures',
+    'Summary'
+  ];
+  
+  const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]?\\s*([^]*?)(?=\\s*(?:${sectionKeywords.join('|')}|$))`, 'gi');
+  
+  const inlineMatches = [];
+  let match;
+  while ((match = inlinePattern.exec(textContent)) !== null) {
+    inlineMatches.push({
+      header: match[1].trim(),
+      content: match[2].trim(),
+      fullMatch: match[0]
+    });
+  }
+  
+  if (inlineMatches.length > 0) {
+    const sections = [];
+    
+    inlineMatches.forEach(({ header, content }) => {
+      if (header && content && content.length > 5) {
+        let cleanHeader = header.trim();
+        if (!cleanHeader.endsWith(':')) {
+          cleanHeader += ':';
+        }
+        
+        const items = [];
+        
+        if (content.includes('•') || (content.includes('-') && content.match(/^\s*-/m)) || (content.includes('*') && content.match(/^\s*\*/m))) {
+          const bulletPattern = /(?:^|\n)\s*[•\-*]\s*(.+?)(?=(?:\n\s*[•\-*]|\n\s*$|$))/gs;
+          const bulletMatches = [...content.matchAll(bulletPattern)];
+          
+          if (bulletMatches.length > 0) {
+            bulletMatches.forEach(bulletMatch => {
+              const bulletContent = bulletMatch[1].trim();
+              if (bulletContent.length > 5) {
+                items.push(capitalizeFirstLetter(bulletContent));
+              }
+            });
+          } else {
+            const lines = content.split(/\n/).map(line => line.trim()).filter(line => line.length > 5);
+            lines.forEach(line => {
+              const cleanLine = line.replace(/^[•\-*]\s*/, '').trim();
+              if (cleanLine.length > 5) {
+                items.push(capitalizeFirstLetter(cleanLine));
+              }
+            });
+          }
+        } else {
+          const sentences = content.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 5);
+          
+          if (sentences.length === 1 || content.length < 200) {
+            items.push(capitalizeFirstLetter(content.trim()));
+          } else {
+            sentences.forEach(sentence => {
+              if (sentence.length > 10) {
+                items.push(capitalizeFirstLetter(sentence));
+              }
+            });
+          }
+        }
+        
+        if (items.length > 0) {
+          sections.push({
+            title: cleanHeader,
+            items: items
+          });
+        }
+      }
+    });
+    
+    if (sections.length > 0) {
+      return (
+        <div>
+          {sections.map((section, idx) => (
+            <div key={idx} style={{ marginBottom: '16px' }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                marginBottom: '8px',
+                fontSize: '14px',
+                color: 'inherit'
+              }}>
+                {section.title}
+              </div>
+              {section.items.map((item, itemIdx) => (
+                <div key={itemIdx} style={{ 
+                  marginBottom: '6px',
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  color: 'inherit',
+                  paddingLeft: section.items.length === 1 ? '0px' : '0px',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word'
+                }}>
+                  {section.items.length === 1 ? item : `• ${item}`}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  return <div className="universal-text-content" style={{ 
+    fontSize: '14px', 
+    lineHeight: '1.6',
+    wordWrap: 'break-word',
+    overflowWrap: 'break-word'
+  }}>{textContent}</div>;
+};
+
+// UPDATED: Enhanced API service for highlights - NOW SUPPORTS BOTH TYPES
 class HighlightsAPI {
   static async getHighlights(userId = 1) {
     try {
       console.log('🔍 Fetching highlights for user:', userId);
-      // Try multiple endpoint variations to match your backend
+      
       const endpoints = [
-        `/api/user-highlights?user_id=user123`,
-        `/api/highlights?user_id=${userId}`,
-        `/api/user-highlights?user_id=${userId}`
+        `${API_URL}/api/user-highlights?user_id=user123`,
+        `${API_URL}/api/highlights?user_id=${userId}`,
+        `${API_URL}/api/user-highlights?user_id=${userId}`
       ];
       
       for (const endpoint of endpoints) {
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL || ''}${endpoint}`);
+          const response = await fetch(endpoint);
           if (response.ok) {
             const data = await response.json();
-            const highlights = data.highlights || data.results || data || [];
+            
+            // FIX: Extract highlights from the correct property
+            let highlights = [];
+            if (Array.isArray(data)) {
+              highlights = data;
+            } else if (data.highlights && Array.isArray(data.highlights)) {
+              highlights = data.highlights;
+            } else if (data.results && Array.isArray(data.results)) {
+              highlights = data.results;
+            }
+            
             console.log('✅ Found highlights:', highlights.length, 'from', endpoint);
-            return Array.isArray(highlights) ? highlights : [];
+            return highlights;
           }
         } catch (err) {
           console.warn('Endpoint failed:', endpoint, err.message);
@@ -51,7 +922,8 @@ class HighlightsAPI {
   static async removeHighlight(orderId, userId = 1) {
     try {
       console.log('🗑️ Removing highlight:', orderId);
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/highlights/${orderId}?user_id=${userId}`, {
+      
+      const response = await fetch(`${API_URL}/api/highlights/${orderId}?user_id=${userId}`, {
         method: 'DELETE'
       });
       if (!response.ok) throw new Error('Failed to remove highlight');
@@ -62,9 +934,209 @@ class HighlightsAPI {
       throw error;
     }
   }
+
+  // Fetch ALL executive orders from database - FIXED API PARAMETERS
+  static async getAllExecutiveOrders() {
+    try {
+      console.log('🔍 Fetching ALL executive orders from database...');
+      
+      // FIX: Use smaller page size that backend can handle
+      const response = await fetch(`${API_URL}/api/executive-orders?per_page=50`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`❌ Executive orders API failed: ${response.status}`);
+        
+        // FIX: Try even smaller page size as fallback
+        console.log('🔄 Trying smaller page size as fallback...');
+        const fallbackResponse = await fetch(`${API_URL}/api/executive-orders?per_page=25`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!fallbackResponse.ok) {
+          console.error(`❌ Fallback also failed: ${fallbackResponse.status}`);
+          
+          // FIX: Try basic endpoint without parameters
+          console.log('🔄 Trying basic endpoint without parameters...');
+          const basicResponse = await fetch(`${API_URL}/api/executive-orders`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!basicResponse.ok) {
+            throw new Error(`HTTP ${basicResponse.status}: ${basicResponse.statusText}`);
+          }
+          
+          const basicData = await basicResponse.json();
+          console.log('🔍 Basic API Response:', basicData);
+          
+          // Extract orders from basic response
+          let ordersArray = [];
+          if (Array.isArray(basicData)) {
+            ordersArray = basicData;
+          } else if (basicData.results && Array.isArray(basicData.results)) {
+            ordersArray = basicData.results;
+          } else if (basicData.data && Array.isArray(basicData.data)) {
+            ordersArray = basicData.data;
+          } else if (basicData.executive_orders && Array.isArray(basicData.executive_orders)) {
+            ordersArray = basicData.executive_orders;
+          }
+          
+          console.log(`✅ Basic endpoint returned ${ordersArray.length} executive orders`);
+          return ordersArray;
+        }
+        
+        // Process fallback response
+        const fallbackData = await fallbackResponse.json();
+        console.log('🔍 Fallback API Response:', fallbackData);
+        
+        let ordersArray = [];
+        if (Array.isArray(fallbackData)) {
+          ordersArray = fallbackData;
+        } else if (fallbackData.results && Array.isArray(fallbackData.results)) {
+          ordersArray = fallbackData.results;
+        } else if (fallbackData.data && Array.isArray(fallbackData.data)) {
+          ordersArray = fallbackData.data;
+        } else if (fallbackData.executive_orders && Array.isArray(fallbackData.executive_orders)) {
+          ordersArray = fallbackData.executive_orders;
+        }
+        
+        console.log(`✅ Fallback returned ${ordersArray.length} executive orders`);
+        return ordersArray;
+      }
+
+      // Process main response
+      const data = await response.json();
+      console.log('🔍 Main API Response:', data);
+
+      // Extract orders using same logic as ExecutiveOrdersPage
+      let ordersArray = [];
+      
+      if (Array.isArray(data)) {
+        ordersArray = data;
+      } else if (data.results && Array.isArray(data.results)) {
+        ordersArray = data.results;
+      } else if (data.data && Array.isArray(data.data)) {
+        ordersArray = data.data;
+      } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
+        ordersArray = data.executive_orders;
+      }
+
+      console.log(`✅ Main endpoint returned ${ordersArray.length} executive orders`);
+      return ordersArray;
+    } catch (error) {
+      console.error('❌ Error fetching executive orders:', error);
+      
+      // FIX: Return empty array instead of undefined to prevent further errors
+      console.log('🔄 Returning empty array to prevent loading loop');
+      return [];
+    }
+  }
+
+  // NEW: Fetch all state legislation
+  static async getAllStateLegislation() {
+    try {
+      console.log('🔍 Fetching ALL state legislation from database...');
+      
+      const response = await fetch(`${API_URL}/api/state-legislation?per_page=100`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`❌ State legislation API failed: ${response.status}`);
+        
+        // Try basic endpoint
+        const basicResponse = await fetch(`${API_URL}/api/state-legislation`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!basicResponse.ok) {
+          console.error(`❌ Basic state legislation endpoint also failed: ${basicResponse.status}`);
+          return [];
+        }
+        
+        const basicData = await basicResponse.json();
+        let ordersArray = [];
+        
+        if (Array.isArray(basicData)) {
+          ordersArray = basicData;
+        } else if (basicData.results && Array.isArray(basicData.results)) {
+          ordersArray = basicData.results;
+        } else if (basicData.data && Array.isArray(basicData.data)) {
+          ordersArray = basicData.data;
+        }
+        
+        console.log(`✅ Basic state legislation endpoint returned ${ordersArray.length} bills`);
+        return ordersArray;
+      }
+
+      const data = await response.json();
+      console.log('🔍 State Legislation API Response:', data);
+
+      let ordersArray = [];
+      
+      if (Array.isArray(data)) {
+        ordersArray = data;
+      } else if (data.results && Array.isArray(data.results)) {
+        ordersArray = data.results;
+      } else if (data.data && Array.isArray(data.data)) {
+        ordersArray = data.data;
+      }
+
+      console.log(`✅ State legislation endpoint returned ${ordersArray.length} bills`);
+      return ordersArray;
+    } catch (error) {
+      console.error('❌ Error fetching state legislation:', error);
+      return [];
+    }
+  }
+
+  // NEW: Fetch ALL orders (executive orders + state legislation)
+  static async getAllOrders() {
+    try {
+      console.log('🔍 Fetching ALL orders (executive orders + state legislation)...');
+      
+      // Fetch executive orders
+      const executiveOrders = await this.getAllExecutiveOrders();
+      console.log(`📊 Got ${executiveOrders.length} executive orders`);
+      
+      // Fetch state legislation
+      const stateLegislation = await this.getAllStateLegislation();
+      console.log(`📊 Got ${stateLegislation.length} state bills`);
+      
+      // Combine both types
+      const allOrders = [...executiveOrders, ...stateLegislation];
+      console.log(`📊 Total combined orders: ${allOrders.length}`);
+      
+      return allOrders;
+    } catch (error) {
+      console.error('❌ Error fetching all orders:', error);
+      return [];
+    }
+  }
 }
 
-// Simple hook for managing highlights
+// UPDATED: Enhanced hook for managing highlights - NOW SUPPORTS BOTH TYPES
 const useHighlights = (userId = 1) => {
   const [highlights, setHighlights] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,33 +1145,162 @@ const useHighlights = (userId = 1) => {
   const loadHighlights = async () => {
     try {
       setLoading(true);
+      
+      console.log('🔍 useHighlights: Starting highlights load process...');
+      
+      // Step 1: Get highlighted order IDs from backend
       const fetchedHighlights = await HighlightsAPI.getHighlights(userId);
+      console.log('📋 useHighlights: Raw highlights from API:', fetchedHighlights);
       
-      // Transform highlights to consistent format
-      const transformedHighlights = fetchedHighlights.map(highlight => ({
-        id: highlight.order_id || highlight.id,
-        order_id: highlight.order_id || highlight.id,
-        title: highlight.title || `${highlight.order_type === 'executive_order' ? 'Executive Order' : 'Bill'} #${highlight.order_id}`,
-        description: highlight.description || 'No description available',
-        ai_summary: highlight.ai_summary || highlight.description || 'No summary available',
-        executive_order_number: highlight.order_type === 'executive_order' ? highlight.order_id : null,
-        bill_number: highlight.order_type === 'state_legislation' ? highlight.order_id : null,
-        order_type: highlight.order_type,
-        category: highlight.category || 'not-applicable',
-        state: highlight.state,
-        signing_date: highlight.signing_date || highlight.created_at,
-        html_url: highlight.html_url,
-        pdf_url: highlight.pdf_url,
-        legiscan_url: highlight.legiscan_url,
-        highlighted_at: highlight.created_at,
-        priority_level: highlight.priority_level || 1
-      }));
+      if (fetchedHighlights.length === 0) {
+        console.log('📋 useHighlights: No highlights found in backend');
+        setHighlights([]);
+        setLastRefresh(Date.now());
+        return;
+      }
       
-      setHighlights(transformedHighlights);
+      // Step 2: Get ALL orders (executive orders + state legislation)
+      const allOrders = await HighlightsAPI.getAllOrders();
+      console.log(`📊 useHighlights: Got ${allOrders.length} total orders from database`);
+      
+      if (allOrders.length === 0) {
+        console.log('⚠️ No orders found in database - this might be an API issue');
+        setHighlights([]);
+        setLastRefresh(Date.now());
+        return;
+      }
+      
+      // Step 3: Transform ALL orders using appropriate logic
+      const allTransformedOrders = allOrders.map((order, index) => {
+        // Determine order type based on available fields
+        const isExecutiveOrder = !!(order.executive_order_number || order.document_number || order.eo_number);
+        const isStateLegislation = !!(order.bill_number && !isExecutiveOrder);
+        
+        let orderType = 'unknown';
+        if (isExecutiveOrder) {
+          orderType = 'executive_order';
+        } else if (isStateLegislation) {
+          orderType = 'state_legislation';
+        }
+        
+        // Use appropriate ID generation based on type
+        let uniqueId;
+        if (orderType === 'executive_order') {
+          uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `eo-${index}`;
+        } else {
+          // State legislation ID generation (matching StatePage logic)
+          if (order.bill_id && typeof order.bill_id === 'string') {
+            uniqueId = order.bill_id;
+          } else if (order.id && typeof order.id === 'string') {
+            uniqueId = order.id;
+          } else if (order.bill_number && order.state) {
+            uniqueId = `${order.state}-${order.bill_number}`;
+          } else if (order.bill_number) {
+            uniqueId = `${order.state || 'unknown'}-${order.bill_number}`;
+          } else if (order.title) {
+            const titleHash = order.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
+            uniqueId = `state-bill-${titleHash}`;
+          } else {
+            uniqueId = `state-bill-${index}`;
+          }
+        }
+        
+        const transformedOrder = {
+          id: uniqueId,
+          bill_id: uniqueId,
+          
+          // Common fields
+          title: order.title || order.bill_title || 'Untitled',
+          category: order.category || 'civic',
+          ai_summary: order.ai_summary || order.ai_executive_summary || '',
+          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
+          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
+          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
+          
+          // Order type specific fields
+          order_type: orderType,
+          
+          // Executive Order specific
+          ...(orderType === 'executive_order' && {
+            eo_number: order.executive_order_number || order.document_number || 'Unknown',
+            executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
+            summary: order.description || order.summary || '',
+            signing_date: order.signing_date || order.introduced_date || '',
+            publication_date: order.publication_date || order.last_action_date || '',
+            html_url: order.html_url || order.legiscan_url || '',
+            pdf_url: order.pdf_url || '',
+            formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+            formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+            president: order.president || 'Donald Trump',
+            source: 'Database (Federal Register + Azure AI)'
+          }),
+          
+          // State Legislation specific
+          ...(orderType === 'state_legislation' && {
+            bill_number: order.bill_number,
+            state: order.state || 'Unknown',
+            status: order.status || 'Active',
+            description: order.description || order.ai_summary || 'No description available',
+            legiscan_url: order.legiscan_url || '',
+            introduced_date: order.introduced_date,
+            last_action_date: order.last_action_date,
+            formatted_signing_date: formatDate(order.introduced_date),
+            source: order.state ? `${order.state} Legislature` : 'State Legislature'
+          }),
+          
+          is_highlighted: true,
+          index: index
+        };
+        
+        return transformedOrder;
+      });
+      
+      console.log(`📊 useHighlights: Transformed ${allTransformedOrders.length} orders`);
+      
+      // Step 4: Get highlighted order IDs
+      const highlightedOrderIds = new Set();
+      fetchedHighlights.forEach((highlight) => {
+        if (highlight.order_id) {
+          highlightedOrderIds.add(highlight.order_id);
+        }
+      });
+      
+      console.log('📋 Highlighted order IDs from backend:', Array.from(highlightedOrderIds));
+      
+      // Step 5: Find matching orders using ID matching
+      const matchedOrders = [];
+      
+      allTransformedOrders.forEach((order) => {
+        // Use the universal ID generation function
+        const orderId = getUniversalOrderId(order);
+        
+        if (highlightedOrderIds.has(orderId)) {
+          console.log(`✅ MATCH FOUND: Order "${order.title}" with ID "${orderId}" (type: ${order.order_type})`);
+          matchedOrders.push(order);
+        }
+      });
+      
+      console.log(`✅ useHighlights: Found ${matchedOrders.length} matching highlighted orders`);
+      
+      if (matchedOrders.length === 0) {
+        console.log('⚠️ No matches found! Debugging ID mismatch...');
+        console.log('Backend highlighted IDs:', Array.from(highlightedOrderIds));
+        console.log('Sample order IDs from database:', 
+          allTransformedOrders.slice(0, 5).map(order => ({
+            title: order.title,
+            type: order.order_type,
+            id: getUniversalOrderId(order)
+          }))
+        );
+      }
+      
+      setHighlights(matchedOrders);
       setLastRefresh(Date.now());
+      
     } catch (error) {
-      console.error('Error loading highlights:', error);
+      console.error('❌ Error loading highlights:', error);
       setHighlights([]);
+      setLastRefresh(Date.now());
     } finally {
       setLoading(false);
     }
@@ -107,17 +1308,22 @@ const useHighlights = (userId = 1) => {
 
   const removeHighlight = async (highlight) => {
     try {
-      const orderId = highlight.order_id || highlight.id;
+      const orderId = getUniversalOrderId(highlight);
+      console.log('🗑️ Removing highlight with ID:', orderId);
+      
       await HighlightsAPI.removeHighlight(orderId, userId);
-      setHighlights(prev => prev.filter(item => (item.order_id || item.id) !== orderId));
+      setHighlights(prev => prev.filter(item => getUniversalOrderId(item) !== orderId));
       setLastRefresh(Date.now());
+      
+      console.log('✅ Successfully removed highlight');
     } catch (error) {
-      console.error('Failed to remove highlight:', error);
+      console.error('❌ Failed to remove highlight:', error);
       throw error;
     }
   };
 
   const refreshHighlights = async () => {
+    console.log('🔄 Refreshing highlights...');
     await loadHighlights();
   };
 
@@ -137,9 +1343,24 @@ const useHighlights = (userId = 1) => {
 const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState(new Set());
+  
+  // Filter state - removed review-related states
+  const [selectedFilters, setSelectedFilters] = useState([]);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(25);
+  
+  // UPDATED: Use the same highlight management as ExecutiveOrdersPage/StatePage
+  const [localHighlights, setLocalHighlights] = useState(new Set());
+  const [highlightLoading, setHighlightLoading] = useState(new Set());
+  
   const navigate = useNavigate();
+  const filterDropdownRef = useRef(null);
 
-  // Use highlights hook
+  // Use enhanced highlights hook
   const {
     highlights,
     loading,
@@ -148,13 +1369,218 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     lastRefresh
   } = useHighlights(1);
 
-  // Manual refresh handler
+  // UPDATED: Load existing highlights on component mount - SUPPORT BOTH TYPES
+  useEffect(() => {
+    const loadExistingHighlights = async () => {
+      try {
+        console.log('🔍 HighlightsPage: Loading existing highlights...');
+        const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('🔍 HighlightsPage: Raw highlights response:', data);
+          
+          let highlightsArray = [];
+          if (Array.isArray(data)) {
+            highlightsArray = data;
+          } else if (data.highlights && Array.isArray(data.highlights)) {
+            highlightsArray = data.highlights;
+          } else if (data.results && Array.isArray(data.results)) {
+            highlightsArray = data.results;
+          } else {
+            console.log('🔍 No valid highlights array found, using empty array');
+            highlightsArray = [];
+          }
+          
+          console.log('🔍 HighlightsPage: Extracted highlights array:', highlightsArray);
+          
+          const orderIds = new Set();
+          
+          // UPDATED: Process BOTH executive orders AND state legislation
+          if (highlightsArray.length > 0) {
+            for (let i = 0; i < highlightsArray.length; i++) {
+              const highlight = highlightsArray[i];
+              console.log(`🔍 HighlightsPage: Processing highlight ${i + 1}:`, highlight);
+              
+              // Include both order types
+              if (highlight && highlight.order_id && 
+                  (highlight.order_type === 'executive_order' || highlight.order_type === 'state_legislation')) {
+                orderIds.add(highlight.order_id);
+                console.log(`   Added to local state: ${highlight.order_id} (${highlight.order_type})`);
+              }
+            }
+          }
+          
+          setLocalHighlights(orderIds);
+          console.log('🌟 HighlightsPage: Final local highlights set:', Array.from(orderIds));
+        } else {
+          console.error('🔍 HighlightsPage: Failed to load highlights, status:', response.status);
+        }
+      } catch (error) {
+        console.error('Error loading existing highlights:', error);
+      }
+    };
+    
+    loadExistingHighlights();
+  }, []);
+
+  // Filter functions - updated to remove review status logic
+  const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
+
+  const toggleFilter = (filterKey) => {
+    setSelectedFilters(prev => {
+      const newFilters = prev.includes(filterKey)
+        ? prev.filter(f => f !== filterKey)
+        : [...prev, filterKey];
+      
+      console.log('🔄 Filter toggled:', filterKey, 'New filters:', newFilters);
+      setCurrentPage(1);
+      return newFilters;
+    });
+  };
+
+  const clearAllFilters = () => {
+    console.log('🔄 Clearing all filters');
+    setSelectedFilters([]);
+    setSearchTerm('');
+    setCurrentPage(1);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+        setShowFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Updated comprehensive filtering logic - removed review status filters
+  const filteredHighlights = useMemo(() => {
+    let filtered = [...highlights];
+
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(highlight => 
+        highlight.title?.toLowerCase().includes(term) ||
+        highlight.ai_summary?.toLowerCase().includes(term) ||
+        highlight.summary?.toLowerCase().includes(term) ||
+        highlight.ai_talking_points?.toLowerCase().includes(term) ||
+        highlight.ai_business_impact?.toLowerCase().includes(term) ||
+        highlight.executive_order_number?.toString().toLowerCase().includes(term) ||
+        highlight.bill_number?.toString().toLowerCase().includes(term)
+      );
+    }
+
+    // Apply category filters
+    const categoryFilters = selectedFilters.filter(f => !['executive_order', 'state_legislation'].includes(f));
+    if (categoryFilters.length > 0) {
+      filtered = filtered.filter(highlight => 
+        categoryFilters.includes(highlight.category)
+      );
+    }
+
+    // Apply order type filters
+    const hasExecutiveOrderFilter = selectedFilters.includes('executive_order');
+    const hasStateLegislationFilter = selectedFilters.includes('state_legislation');
+    
+    if (hasExecutiveOrderFilter && !hasStateLegislationFilter) {
+      filtered = filtered.filter(highlight => highlight.order_type === 'executive_order');
+    } else if (hasStateLegislationFilter && !hasExecutiveOrderFilter) {
+      filtered = filtered.filter(highlight => highlight.order_type === 'state_legislation');
+    }
+
+    console.log(`🔍 Filtered highlights: ${filtered.length} of ${highlights.length} total`);
+    return filtered;
+  }, [highlights, searchTerm, selectedFilters]);
+
+  // Pagination logic
+  const paginatedHighlights = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredHighlights.slice(startIndex, endIndex);
+  }, [filteredHighlights, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(filteredHighlights.length / itemsPerPage);
+
+  // Updated filter counts - removed review status counts
+  const filterCounts = useMemo(() => {
+    const counts = {
+      civic: 0,
+      education: 0,
+      engineering: 0,
+      healthcare: 0,
+      executive_order: 0,
+      state_legislation: 0,
+      total: highlights.length
+    };
+
+    highlights.forEach(highlight => {
+      // Count categories
+      if (highlight.category && counts.hasOwnProperty(highlight.category)) {
+        counts[highlight.category]++;
+      }
+      
+      // Count order types
+      if (highlight.order_type === 'executive_order') {
+        counts.executive_order++;
+      } else if (highlight.order_type === 'state_legislation') {
+        counts.state_legislation++;
+      }
+    });
+
+    return counts;
+  }, [highlights]);
+
+  // Manual refresh handler - UPDATED TO SUPPORT BOTH TYPES
   const handleManualRefresh = async () => {
     if (isRefreshing) return;
     
     setIsRefreshing(true);
     try {
+      console.log('🔄 Starting manual refresh...');
+      
+      // First refresh the highlights list
       await refreshHighlights();
+      
+      // Then sync the local highlights state
+      const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('🔄 Manual refresh - highlights from API:', data);
+        
+        // Extract highlights array safely
+        let highlightsArray = [];
+        if (Array.isArray(data)) {
+          highlightsArray = data;
+        } else if (data.highlights && Array.isArray(data.highlights)) {
+          highlightsArray = data.highlights;
+        } else if (data.results && Array.isArray(data.results)) {
+          highlightsArray = data.results;
+        }
+        
+        const orderIds = new Set();
+        
+        // UPDATED: Process highlights safely with for loop - BOTH TYPES
+        for (let i = 0; i < highlightsArray.length; i++) {
+          const highlight = highlightsArray[i];
+          console.log(`🔄 Processing highlight ${i + 1}:`, highlight);
+          
+          // Include both order types
+          if (highlight && highlight.order_id && 
+              (highlight.order_type === 'executive_order' || highlight.order_type === 'state_legislation')) {
+            orderIds.add(highlight.order_id);
+            console.log(`   Added to local highlights: ${highlight.order_id} (${highlight.order_type})`);
+          }
+        }
+        
+        setLocalHighlights(orderIds);
+        console.log('🔄 Manual refresh - updated local highlights:', Array.from(orderIds));
+      }
+      
       console.log('🔄 Manual refresh completed');
     } catch (error) {
       console.error('Error during manual refresh:', error);
@@ -163,18 +1589,184 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   };
 
-  // Filter highlights based on search
-  const filteredHighlights = highlights.filter(highlight => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      highlight.title?.toLowerCase().includes(term) ||
-      highlight.ai_summary?.toLowerCase().includes(term) ||
-      highlight.description?.toLowerCase().includes(term) ||
-      highlight.executive_order_number?.toString().toLowerCase().includes(term) ||
-      highlight.bill_number?.toString().toLowerCase().includes(term)
-    );
-  });
+  // UPDATED: Enhanced highlighting function - SUPPORTS BOTH TYPES
+  const handleOrderHighlight = useCallback(async (order) => {
+    console.log('🌟 HighlightsPage highlight handler called for:', order.title);
+    
+    // Use universal ID generation
+    const orderId = getUniversalOrderId(order);
+    if (!orderId) {
+      console.error('❌ No valid order ID found for highlighting');
+      return;
+    }
+    
+    console.log('🌟 HighlightsPage: Order details for highlighting:', {
+      title: order.title,
+      id: order.id,
+      bill_id: order.bill_id,
+      order_type: order.order_type,
+      calculatedOrderId: orderId
+    });
+    
+    const isCurrentlyHighlighted = localHighlights.has(orderId);
+    console.log('🌟 Current highlight status:', isCurrentlyHighlighted, 'Order ID:', orderId, 'Type:', order.order_type);
+    
+    // Add to loading state
+    setHighlightLoading(prev => new Set([...prev, orderId]));
+    
+    try {
+      if (isCurrentlyHighlighted) {
+        // REMOVE highlight
+        console.log('🗑️ Attempting to remove highlight for:', orderId);
+        
+        setLocalHighlights(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(orderId);
+          return newSet;
+        });
+        
+        const response = await fetch(`${API_URL}/api/highlights/${orderId}?user_id=1`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          console.error('❌ Failed to remove highlight from backend');
+          setLocalHighlights(prev => new Set([...prev, orderId]));
+        } else {
+          console.log('✅ Successfully removed highlight from backend');
+          await refreshHighlights();
+          if (stableHandlers?.handleItemHighlight) {
+            stableHandlers.handleItemHighlight(order, order.order_type);
+          }
+        }
+      } else {
+        // ADD highlight
+        console.log('⭐ Attempting to add highlight for:', orderId);
+        
+        setLocalHighlights(prev => new Set([...prev, orderId]));
+        
+        const requestBody = {
+          user_id: 1,
+          order_id: orderId,
+          order_type: order.order_type, // Use the actual order type
+          notes: null,
+          priority_level: 1,
+          tags: null,
+          is_archived: false
+        };
+        
+        console.log('⭐ Sending highlight request with body:', requestBody);
+        
+        const response = await fetch(`${API_URL}/api/highlights`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+          console.error('❌ Failed to add highlight');
+          if (response.status !== 409) {
+            setLocalHighlights(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(orderId);
+              return newSet;
+            });
+          } else {
+            console.log('ℹ️ Highlight already exists (409), but updating local state anyway');
+          }
+        } else {
+          console.log('✅ Successfully added highlight to backend');
+          if (stableHandlers?.handleItemHighlight) {
+            stableHandlers.handleItemHighlight(order, order.order_type);
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Error managing highlight:', error);
+      // Revert optimistic update on error
+      if (isCurrentlyHighlighted) {
+        setLocalHighlights(prev => new Set([...prev, orderId]));
+      } else {
+        setLocalHighlights(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(orderId);
+          return newSet;
+        });
+      }
+    } finally {
+      setHighlightLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
+    }
+  }, [localHighlights, stableHandlers, refreshHighlights]);
+
+  // Enhanced remove highlight handler
+  const handleRemoveHighlight = async (highlight) => {
+    try {
+      const orderId = getUniversalOrderId(highlight);
+      
+      // Remove from local state immediately
+      setLocalHighlights(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
+      
+      // Remove from backend
+      await removeHighlight(highlight);
+      
+      // Also update global state if available
+      if (stableHandlers?.refreshGlobalHighlights) {
+        stableHandlers.refreshGlobalHighlights();
+      }
+    } catch (error) {
+      console.error('Failed to remove highlight:', error);
+      // Re-add to local state if backend removal failed
+      const orderId = getUniversalOrderId(highlight);
+      setLocalHighlights(prev => new Set([...prev, orderId]));
+    }
+  };
+
+  // UPDATED: Check if order is highlighted - SUPPORTS BOTH TYPES
+  const isOrderHighlighted = useCallback((order) => {
+    const orderId = getUniversalOrderId(order);
+    if (!orderId) return false;
+    
+    // Check local state first for immediate UI feedback
+    const localHighlighted = localHighlights.has(orderId);
+    
+    // Also check stable handlers as fallback
+    const stableHighlighted = stableHandlers?.isItemHighlighted?.(order) || false;
+    
+    const isHighlighted = localHighlighted || stableHighlighted;
+    
+    if (isHighlighted) {
+      console.log(`🌟 Order is highlighted: ${order.title}, orderId: ${orderId}`);
+    }
+    
+    return isHighlighted;
+  }, [localHighlights, stableHandlers]);
+
+  // Check if order is currently being highlighted/unhighlighted
+  const isOrderHighlightLoading = useCallback((order) => {
+    const orderId = getUniversalOrderId(order);
+    return orderId ? highlightLoading.has(orderId) : false;
+  }, [highlightLoading]);
+
+  // Search handler
+  const handleSearch = useCallback(() => {
+    console.log(`🔍 Searching for: "${searchTerm}"`);
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // Page change handler
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`🔄 Changing to page ${newPage}`);
+    setCurrentPage(newPage);
+  }, []);
 
   // Helper function to get highlight source info
   const getHighlightSourceInfo = (highlight) => {
@@ -196,19 +1788,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       label: 'Unknown',
       color: 'text-gray-600'
     };
-  };
-
-  // Handle highlight removal
-  const handleRemoveHighlight = async (highlight) => {
-    try {
-      await removeHighlight(highlight);
-      // Also update global state if available
-      if (stableHandlers?.refreshGlobalHighlights) {
-        stableHandlers.refreshGlobalHighlights();
-      }
-    } catch (error) {
-      console.error('Failed to remove highlight:', error);
-    }
   };
 
   // Format last refresh time
@@ -235,7 +1814,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       <div className="pt-6">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-2">Highlights</h2>
-          <p className="text-gray-600">Your saved executive orders and legislation with fuzzy search.</p>
+          <p className="text-gray-600">Your saved executive orders and legislation with AI analysis.</p>
         </div>
         <div className="flex items-center justify-center py-12">
           <Loader className="animate-spin h-8 w-8 text-blue-600" />
@@ -252,30 +1831,160 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold text-gray-800 mb-2">Highlights</h2>
-            <p className="text-gray-600">Your saved executive orders and legislation with fuzzy search.</p>
+            <p className="text-gray-600">Your saved executive orders and legislation with AI analysis.</p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-gray-500">
-              Last updated: {formatLastRefresh(lastRefresh)}
-            </div>
-            <button
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className={`flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-all duration-300 ${
-                isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-              title="Refresh highlights"
-            >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-            </button>
-          </div>
+          
+          {/* Manual Refresh Button */}
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing || loading}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+              isRefreshing || loading
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+            }`}
+            title="Refresh highlights from server"
+          >
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
         </div>
+        
+        {/* Status Display */}
+        {lastRefresh && (
+          <div className="mt-2 text-xs text-gray-500">
+            Last updated: {formatLastRefresh(lastRefresh)}
+          </div>
+        )}
       </div>
 
-      {/* Search Bar */}
+      {/* Updated Search Bar and Filter - Removed review status filters */}
       <div className="mb-8">
         <div className="flex gap-4 items-center">
+          {/* Filter Dropdown - Updated to remove review filters */}
+          <div className="relative" ref={filterDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+              className="flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-48"
+            >
+              <div className="flex items-center gap-2">
+                <span className="truncate">
+                  {selectedFilters.length === 0 
+                    ? 'Filters'
+                    : selectedFilters.length === 1
+                    ? EXTENDED_FILTERS.find(f => f.key === selectedFilters[0])?.label || 'Filter'
+                    : `${selectedFilters.length} Filters`
+                  }
+                </span>
+                {selectedFilters.length > 0 && (
+                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                    {selectedFilters.length}
+                  </span>
+                )}
+              </div>
+              <ChevronDown 
+                size={16} 
+                className={`transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {showFilterDropdown && (
+              <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 max-h-96 overflow-y-auto">
+                {/* Clear All Button */}
+                {selectedFilters.length > 0 && (
+                  <div className="px-4 py-2 border-b border-gray-200">
+                    <button
+                      onClick={() => {
+                        clearAllFilters();
+                        setShowFilterDropdown(false);
+                      }}
+                      className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
+                    >
+                      Clear All Filters ({selectedFilters.length})
+                    </button>
+                  </div>
+                )}
+                
+                {/* Category Filters */}
+                <div className="border-b border-gray-200 pb-2">
+                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Categories
+                  </div>
+                  {FILTERS.map(filter => {
+                    const IconComponent = filter.icon;
+                    const isActive = isFilterActive(filter.key);
+                    return (
+                      <button
+                        key={filter.key}
+                        onClick={() => toggleFilter(filter.key)}
+                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center ${
+                          isActive
+                            ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
+                              filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
+                              filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
+                              filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
+                              'bg-blue-100 text-blue-700 font-medium'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <IconComponent 
+                            size={16} 
+                            className={
+                              filter.key === 'civic' ? 'text-blue-600' :
+                              filter.key === 'education' ? 'text-orange-600' :
+                              filter.key === 'engineering' ? 'text-green-600' :
+                              filter.key === 'healthcare' ? 'text-red-600' :
+                              'text-gray-600'
+                            }
+                          />
+                          <span>{filter.label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Order Type Filters - NEW SECTION */}
+                <div className="pt-2">
+                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Document Type
+                  </div>
+                  <button
+                    onClick={() => toggleFilter('executive_order')}
+                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                      isFilterActive('executive_order')
+                        ? 'bg-blue-100 text-blue-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ScrollText size={16} className="text-blue-600" />
+                      <span>Executive Orders</span>
+                    </div>
+                    <span className="text-xs text-gray-500">({filterCounts.executive_order})</span>
+                  </button>
+                  <button
+                    onClick={() => toggleFilter('state_legislation')}
+                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                      isFilterActive('state_legislation')
+                        ? 'bg-green-100 text-green-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText size={16} className="text-green-600" />
+                      <span>State Legislation</span>
+                    </div>
+                    <span className="text-xs text-gray-500">({filterCounts.state_legislation})</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Search Bar */}
           <div className="flex-1 relative">
             <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input
@@ -283,6 +1992,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
               placeholder="Search highlighted items..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
             />
             {searchTerm && (
@@ -294,210 +2004,706 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
             )}
           </div>
 
-          {searchTerm && (
+          {/* Clear Filters Button */}
+          {(selectedFilters.length > 0 || searchTerm) && (
             <button
-              onClick={() => setSearchTerm('')}
+              type="button"
+              onClick={clearAllFilters}
               className="px-4 py-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-all duration-300 flex-shrink-0"
             >
-              Clear Search
+              Clear All
             </button>
           )}
         </div>
       </div>
 
-      {/* Highlights Display */}
-      <div className="space-y-6 mb-8">
-        {filteredHighlights.length === 0 ? (
-          <div className="text-center py-12">
-            <Star size={48} className="mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">
-              {hasHighlights ? 'No matching highlights found' : 'No Highlights Yet'}
-            </h3>
-            <p className="text-gray-600 mb-4">
-              {hasHighlights 
-                ? `No highlights match your search for "${searchTerm}".`
-                : "Start by highlighting executive orders or legislation from other pages."
-              }
-            </p>
-            {searchTerm ? (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300"
-              >
-                Clear Search
-              </button>
-            ) : null}
-          </div>
-        ) : (
-          filteredHighlights.map((highlight, index) => {
-            const source = getHighlightSourceInfo(highlight);
-            const SourceIcon = source.icon;
-            
-            return (
-              <div key={highlight.id || index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="flex items-start justify-between px-4 pt-4 pb-2">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-1 leading-tight">
-                      {index + 1}. {highlight.title || 'Untitled'}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                      <span className="font-medium">
-                        {highlight.executive_order_number 
-                          ? `Executive Order #${highlight.executive_order_number}` 
-                          : highlight.bill_number 
-                            ? `Bill #${highlight.bill_number}`
-                            : 'N/A'
-                        }
-                      </span>
-                      {highlight.signing_date && (
-                        <span>{new Date(highlight.signing_date).toLocaleDateString()}</span>
-                      )}
-                      <span className={`inline-flex items-center gap-1.5 font-medium text-xs ${source.color} bg-gray-100 px-2 py-1 rounded-full`}>
-                        <SourceIcon size={12} />
-                        <span>From: {source.label}</span>
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleRemoveHighlight(highlight);
-                      }}
-                      className="p-2 hover:bg-red-100 hover:text-red-600 rounded-md transition-all duration-300"
-                      title="Remove from highlights"
-                    >
-                      <Star size={16} className="fill-current text-yellow-500" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* AI Summary */}
-                {highlight.ai_summary && highlight.ai_summary !== 'No summary available' && (
-                  <div className="px-4 pb-4">
-                    <div className="bg-violet-50 p-3 rounded-md border border-violet-200">
-                      <p className="text-sm font-medium text-violet-800 mb-2 flex items-center gap-2">
-                        <span>AI Summary:</span>
-                        <span className="px-2 py-0.5 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-xs rounded-full">
-                          ✦ AI Generated
-                        </span>
-                      </p>
-                      <p className="text-sm text-violet-800 leading-relaxed">
-                        {highlight.ai_summary.replace(/<[^>]*>/g, '')}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="px-4 pb-4">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => {
-                        // Create a simple report
-                        const report = [
-                          highlight.title,
-                          highlight.executive_order_number ? `Executive Order #${highlight.executive_order_number}` : 
-                          highlight.bill_number ? `Bill #${highlight.bill_number}` : '',
-                          highlight.state ? `State: ${highlight.state}` : '',
-                          '',
-                          highlight.ai_summary ? `AI Summary: ${highlight.ai_summary.replace(/<[^>]*>/g, '')}` : '',
-                          highlight.description ? `Description: ${highlight.description}` : ''
-                        ].filter(line => line.length > 0).join('\n');
-                        
-                        if (copyToClipboard) {
-                          copyToClipboard(report);
-                        } else if (navigator.clipboard) {
-                          navigator.clipboard.writeText(report).catch(console.error);
-                        }
-                      }}
-                      className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300 text-sm flex items-center gap-2"
-                    >
-                      <Copy size={14} />
-                      <span>Copy Report</span>
-                    </button>
-                    
-                    {highlight.html_url && (
-                      <a
-                        href={highlight.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-all duration-300 text-sm flex items-center gap-2"
-                      >
-                        <ExternalLink size={14} />
-                        <span>View Original</span>
-                      </a>
-                    )}
-                    
-                    {highlight.pdf_url && (
-                      <a
-                        href={highlight.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all duration-300 text-sm flex items-center gap-2"
-                      >
-                        <FileText size={14} />
-                        <span>View PDF</span>
-                      </a>
-                    )}
-
-                    {highlight.legiscan_url && (
-                      <a
-                        href={highlight.legiscan_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-all duration-300 text-sm flex items-center gap-2"
-                      >
-                        <ExternalLink size={14} />
-                        <span>View on LegiScan</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Quick Actions Section - Only show when no highlights */}
-      {!hasHighlights && (
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <Compass size={20} className="text-blue-600" />
-            <span>Get Started with Highlights</span>
-          </h3>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button 
-              onClick={() => navigate('/executive-orders')}
-              className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg text-left transition-colors"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <ScrollText size={20} className="text-blue-600" />
-                <span className="font-semibold text-blue-800">Executive Orders</span>
-              </div>
-              <p className="text-sm text-blue-700">
-                Browse and highlight federal executive orders
+      {/* Enhanced Highlights Display - Updated to remove review status and add order type tags */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="p-6">
+          {paginatedHighlights.length === 0 ? (
+            <div className="text-center py-12">
+              <Star size={48} className="mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                {hasHighlights ? 'No matching highlights found' : 'No Highlights Yet'}
+              </h3>
+              <p className="text-gray-600 mb-4">
+                {hasHighlights 
+                  ? selectedFilters.length > 0 || searchTerm
+                    ? `No highlights match your current filters and search criteria.`
+                    : `No highlights match your search for "${searchTerm}".`
+                  : "Start by highlighting executive orders or legislation from other pages."
+                }
               </p>
+              {selectedFilters.length > 0 || searchTerm ? (
+                <button
+                  onClick={clearAllFilters}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300"
+                >
+                  Clear Filters & Search
+                </button>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                  <button 
+                    onClick={() => navigate('/executive-orders')}
+                    className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg text-left transition-colors"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <ScrollText size={20} className="text-blue-600" />
+                      <span className="font-semibold text-blue-800">Executive Orders</span>
+                    </div>
+                    <p className="text-sm text-blue-700">
+                      Browse and highlight federal executive orders
+                    </p>
+                  </button>
+                  
+                  <button 
+                    onClick={() => navigate('/state/california')}
+                    className="p-4 bg-green-50 hover:bg-green-100 rounded-lg text-left transition-colors"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <FileText size={20} className="text-green-600" />
+                      <span className="font-semibold text-green-800">State Legislation</span>
+                    </div>
+                    <p className="text-sm text-green-700">
+                      Find and highlight state bills and legislation
+                    </p>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+
+{paginatedHighlights.map((highlight, index) => {
+  // Add index to highlight for unique ID generation
+  const globalIndex = (currentPage - 1) * itemsPerPage + index;
+  const highlightWithIndex = { ...highlight, index: globalIndex };
+  const orderId = getUniversalOrderId(highlightWithIndex);
+  const isExpanded = expandedOrders.has(orderId);
+  
+  return (
+    <div key={`highlight-${orderId}-${globalIndex}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <div 
+            className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
+            onClick={() => {
+              setExpandedOrders(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(orderId)) {
+                  newSet.delete(orderId);
+                } else {
+                  newSet.add(orderId);
+                }
+                return newSet;
+              });
+            }}
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              {globalIndex + 1}. {cleanOrderTitle(highlight.title)}
+            </h3>
+            
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
+              <span className="font-medium">
+                {highlight.order_type === 'executive_order' 
+                  ? `Executive Order #: ${getExecutiveOrderNumber(highlight)}`
+                  : `Bill #: ${highlight.bill_number || 'Unknown'}`
+                }
+              </span>
+              <span>-</span>
+              <span className="font-medium">
+                {highlight.order_type === 'executive_order' 
+                  ? `Signed Date: ${highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}`
+                  : `Date: ${highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}`
+                }
+              </span>
+              <span>-</span>
+              <CategoryTag category={highlight.category} />
+              <span>-</span>
+              {/* Single Order Type Tag - Clean pill style */}
+              <OrderTypeTag orderType={highlight.order_type} />
+              {/* Status for State Legislation only - but cleaner */}
+              {highlight.order_type === 'state_legislation' && highlight.status && highlight.status !== 'Unknown' && (
+                <>
+                </>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 ml-4">
+            {/* Enhanced Highlight button with loading state */}
+            <button
+              type="button"
+              className={`p-2 rounded-md transition-all duration-300 ${
+                isOrderHighlighted(highlightWithIndex)
+                  ? 'text-yellow-500 bg-yellow-100 hover:bg-yellow-200'
+                  : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500'
+              } ${isOrderHighlightLoading(highlightWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isOrderHighlightLoading(highlightWithIndex)) {
+                  await handleOrderHighlight(highlightWithIndex);
+                }
+              }}
+              disabled={isOrderHighlightLoading(highlightWithIndex)}
+              title={
+                isOrderHighlightLoading(highlightWithIndex) 
+                  ? "Processing..." 
+                  : isOrderHighlighted(highlightWithIndex) 
+                    ? "Remove from highlights" 
+                    : "Add to highlights"
+              }
+            >
+              {isOrderHighlightLoading(highlightWithIndex) ? (
+                <RotateCw size={16} className="animate-spin" />
+              ) : (
+                <Star 
+                  size={16} 
+                  className={isOrderHighlighted(highlightWithIndex) ? "fill-current" : ""} 
+                />
+              )}
             </button>
             
-            <button 
-              onClick={() => navigate('/state/california')}
-              className="p-4 bg-green-50 hover:bg-green-100 rounded-lg text-left transition-colors"
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setExpandedOrders(prev => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(orderId)) {
+                    newSet.delete(orderId);
+                  } else {
+                    newSet.add(orderId);
+                  }
+                  return newSet;
+                });
+              }}
+              className="p-2 hover:bg-gray-100 rounded-md transition-all duration-300"
+              title={isExpanded ? "Collapse details" : "Expand details"}
             >
-              <div className="flex items-center gap-3 mb-2">
-                <FileText size={20} className="text-green-600" />
-                <span className="font-semibold text-green-800">State Legislation</span>
-              </div>
-              <p className="text-sm text-green-700">
-                Find and highlight state bills and legislation
-              </p>
+              <ChevronDown 
+                size={20} 
+                className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+              />
             </button>
           </div>
         </div>
+
+        {/* Azure AI Summary (always visible if available) */}
+        {highlight.ai_processed && highlight.ai_summary && (
+          <div className="mb-4 mt-4">
+            <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
+              <div className="flex items-center gap-2 mb-2">
+                <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
+                <span className="text-purple-800">-</span>
+                <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                  ✦ AI Generated
+                </span>
+              </div>
+              <div className="text-sm text-violet-800 leading-relaxed">
+                <div className="universal-text-content" style={{
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal'
+                }}>
+                  {stripHtmlTags(highlight.ai_summary)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <div>
+                          {/* Azure AI Talking Points */}
+                          {highlight.ai_processed && highlight.ai_talking_points && (
+                            <div className="mb-4 mt-4">
+                              <div className="bg-blue-50 p-4 rounded-md border border-blue-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold text-blue-800">Key Talking Points</h4>
+                                  <span className="text-blue-800">-</span>
+                                  <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                    ✦ AI Generated
+                                  </span>
+                                </div>
+                                <div className="text-sm text-blue-800 leading-relaxed">
+                                  {formatTalkingPoints(highlight.ai_talking_points)}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Azure AI Business Impact */}
+                          {highlight.ai_processed && highlight.ai_business_impact && (
+                            <div className="mb-4 mt-4">
+                              <div className="bg-green-50 p-4 rounded-md border border-green-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold text-green-800">Business Impact Analysis</h4>
+                                  <span className="text-green-800">-</span>
+                                  <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                    ✦ AI Generated
+                                  </span>
+                                </div>
+                                <div className="text-sm text-green-800 leading-relaxed">
+                                  {formatUniversalContent(highlight.ai_business_impact)}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* No AI Analysis Message */}
+                          {!highlight.ai_processed && (
+                            <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <h4 className="font-medium text-yellow-800">No AI Analysis Available</h4>
+                                  <p className="text-yellow-700 text-sm">
+                                    This item was highlighted before AI processing was available.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* External Links */}
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            {highlight.html_url && (
+                              <a
+                                href={highlight.html_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300 text-sm flex items-center gap-2"
+                              >
+                                <ExternalLink size={14} />
+                                {highlight.order_type === 'executive_order' ? 'Federal Register' : 'Official Source'}
+                              </a>
+                            )}
+                            
+                            {highlight.pdf_url && (
+                              <a
+                                href={highlight.pdf_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all duration-300 text-sm flex items-center gap-2"
+                              >
+                                <FileText size={14} />
+                                View PDF
+                              </a>
+                            )}
+
+                            {highlight.legiscan_url && (
+                              <a
+                                href={highlight.legiscan_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-all duration-300 text-sm flex items-center gap-2"
+                              >
+                                <ExternalLink size={14} />
+                                View on LegiScan
+                              </a>
+                            )}
+
+                            <button 
+                              type="button"
+                              className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 transition-all duration-300"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                
+                                // Create comprehensive report
+                                const orderReport = [
+                                  highlight.title,
+                                  highlight.order_type === 'executive_order' 
+                                    ? `Executive Order #${getExecutiveOrderNumber(highlight)}`
+                                    : `Bill #${highlight.bill_number || 'Unknown'}`,
+                                  highlight.president ? `President: ${highlight.president}` : '',
+                                  highlight.state ? `State: ${highlight.state}` : '',
+                                  highlight.formatted_signing_date ? `Date: ${highlight.formatted_signing_date}` : '',
+                                  highlight.category ? `Category: ${highlight.category}` : '',
+                                  '',
+                                  highlight.ai_summary ? `AI Summary: ${stripHtmlTags(highlight.ai_summary)}` : '',
+                                  highlight.summary ? `Basic Summary: ${highlight.summary}` : '',
+                                  highlight.ai_talking_points ? `Key Talking Points: ${stripHtmlTags(highlight.ai_talking_points)}` : '',
+                                  highlight.ai_business_impact ? `Business Impact: ${stripHtmlTags(highlight.ai_business_impact)}` : '',
+                                  highlight.html_url ? `Official URL: ${highlight.html_url}` : '',
+                                  highlight.pdf_url ? `PDF URL: ${highlight.pdf_url}` : '',
+                                  highlight.legiscan_url ? `LegiScan URL: ${highlight.legiscan_url}` : ''
+                                ].filter(line => line.length > 0).join('\n');
+                                
+                                // Try to copy to clipboard
+                                if (copyToClipboard && typeof copyToClipboard === 'function') {
+                                  copyToClipboard(orderReport);
+                                  console.log('✅ Copied highlight report to clipboard');
+                                } else if (navigator.clipboard) {
+                                  navigator.clipboard.writeText(orderReport).catch(console.error);
+                                  console.log('✅ Copied highlight report to clipboard (fallback)');
+                                } else {
+                                  console.log('❌ Copy to clipboard not available');
+                                }
+                              }}
+                            >
+                              <Copy size={14} />
+                              Copy Details
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Pagination - same as before */}
+      {!loading && paginatedHighlights.length > 0 && totalPages > 1 && (
+        <div className="mt-6 flex justify-center">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            <div className="flex items-center space-x-1">
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                const pageNum = i + 1;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`px-3 py-2 text-sm font-medium rounded-md ${
+                      currentPage === pageNum
+                        ? 'text-blue-600 bg-blue-50 border border-blue-300'
+                        : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+              
+              {/* Show more pages info if there are many pages */}
+              {totalPages > 5 && (
+                <>
+                  <span className="px-2 text-gray-500">...</span>
+                  <button
+                    onClick={() => handlePageChange(totalPages)}
+                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    {totalPages}
+                  </button>
+                </>
+              )}
+            </div>
+            
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+            
+            {/* Page info */}
+            <div className="ml-4 text-sm text-gray-600">
+              {selectedFilters.length > 0 || searchTerm ? (
+                <>
+                  Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredHighlights.length)}-{Math.min(currentPage * itemsPerPage, filteredHighlights.length)} of {filteredHighlights.length} filtered highlights
+                  {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+                </>
+              ) : (
+                <>
+                  Page {currentPage} of {totalPages} ({filteredHighlights.length} total highlights)
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results Summary */}
+      {filteredHighlights.length > 0 && (
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
+            <span>
+              {selectedFilters.length > 0 || searchTerm ? (
+                <>
+                  {filteredHighlights.length === 0 ? 'No results' : `${filteredHighlights.length} total results`} for: 
+                  {selectedFilters.length > 0 && (
+                    <span className="font-medium ml-1">
+                      {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
+                    </span>
+                  )}
+                  {searchTerm && (
+                    <span className="font-medium ml-1">"{searchTerm}"</span>
+                  )}
+                </>
+              ) : (
+                <>Total Highlights: {filteredHighlights.length}</>
+              )}
+            </span>
+            {filteredHighlights.length > itemsPerPage && (
+              <span className="text-xs bg-blue-100 px-2 py-1 rounded">
+                {totalPages} pages
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Universal CSS Styles - Same as ExecutiveOrdersPage */}
+      <style>{`
+        .bg-purple-50 .text-violet-800,
+        .bg-blue-50 .text-blue-800, 
+        .bg-green-50 .text-green-800 {
+          word-break: normal;
+          overflow-wrap: anywhere;
+          white-space: pre-wrap;
+          text-align: justify;
+        }
+
+        .numbered-item {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+
+        .numbered-text {
+          word-break: normal;
+          overflow-wrap: anywhere;
+        }
+
+        .universal-ai-content,
+        .universal-structured-content,
+        .universal-text-content {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
+        }
+
+        .universal-numbered-content {
+          margin: 8px 0;
+        }
+
+        .numbered-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          margin-bottom: 6px;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .numbered-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .number-bullet {
+          font-weight: 600;
+          font-size: 14px;
+          color: currentColor;
+          min-width: 20px;
+          flex-shrink: 0;
+        }
+
+        .numbered-text {
+          flex: 1;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
+        }
+
+        .universal-bullet-content {
+          margin: 8px 0;
+        }
+
+        .bullet-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          margin-bottom: 6px;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .bullet-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .bullet-point {
+          font-weight: 600;
+          font-size: 16px;
+          color: currentColor;
+          min-width: 12px;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .bullet-text {
+          flex: 1;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
+        }
+
+        .numbered-list-content ol {
+          margin: 8px 0;
+          padding-left: 0;
+          list-style: none;
+          counter-reset: talking-points;
+        }
+
+        .numbered-list-content li {
+          position: relative;
+          padding-left: 24px;
+          margin-bottom: 6px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
+          counter-increment: talking-points;
+        }
+
+        .numbered-list-content li:before {
+          content: counter(talking-points) ".";
+          position: absolute;
+          left: 0;
+          top: 0;
+          font-weight: 600;
+          font-size: 14px;
+          color: currentColor;
+          min-width: 20px;
+        }
+
+        .numbered-list-content li:last-child {
+          margin-bottom: 0;
+        }
+
+        .universal-ai-content p {
+          margin: 0 0 8px 0;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .universal-ai-content p:last-child {
+          margin-bottom: 0;
+        }
+
+        .universal-ai-content ol,
+        .universal-ai-content ul {
+          margin: 8px 0;
+          padding-left: 20px;
+          font-size: 14px;
+        }
+
+        .universal-ai-content li {
+          margin-bottom: 4px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
+        }
+
+        .universal-ai-content li:last-child {
+          margin-bottom: 0;
+        }
+
+        .universal-ai-content strong {
+          font-weight: 600;
+          font-size: 14px;
+        }
+
+        .business-impact-sections {
+          margin: 8px 0;
+        }
+
+        .business-impact-section {
+          margin-bottom: 12px;
+        }
+
+        .business-impact-section:last-child {
+          margin-bottom: 0;
+        }
+
+        .section-header {
+          margin-bottom: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          color: inherit;
+        }
+
+        .section-items {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .section-item {
+          margin-bottom: 4px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
+        }
+
+        .section-item:last-child {
+          margin-bottom: 0;
+        }
+
+        .text-purple-800 .universal-ai-content,
+        .text-purple-800 .universal-structured-content,
+        .text-purple-800 .universal-text-content,
+        .text-purple-800 .number-bullet,
+        .text-purple-800 .numbered-text,
+        .text-purple-800 .bullet-point,
+        .text-purple-800 .bullet-text {
+          color: #5b21b6;
+        }
+
+        .text-blue-800 .universal-ai-content,
+        .text-blue-800 .universal-structured-content,
+        .text-blue-800 .universal-text-content,
+        .text-blue-800 .number-bullet,
+        .text-blue-800 .numbered-text,
+        .text-blue-800 .bullet-point,
+        .text-blue-800 .bullet-text {
+          color: #1e40af;
+        }
+
+        .text-green-800 .universal-ai-content,
+        .text-green-800 .universal-structured-content,
+        .text-green-800 .universal-text-content,
+        .text-green-800 .number-bullet,
+        .text-green-800 .numbered-text,
+        .text-green-800 .bullet-point,
+        .text-green-800 .bullet-text {
+          color: #166534;
+        }
+
+        .section-header {
+          margin-bottom: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          color: inherit;
+        }
+
+        .section-item {
+          margin-bottom: 4px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: inherit;
+        }
+      `}</style>
+
+      {/* ADDED: Debug Panel - Only show in development mode */}
+      {process.env.NODE_ENV === 'development' && (
+        <HighlightsDebugPanel apiUrl={API_URL} />
       )}
     </div>
   );

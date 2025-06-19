@@ -1,1493 +1,733 @@
-# legiscan_api.py - Optimized Version with Improved Bulk Fetch
+# legiscan_api.py - The ACTUAL LegiScan API class with Real AI Integration
+
+import os
 import requests
 import json
 import time
-import traceback
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
-import os
-from dotenv import load_dotenv
-import base64
-import io
-import zipfile
-
-load_dotenv()
+import asyncio
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 
 class LegiScanAPI:
-    """Integration with LegiScan API to fetch legislative data with optimized bulk operations"""
-    
-    BASE_URL = "https://api.legiscan.com/?key={0}&op={1}&{2}"
+    """Complete LegiScan API integration class with real AI analysis"""
     
     def __init__(self):
-        print("🔍 DEBUG: Initializing LegiScanAPI with optimized bulk fetch...")
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'LegislationVue/2.0',
-            'Accept': 'application/json'
-        })
-        
-        # Check for LegiScan API key
+        # Get API key from environment
         self.api_key = os.getenv('LEGISCAN_API_KEY')
         if not self.api_key:
-            print("❌ LegiScan API key not found. Please set LEGISCAN_API_KEY in your .env file.")
-            raise ValueError("LegiScan API key is required.")
-        else:
-            print(f"✅ LegiScan API key found: {self.api_key[:4]}{'*' * (len(self.api_key) - 8)}{self.api_key[-4:]}")
+            raise ValueError("LEGISCAN_API_KEY environment variable not set")
         
-        # Check for OpenAI API key (for AI analysis features)
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
-        if self.openai_api_key:
-            print("✅ OpenAI API key found, enhanced AI analysis available")
-        else:
-            print("ℹ️ No OpenAI API key found, using basic AI analysis")
-            
-        # Initialize data caches
-        self.session_cache = {}
-        self.bill_cache = {}
-        self.master_list_cache = {}
+        self.base_url = "https://api.legiscan.com/"
+        self.session = requests.Session()
+        self.rate_limit_delay = 1.1  # Slightly over 1 second to be safe
+        self.last_request_time = 0
         
-        print("✅ Enhanced LegiScan API initialized with optimized features")
+        # State abbreviation mapping
+        self.state_mapping = {
+            'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR',
+            'California': 'CA', 'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE',
+            'Florida': 'FL', 'Georgia': 'GA', 'Hawaii': 'HI', 'Idaho': 'ID',
+            'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA', 'Kansas': 'KS',
+            'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+            'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS',
+            'Missouri': 'MO', 'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV',
+            'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
+            'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH', 'Oklahoma': 'OK',
+            'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+            'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT',
+            'Vermont': 'VT', 'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV',
+            'Wisconsin': 'WI', 'Wyoming': 'WY'
+        }
+        
+        print(f"✅ LegiScan API initialized with key: {self.api_key[:8]}...")
     
-    def _safe_string(self, value, field_name="unknown") -> str:
-        """Safely convert any value to string, handling None values"""
-        try:
-            if value is None:
-                return ""
-            if isinstance(value, str):
-                return value
-            result = str(value)
-            return result
-        except Exception as e:
-            print(f"⚠️ DEBUG: Error converting '{field_name}' to string: {e}")
-            return ""
+    def _rate_limit(self):
+        """Enforce rate limiting to respect LegiScan's 1 request per second limit"""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.rate_limit_delay:
+            sleep_time = self.rate_limit_delay - time_since_last
+            print(f"⏱️ Rate limiting: sleeping for {sleep_time:.2f} seconds")
+            time.sleep(sleep_time)
+        self.last_request_time = time.time()
     
-    def _safe_lower(self, value, field_name="unknown") -> str:
-        """Safely convert value to lowercase string, handling None values"""
-        try:
-            safe_str = self._safe_string(value, field_name)
-            result = safe_str.lower() if safe_str else ""
-            return result
-        except Exception as e:
-            print(f"⚠️ DEBUG: Error converting '{field_name}' to lowercase: {e}")
-            return ""
-    
-    def _url(self, operation: str, params: Optional[Dict] = None) -> str:
-        """Build a URL for querying the API with debug logging"""
+    def _make_request(self, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Make API request with rate limiting and error handling"""
+        self._rate_limit()
+        
         if params is None:
             params = {}
         
-        param_str = '&'.join([f"{k}={v}" for k, v in params.items()])
-        url = self.BASE_URL.format(self.api_key, operation, param_str)
-        return url
-    
-    def _get(self, url: str, timeout: int = 30) -> Dict:
-        """Get and parse JSON from API with configurable timeout"""
-        try:
-            start_time = time.time()
-            response = self.session.get(url, timeout=timeout)
-            elapsed_time = time.time() - start_time
-            
-            print(f"🔍 DEBUG: Request completed in {elapsed_time:.2f} seconds")
-            
-            if not response.ok:
-                print(f"❌ DEBUG: Request failed with status code {response.status_code}")
-                response.raise_for_status()
-            
-            try:
-                data = response.json()
-                
-                # Check for API error
-                if data.get('status') == "ERROR":
-                    error_msg = data.get('alert', {}).get('message', 'Unknown error')
-                    print(f"❌ DEBUG: API Error: {error_msg}")
-                    raise Exception(f"LegiScan API Error: {error_msg}")
-                
-                return data
-                
-            except json.JSONDecodeError as e:
-                print(f"❌ DEBUG: Failed to parse JSON response: {e}")
-                raise
-                
-        except requests.exceptions.Timeout:
-            print(f"❌ DEBUG: Request timed out after {timeout} seconds")
-            raise Exception(f"Request timed out after {timeout} seconds")
-        except Exception as e:
-            print(f"❌ DEBUG: Error in API request: {e}")
-            raise
-    
-    def get_session_list(self, state: str) -> List[Dict]:
-        """Get list of available sessions for a state"""
-        try:
-            print(f"🔍 DEBUG: Fetching session list for state '{state}'")
-            
-            # Check cache first
-            cache_key = f"session_list_{state}"
-            if cache_key in self.session_cache:
-                print(f"🔍 DEBUG: Using cached session list for {state}")
-                return self.session_cache[cache_key]
-            
-            url = self._url('getSessionList', {'state': state})
-            data = self._get(url)
-            
-            sessions = data.get('sessions', [])
-            print(f"📋 DEBUG: Found {len(sessions)} sessions for state '{state}'")
-            
-            # Update cache
-            self.session_cache[cache_key] = sessions
-            
-            return sessions
-            
-        except Exception as e:
-            print(f"❌ DEBUG: Error fetching session list for state '{state}': {e}")
-            return []
-    
-    def search(self, 
-              state: Optional[str] = None,
-              query: Optional[str] = None,
-              bill_number: Optional[str] = None,
-              year: int = 2,  # Default: current year
-              page: int = 1) -> Dict:
-        """
-        Search for bills using the LegiScan search engine
-        
-        Either provide bill_number OR query
-        
-        year options:
-        1 = all years
-        2 = current year (default)
-        3 = recent years
-        4 = prior years
-        """
-        try:
-            if bill_number is not None:
-                print(f"🔍 DEBUG: Searching for specific bill number '{bill_number}' in state '{state}'")
-                params = {'state': state, 'bill': bill_number}
-                log_identifier = f"bill {state} {bill_number}"
-            elif query is not None:
-                print(f"🔍 DEBUG: Searching for query '{query}' in state '{state}' for year {year}, page {page}")
-                params = {'state': state, 'query': query, 'year': year, 'page': page}
-                log_identifier = f"query '{query}' in state '{state}'"
-            else:
-                error_msg = "Must specify bill_number or query"
-                print(f"❌ DEBUG: {error_msg}")
-                raise ValueError(error_msg)
-            
-            url = self._url('search', params)
-            data = self._get(url, timeout=60).get('searchresult', {})  # Increased timeout for search
-            
-            # Reformat the results for easier handling
-            summary = data.pop('summary', {})
-            results = []
-            
-            # Extract results from numbered keys
-            for key in data:
-                if key != 'summary':
-                    results.append(data[key])
-            
-            print(f"📋 DEBUG: Search for {log_identifier} found {summary.get('count', 0)} results")
-            
-            return {
-                'summary': summary,
-                'results': results
-            }
-                
-        except Exception as e:
-            print(f"❌ DEBUG: Error searching bills: {e}")
-            return {'summary': {}, 'results': []}
-    
-    def get_bill(self, bill_id: Optional[int] = None, 
-                state: Optional[str] = None, 
-                bill_number: Optional[str] = None) -> Dict:
-        """
-        Get primary bill detail information
-        
-        Either provide bill_id OR (state AND bill_number)
-        """
-        try:
-            if bill_id:
-                print(f"🔍 DEBUG: Fetching bill by ID: {bill_id}")
-                cache_key = f"bill_id_{bill_id}"
-                log_identifier = f"bill ID {bill_id}"
-                params = {'id': bill_id}
-            elif state and bill_number:
-                print(f"🔍 DEBUG: Fetching bill by state and number: {state} {bill_number}")
-                cache_key = f"bill_{state}_{bill_number}"
-                log_identifier = f"bill {state} {bill_number}"
-                params = {'state': state, 'bill': bill_number}
-            else:
-                error_msg = "Either bill_id OR (state AND bill_number) must be provided"
-                print(f"❌ DEBUG: {error_msg}")
-                raise ValueError(error_msg)
-            
-            # Check cache first
-            if cache_key in self.bill_cache:
-                print(f"🔍 DEBUG: Using cached bill for {log_identifier}")
-                return self.bill_cache[cache_key]
-            
-            url = self._url('getBill', params)
-            data = self._get(url, timeout=45)  # Longer timeout for bill details
-            
-            bill = data.get('bill', {})
-            if bill:
-                print(f"📋 DEBUG: Successfully fetched {log_identifier}")
-                
-                # Update cache
-                self.bill_cache[cache_key] = bill
-                
-                return bill
-            else:
-                print(f"⚠️ DEBUG: No bill data found for {log_identifier}")
-                return {}
-                
-        except Exception as e:
-            print(f"❌ DEBUG: Error fetching bill: {e}")
-            return {}
-    
-    def get_master_list(self, state: str, session_id: Optional[int] = None) -> Dict:
-        """Get master list of bills for a state"""
-        try:
-            print(f"🔍 DEBUG: Fetching master list for state '{state}'")
-            
-            params = {'state': state}
-            if session_id:
-                print(f"🔍 DEBUG: Using specific session ID: {session_id}")
-                params['session_id'] = session_id
-                cache_key = f"master_list_{state}_{session_id}"
-            else:
-                print(f"🔍 DEBUG: Using current session")
-                cache_key = f"master_list_{state}_current"
-            
-            # Check cache first
-            if cache_key in self.master_list_cache:
-                print(f"🔍 DEBUG: Using cached master list for {cache_key}")
-                return self.master_list_cache[cache_key]
-            
-            url = self._url('getMasterList', params)
-            data = self._get(url, timeout=90)  # Longer timeout for master list
-            
-            master_list = data.get('masterlist', {})
-            
-            if master_list:
-                session_name = master_list.get('session', {}).get('session_name', 'Unknown')
-                bill_count = len(master_list.get('bill', {}))
-                print(f"📋 DEBUG: Found {bill_count} bills for state '{state}' in session '{session_name}'")
-                
-                # Update cache
-                self.master_list_cache[cache_key] = master_list
-                
-                return master_list
-            else:
-                print(f"⚠️ DEBUG: No master list data found for state '{state}'")
-                return {}
-                
-        except Exception as e:
-            print(f"❌ DEBUG: Error fetching master list: {e}")
-            return {}
-    
-    def _categorize_bill(self, title: str, description: str, bill_num: int) -> str:
-        """Categorize bills based on title and description"""
-        
-        # Safely convert inputs to lowercase strings
-        title_lower = self._safe_lower(title, f"title_categorize_{bill_num}")
-        description_lower = self._safe_lower(description, f"description_categorize_{bill_num}")
-        
-        content = f"{title_lower} {description_lower}".strip()
-        
-        if not content:
-            return 'not-applicable'
-        
-        # Healthcare
-        if any(word in content for word in ['health', 'medical', 'healthcare', 'medicine', 'hospital', 'patient']):
-            return 'healthcare'
-        
-        # Education
-        elif any(word in content for word in ['education', 'school', 'student', 'university', 'college', 'learning']):
-            return 'education'
-        
-        # Engineering/Infrastructure
-        elif any(word in content for word in ['infrastructure', 'engineering', 'construction', 'bridge', 'road', 'technology']):
-            return 'engineering'
-        
-        # Civic/Government
-        elif any(word in content for word in ['government', 'federal', 'agency', 'department', 'administration', 'policy', 'regulation']):
-            return 'civic'
-        
-        else:
-            return 'not-applicable'
-    
-    def _generate_ai_analysis(self, title: str, description: str, category: str, bill_num: int) -> Dict:
-        """Generate AI analysis for bills"""
-        
-        # Safely handle inputs
-        title = self._safe_string(title, f"title_ai_{bill_num}")
-        description = self._safe_string(description, f"description_ai_{bill_num}")
-        category = self._safe_string(category, f"category_ai_{bill_num}")
-        
-        if not title:
-            title = "Legislative Bill"
-        
-        if not description:
-            description = "Bill details not available"
-        
-        if not category:
-            category = "not-applicable"
-        
-        # Generate basic analysis
-        analysis_summary = f"Legislative Bill: {title}. This {category} bill addresses important policy matters."
-        if len(description) > 50:
-            analysis_summary = f"Legislative Bill: {title}. {description}"
-            if len(analysis_summary) > 300:
-                analysis_summary = analysis_summary[:300] + "..."
-        
-        # Generate other components
-        key_points = f"1. Addresses {category} policy matters. 2. Requires legislative approval. 3. May impact relevant stakeholders."
-        business_impact = f"1. Potential impact on {category} sector businesses. 2. May require compliance adjustments. 3. Could create new opportunities."
-        potential_impact = f"1. Enhanced {category} policy coordination. 2. Improved legislative program efficiency. 3. Long-term sector benefits."
-        talking_points = f"1. This bill addresses important {category} priorities. 2. Legislative committees will review. 3. Progress will be monitored."
-        
-        return {
-            'summary': analysis_summary,
-            'key_points': key_points,
-            'business_impact': business_impact,
-            'potential_impact': potential_impact,
-            'talking_points': talking_points
-        }
-    
-    # OPTIMIZED BULK FETCH METHODS
-    
-    def optimized_bulk_fetch(self, state: str, limit: int = 10, recent_only: bool = True) -> Dict:
-        """
-        Optimized bulk fetch that avoids timeouts by:
-        1. Using smaller batch sizes
-        2. Processing recent bills only
-        3. Adding proper delays between requests
-        4. Using timeouts and error handling
-        """
-        try:
-            print(f"🔍 DEBUG: Starting optimized bulk fetch for state '{state}' (limit: {limit})")
-            
-            # Get current session for the state
-            sessions = self.get_session_list(state)
-            if not sessions:
-                return {"error": f"No sessions found for state {state}", "bills_processed": 0}
-            
-            # Use the most recent session
-            current_session = sessions[0]  # Sessions are usually ordered by recency
-            session_id = current_session.get('session_id')
-            session_name = current_session.get('session_name', 'Unknown')
-            
-            print(f"📋 DEBUG: Using session: {session_name} (ID: {session_id})")
-            
-            # Get master list but with timeout protection
-            try:
-                master_list = self.get_master_list(state, session_id)
-            except Exception as e:
-                print(f"⚠️ DEBUG: Master list fetch failed, trying search approach: {e}")
-                return self._fallback_search_fetch(state, limit)
-            
-            if not master_list:
-                print(f"⚠️ DEBUG: No master list data, trying search approach")
-                return self._fallback_search_fetch(state, limit)
-            
-            bills = master_list.get('bill', {})
-            total_bills = len(bills)
-            print(f"📋 DEBUG: Found {total_bills} bills in master list")
-            
-            if total_bills == 0:
-                return {"error": f"No bills found in master list for {state}", "bills_processed": 0}
-            
-            # Convert to list and limit
-            bill_items = list(bills.items())
-            
-            # If recent_only, try to get bills from this year
-            if recent_only:
-                current_year = datetime.now().year
-                print(f"🔍 DEBUG: Filtering for recent bills from {current_year}")
-                
-                recent_bills = []
-                for bill_id, bill_info in bill_items:
-                    # Check if bill has recent activity
-                    status_date = bill_info.get('status_date', '')
-                    if status_date and str(current_year) in status_date:
-                        recent_bills.append((bill_id, bill_info))
-                
-                if recent_bills:
-                    bill_items = recent_bills
-                    print(f"📋 DEBUG: Filtered to {len(recent_bills)} recent bills")
-            
-            # Apply limit
-            if limit > 0 and limit < len(bill_items):
-                bill_items = bill_items[:limit]
-                print(f"🔍 DEBUG: Limited to {limit} bills")
-            
-            # Process each bill with proper error handling and delays
-            processed_count = 0
-            processed_bills = []
-            
-            for i, (bill_id, bill_info) in enumerate(bill_items):
-                try:
-                    bill_number = bill_info.get('bill_number', 'Unknown')
-                    print(f"🔍 DEBUG: Processing bill {i+1}/{len(bill_items)}: {bill_number}")
-                    
-                    # Get detailed bill information with timeout
-                    try:
-                        detailed_bill = self.get_bill(bill_id=int(bill_id))
-                    except Exception as e:
-                        print(f"⚠️ DEBUG: Failed to get details for bill {bill_number}: {e}")
-                        continue
-                    
-                    if not detailed_bill:
-                        print(f"⚠️ DEBUG: No detailed data found for bill {bill_number}, skipping")
-                        continue
-                    
-                    # Process the bill
-                    processed_bill = self._process_bill_for_database(detailed_bill, state, i+1)
-                    if processed_bill:
-                        processed_bills.append(processed_bill)
-                        processed_count += 1
-                        print(f"✅ DEBUG: Successfully processed bill {bill_number}")
-                    
-                    # Add delay to avoid rate limiting (shorter for bulk)
-                    if i < len(bill_items) - 1:  # Don't delay after the last item
-                        time.sleep(0.3)  # Reduced delay for bulk operations
-                    
-                except Exception as e:
-                    print(f"❌ DEBUG: Error processing bill {bill_id}: {e}")
-                    continue
-            
-            print(f"✅ DEBUG: Optimized bulk fetch completed: {processed_count} bills processed")
-            
-            return {
-                "success": True,
-                "state": state,
-                "bills_processed": processed_count,
-                "bills_analyzed": processed_count,
-                "bills_fetched": processed_count,
-                "session": session_name,
-                "total_available": total_bills,
-                "bills": processed_bills,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            print(f"❌ DEBUG: Error in optimized bulk fetch: {e}")
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e),
-                "state": state,
-                "bills_processed": 0
-            }
-    
-    def _fallback_search_fetch(self, state: str, limit: int = 10) -> Dict:
-        """
-        Fallback method using search when master list fails
-        """
-        try:
-            print(f"🔍 DEBUG: Using fallback search method for state '{state}'")
-            
-            # Try searching for recent bills using common terms
-            search_terms = ['bill', 'act', 'resolution']
-            all_results = []
-            
-            for term in search_terms:
-                if len(all_results) >= limit:
-                    break
-                
-                print(f"🔍 DEBUG: Searching for '{term}' in {state}")
-                search_result = self.search(state=state, query=term, year=2)  # Current year
-                
-                results = search_result.get('results', [])
-                for result in results:
-                    if len(all_results) >= limit:
-                        break
-                    # Avoid duplicates
-                    bill_id = result.get('bill_id')
-                    if not any(b.get('bill_id') == bill_id for b in all_results):
-                        all_results.append(result)
-                
-                # Small delay between searches
-                time.sleep(0.5)
-            
-            print(f"📋 DEBUG: Fallback search found {len(all_results)} bills")
-            
-            # Process the search results
-            processed_bills = []
-            for i, result in enumerate(all_results):
-                try:
-                    # Get detailed bill info
-                    bill_id = result.get('bill_id')
-                    if bill_id:
-                        detailed_bill = self.get_bill(bill_id=int(bill_id))
-                        if detailed_bill:
-                            processed_bill = self._process_bill_for_database(detailed_bill, state, i+1)
-                            if processed_bill:
-                                processed_bills.append(processed_bill)
-                    
-                    time.sleep(0.3)  # Delay between requests
-                    
-                except Exception as e:
-                    print(f"⚠️ DEBUG: Error processing search result: {e}")
-                    continue
-            
-            return {
-                "success": True,
-                "state": state,
-                "bills_processed": len(processed_bills),
-                "bills_analyzed": len(processed_bills),
-                "bills_fetched": len(processed_bills),
-                "method": "fallback_search",
-                "bills": processed_bills,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            print(f"❌ DEBUG: Error in fallback search: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "state": state,
-                "bills_processed": 0
-            }
-    
-    def search_and_analyze_bills(self, state: str, query: str, limit: int = 15) -> Dict:
-        """
-        Search for bills by topic and analyze them
-        This is the method that works well for topic-based searches
-        """
-        try:
-            print(f"🔍 DEBUG: Starting search and analyze for '{query}' in state '{state}' (limit: {limit})")
-            
-            # Search for bills
-            search_result = self.search(state=state, query=query, year=2)  # Current year
-            
-            results = search_result.get('results', [])
-            summary = search_result.get('summary', {})
-            
-            print(f"📋 DEBUG: Search found {len(results)} results")
-            
-            if not results:
-                return {
-                    "success": False,
-                    "error": f"No bills found for query '{query}' in state {state}",
-                    "bills_analyzed": 0
-                }
-            
-            # Limit results
-            if limit > 0 and len(results) > limit:
-                results = results[:limit]
-                print(f"🔍 DEBUG: Limited to {limit} results")
-            
-            # Process each bill
-            processed_bills = []
-            for i, result in enumerate(results):
-                try:
-                    print(f"🔍 DEBUG: Processing search result {i+1}/{len(results)}")
-                    
-                    # Get detailed bill information
-                    bill_id = result.get('bill_id')
-                    if bill_id:
-                        detailed_bill = self.get_bill(bill_id=int(bill_id))
-                        if detailed_bill:
-                            processed_bill = self._process_bill_for_database(detailed_bill, state, i+1)
-                            if processed_bill:
-                                processed_bills.append(processed_bill)
-                    
-                    # Add delay to avoid rate limiting
-                    if i < len(results) - 1:
-                        time.sleep(0.4)
-                    
-                except Exception as e:
-                    print(f"❌ DEBUG: Error processing search result {i+1}: {e}")
-                    continue
-            
-            print(f"✅ DEBUG: Search and analyze completed: {len(processed_bills)} bills processed")
-            
-            return {
-                "success": True,
-                "state": state,
-                "query": query,
-                "bills_analyzed": len(processed_bills),
-                "bills_found": len(results),
-                "total_available": summary.get('count', 0),
-                "bills": processed_bills,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            print(f"❌ DEBUG: Error in search and analyze: {e}")
-            traceback.print_exc()
-            return {
-                "success": False,
-                "error": str(e),
-                "state": state,
-                "query": query,
-                "bills_analyzed": 0
-            }
-   
-    def _process_bill_for_database(self, detailed_bill: Dict, state: str, bill_num: int) -> Optional[Dict]:
-        """
-        Process a detailed bill into the format expected by the database
-        """
-        try:
-            print(f"\n🔍 DEBUG: RECEIVING bill {bill_num} for processing:")
-            print(f"   - Bill ID: {detailed_bill.get('bill_id')}")
-            print(f"   - Title: {detailed_bill.get('title', 'No title')[:50]}...")
-            
-            # Extract basic information
-            title = self._safe_string(detailed_bill.get('title'), f"title_bill_{bill_num}")
-            description = self._safe_string(detailed_bill.get('description'), f"desc_bill_{bill_num}")
-            bill_number = self._safe_string(detailed_bill.get('bill_number'), f"bill_num_{bill_num}")
-            bill_id = detailed_bill.get('bill_id')
-            
-            # Skip if we don't have basic required information
-            if not title and not bill_number:
-                print(f"⚠️ DEBUG: Skipping bill {bill_num} - insufficient data")
-                return None
-            
-            # Extract dates
-            status_date = detailed_bill.get('status_date', '')
-            introduced_date = detailed_bill.get('introduced_date', '')
-            last_action_date = detailed_bill.get('last_action_date', '')
-            
-            print(f"🔍 DEBUG: Original date values:")
-            print(f"   - Status date: '{status_date}'")
-            print(f"   - Introduced date: '{introduced_date}'")
-            print(f"   - Last action date: '{last_action_date}'")
-            
-            # Extract session info
-            session_info = detailed_bill.get('session', {})
-            session_name = session_info.get('session_name', 'Unknown')
-            
-            # Extract URLs
-            state_link = detailed_bill.get('state_link', '')
-            
-            # Categorize the bill
-            category = self._categorize_bill(title, description, bill_num)
-            
-            # Generate AI analysis
-            ai_analysis = self._generate_ai_analysis(title, description, category, bill_num)
-            
-            # State abbreviation mapping
-            state_abbr_map = {
-                "CA": "California",
-                "CO": "Colorado",
-                "KY": "Kentucky",
-                "NV": "Nevada",
-                "SC": "South Carolina",
-                "TX": "Texas",
-            }
-            
-            # Reverse the mapping for state full name to abbreviation
-            abbr_state_map = {v: k for k, v in state_abbr_map.items()}
-            
-            # Determine state_abbr based on state input
-            state_abbr = state
-            state_full = state
-            
-            # If state is an abbreviation, get full name
-            if state in state_abbr_map:
-                state_full = state_abbr_map[state]
-                state_abbr = state
-            # If state is a full name, get abbreviation
-            elif state in abbr_state_map:
-                state_abbr = abbr_state_map[state]
-                state_full = state
-            
-            print(f"🔍 DEBUG: State processing for bill {bill_num}:")
-            print(f"   - Input state: '{state}'")
-            print(f"   - Resolved state_full: '{state_full}'")
-            print(f"   - Resolved state_abbr: '{state_abbr}'")
-            
-            # Create processed bill object
-            processed_bill = {
-                'bill_id': str(bill_id) if bill_id else f"unknown_{bill_num}",
-                'bill_number': bill_number or f"BILL{bill_num}",
-                'title': title or "Untitled Bill",
-                'description': description or "No description available",
-                'state': state_full,  # Always use full state name
-                'state_abbr': state_abbr,  # Always include abbreviation
-                'session': session_name,
-                'status': detailed_bill.get('status', 0),
-                'status_date': status_date,
-                'introduced_date': introduced_date,
-                'last_action_date': last_action_date or status_date,
-                'legiscan_url': state_link,
-                'category': category,
-                'ai_summary': ai_analysis.get('summary', ''),
-                'ai_talking_points': ai_analysis.get('key_points', ''),
-                'ai_business_impact': ai_analysis.get('business_impact', ''),
-                'ai_potential_impact': ai_analysis.get('potential_impact', ''),
-                'source': 'LegiScan API',
-                'created_at': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
-            }
-            
-            print(f"✅ DEBUG: PROCESSED bill {bill_num}:")
-            print(f"   - Bill ID: {processed_bill['bill_id']}")
-            print(f"   - Processed introduced_date: '{processed_bill['introduced_date']}'")
-            print(f"   - Processed last_action_date: '{processed_bill['last_action_date']}'")
-            print(f"   - Processed created_at: '{processed_bill['created_at']}'")
-            print(f"   - Processed last_updated: '{processed_bill['last_updated']}'")
-            print(f"   - State: '{processed_bill['state']}'")
-            print(f"   - State abbr: '{processed_bill['state_abbr']}'")
-            
-            return processed_bill
-                
-        except Exception as e:
-            print(f"❌ DEBUG: Error processing bill for database: {e}")
-            return None
-
-    
-    def bulk_download_states(self, states: List[str], output_dir: str = 'data', bills_per_state: int = 10) -> Dict:
-        """
-        Optimized bulk download for multiple states
-        """
-        try:
-            print(f"🔍 DEBUG: Starting optimized bulk download for {len(states)} states")
-            
-            results = {}
-            
-            for state in states:
-                print(f"\n📋 DEBUG: Processing state: {state}")
-                
-                # Use optimized bulk fetch
-                state_result = self.optimized_bulk_fetch(
-                    state=state,
-                    limit=bills_per_state,
-                    recent_only=True
-                )
-                
-                results[state] = state_result
-                
-                print(f"✅ DEBUG: Completed processing for state {state}")
-                
-                # Add delay between states to avoid rate limiting
-                if state != states[-1]:
-                    print(f"🔍 DEBUG: Adding delay between states")
-                    time.sleep(2)  # Longer delay between states
-            
-            print(f"✅ DEBUG: Bulk download completed for {len(states)} states")
-            
-            return {
-                'status': 'success',
-                'states_processed': len(states),
-                'results': results
-            }
-            
-        except Exception as e:
-            print(f"❌ DEBUG: Error in bulk_download_states: {e}")
-            traceback.print_exc()
-            return {
-                'status': 'error',
-                'error': str(e),
-                'states_processed': len(results) if 'results' in locals() else 0,
-                'results': results if 'results' in locals() else {}
-            }
-
-
-# Optimized Federal Register API
-class FederalRegisterAPI:
-    """
-    Optimized Federal Register API with better timeout handling
-    """
-    
-    BASE_URL = "https://www.federalregister.gov/api/v1/documents"
-    TRUMP_2025_URL = "https://www.federalregister.gov/presidential-documents/executive-orders/donald-trump/2025"
-    
-    def __init__(self):
-        print("🔍 DEBUG: Initializing optimized FederalRegisterAPI...")
-        
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'LegislationVue/2.0',
-            'Accept': 'application/json'
-        })
-        
-        # Set timeouts for all requests
-        self.session.timeout = 60  # 60 second timeout
-        
-        print("✅ Optimized Federal Register API initialized")
-    
-    def fetch_executive_orders(self,
-                             start_date: Optional[str] = None,
-                             end_date: Optional[str] = None,
-                             per_page: int = 20) -> Dict:  # Reduced default page size
-        """
-        Optimized fetch of executive orders with better error handling
-        """
-        
-        if not start_date:
-            start_date = "2025-01-20"  # Trump's inauguration date
-        
-        if not end_date:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-        
-        print(f"🔍 Fetching executive orders from {start_date} to {end_date}")
+        params['key'] = self.api_key
         
         try:
-            # Build query parameters with smaller page size
-            params = {
-                'conditions[publication_date][gte]': start_date,
-                'conditions[publication_date][lte]': end_date,
-                'conditions[type]': 'PRESDOCU',
-                'conditions[presidential_document_type]': 'executive_order',
-                'per_page': min(per_page, 20),  # Cap at 20 to avoid timeouts
-                'order': 'newest',
-                'fields[]': ['title', 'abstract', 'document_number', 'publication_date', 
-                           'signing_date', 'html_url', 'pdf_url', 'executive_order_number']
-            }
+            print(f"🔍 Making LegiScan API request to: {endpoint}")
+            print(f"   Parameters: {[k for k in params.keys() if k != 'key']}")
             
-            # Make request with timeout
-            print(f"🔍 DEBUG: Making Federal Register API request...")
-            response = self.session.get(self.BASE_URL, params=params, timeout=45)
-            
-            if not response.ok:
-                print(f"❌ DEBUG: Federal Register API failed with status {response.status_code}")
-                # Fallback to mock data
-                return self._generate_fallback_executive_orders(start_date, end_date)
+            response = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=30)
+            response.raise_for_status()
             
             data = response.json()
-            results = data.get('results', [])
             
-            print(f"📋 Found {len(results)} executive orders from Federal Register")
+            if data.get('status') == 'ERROR':
+                error_msg = data.get('alert', 'Unknown error')
+                print(f"❌ LegiScan API Error: {error_msg}")
+                raise Exception(f"LegiScan API Error: {error_msg}")
             
-            # Process each order
-            processed_orders = []
-            for i, raw_order in enumerate(results):
+            print(f"✅ LegiScan API request successful")
+            return data
+            
+        except requests.exceptions.RequestException as e:
+            print(f"❌ LegiScan HTTP request failed: {str(e)}")
+            raise Exception(f"HTTP request failed: {str(e)}")
+        except json.JSONDecodeError as e:
+            print(f"❌ LegiScan JSON decode error: {str(e)}")
+            raise Exception(f"Invalid JSON response: {str(e)}")
+        except Exception as e:
+            print(f"❌ LegiScan request error: {str(e)}")
+            raise
+    
+    def get_state_abbreviation(self, state: str) -> str:
+        """Convert state name to abbreviation"""
+        if len(state) == 2:
+            return state.upper()
+        return self.state_mapping.get(state.title(), state.upper())
+    
+    def get_state_name(self, state_abbr: str) -> str:
+        """Convert state abbreviation to full name"""
+        reverse_mapping = {v: k for k, v in self.state_mapping.items()}
+        return reverse_mapping.get(state_abbr.upper(), state_abbr)
+    
+    def search_bills(self, state: str, query: str = None, limit: int = 50) -> Dict[str, Any]:
+        """Search for bills in a specific state"""
+        try:
+            state_abbr = self.get_state_abbreviation(state)
+            print(f"🔍 Searching bills for {state} ({state_abbr})")
+            
+            params = {
+                'op': 'getSearch',
+                'state': state_abbr,
+                'page': 1
+            }
+            
+            if query:
+                params['query'] = query
+                print(f"🔍 Search query: '{query}'")
+            
+            response = self._make_request('', params)
+            
+            if 'searchresult' not in response:
+                print("⚠️ No searchresult field in LegiScan response")
+                return {
+                    'success': False,
+                    'error': 'No search results returned from LegiScan',
+                    'bills': []
+                }
+            
+            bills = []
+            search_results = response['searchresult']
+            
+            # Handle different response formats from LegiScan
+            if isinstance(search_results, dict) and 'summary' in search_results:
+                # This is a summary response, extract the actual results
+                actual_results = []
+                for key, value in search_results.items():
+                    if key != 'summary' and isinstance(value, dict):
+                        actual_results.append(value)
+                search_results = actual_results
+            elif isinstance(search_results, dict):
+                search_results = [search_results]
+            elif isinstance(search_results, list):
+                pass
+            else:
+                print(f"⚠️ Unexpected search results format: {type(search_results)}")
+                search_results = []
+            
+            print(f"🔍 Processing {len(search_results)} search results")
+            
+            for i, result in enumerate(search_results[:limit]):
                 try:
-                    processed_order = self._process_executive_order_optimized(raw_order, i+1)
-                    if processed_order:
-                        processed_orders.append(processed_order)
+                    bill_data = self._extract_bill_data(result, state_abbr)
+                    if bill_data:
+                        bills.append(bill_data)
+                        print(f"✅ Processed bill {i+1}: {bill_data.get('bill_number', 'Unknown')}")
                 except Exception as e:
-                    print(f"⚠️ DEBUG: Error processing executive order {i+1}: {e}")
+                    print(f"❌ Error processing bill result {i+1}: {e}")
                     continue
             
+            print(f"✅ Successfully processed {len(bills)} bills from search")
+            
             return {
-                'results': processed_orders,
-                'count': len(processed_orders),
-                'date_range': f"{start_date} to {end_date}",
-                'source': 'Federal Register API (Optimized)',
+                'success': True,
+                'bills': bills,
+                'total_found': len(search_results),
+                'query': query,
+                'state': state_abbr
+            }
+            
+        except Exception as e:
+            print(f"❌ Error in search_bills: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'bills': []
+            }
+    
+    def get_bill_details(self, bill_id: str) -> Dict[str, Any]:
+        """Get detailed information for a specific bill"""
+        try:
+            print(f"🔍 Getting bill details for ID: {bill_id}")
+            
+            params = {
+                'op': 'getBill',
+                'id': bill_id
+            }
+            
+            response = self._make_request('', params)
+            
+            if 'bill' not in response:
+                print(f"⚠️ Bill {bill_id} not found in response")
+                return {'success': False, 'error': 'Bill not found'}
+            
+            bill_data = response['bill']
+            detailed_bill = self._extract_detailed_bill_data(bill_data)
+            
+            if detailed_bill:
+                print(f"✅ Got detailed bill data for {bill_id}")
+                return {
+                    'success': True,
+                    'bill': detailed_bill
+                }
+            else:
+                return {'success': False, 'error': 'Failed to extract bill data'}
+            
+        except Exception as e:
+            print(f"❌ Error getting bill details for {bill_id}: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _extract_bill_data(self, result: Dict[str, Any], state_abbr: str) -> Dict[str, Any]:
+        """Extract bill data from search result - FIXED to match your database schema"""
+        try:
+            # Handle different result formats from LegiScan
+            bill_id = result.get('bill_id', '')
+            bill_number = result.get('bill_number', '')
+            title = result.get('title', '')
+            description = result.get('description', '')
+            
+            bill_data = {
+                # Core identification - matching your EXACT Azure SQL schema
+                'bill_id': str(bill_id),
+                'bill_number': bill_number,
+                'title': title,
+                'description': description,
+                'state': self.get_state_name(state_abbr),
+                'state_abbr': state_abbr,
+                'status': result.get('status_text', result.get('status', '')),
+                'category': self._determine_category(title + ' ' + description),
+                
+                # Session information - ONLY fields that exist in your database
+                'session_id': result.get('session_id', ''),
+                'session_name': result.get('session_name', ''),
+                'bill_type': result.get('bill_type', 'bill'),
+                'body': result.get('body', ''),
+                
+                # Dates - ONLY the fields that exist in your database
+                'introduced_date': self._parse_date(result.get('introduced_date')),
+                'last_action_date': self._parse_date(result.get('last_action_date')),
+                
+                # URLs
+                'legiscan_url': result.get('url', result.get('state_link', '')),
+                'pdf_url': '',
+            }
+            
+            # Add AI analysis fields
+            bill_data.update(self._generate_basic_analysis(bill_data))
+            
+            return bill_data
+            
+        except Exception as e:
+            print(f"❌ Error extracting bill data: {e}")
+            return None
+    
+    def _extract_detailed_bill_data(self, bill: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract detailed bill data - FIXED to match your database schema"""
+        try:
+            state_abbr = bill.get('state', '')
+            
+            bill_data = {
+                # Core identification
+                'bill_id': str(bill.get('bill_id', '')),
+                'bill_number': bill.get('bill_number', ''),
+                'title': bill.get('title', ''),
+                'description': bill.get('description', ''),
+                'state': self.get_state_name(state_abbr),
+                'state_abbr': state_abbr,
+                'status': bill.get('status_text', ''),
+                'category': self._determine_category(bill.get('title', '') + ' ' + bill.get('description', '')),
+                
+                # Session information - ONLY fields that exist in your database
+                'session_id': bill.get('session', {}).get('session_id', '') if isinstance(bill.get('session'), dict) else '',
+                'session_name': bill.get('session', {}).get('session_name', '') if isinstance(bill.get('session'), dict) else str(bill.get('session', '')),
+                'bill_type': bill.get('bill_type', 'bill'),
+                'body': bill.get('body', ''),
+                
+                # Dates - ONLY the fields that exist in your database
+                'introduced_date': self._parse_date(self._get_first_history_date(bill.get('history', []))),
+                'last_action_date': self._parse_date(self._get_last_history_date(bill.get('history', []))),
+                
+                # URLs
+                'legiscan_url': bill.get('state_link', ''),
+                'pdf_url': self._get_pdf_url(bill.get('texts', [])),
+            }
+            
+            # Add AI analysis
+            bill_data.update(self._generate_basic_analysis(bill_data))
+            
+            return bill_data
+            
+        except Exception as e:
+            print(f"❌ Error extracting detailed bill data: {e}")
+            return None
+    
+    def _determine_category(self, text: str) -> str:
+        """Determine bill category based on content"""
+        if not text:
+            return 'civic'
+            
+        text_lower = text.lower()
+        
+        # Category keywords
+        if any(word in text_lower for word in ['education', 'school', 'university', 'student', 'teacher', 'academic']):
+            return 'education'
+        elif any(word in text_lower for word in ['health', 'medical', 'hospital', 'insurance', 'medicare', 'medicaid']):
+            return 'healthcare'
+        elif any(word in text_lower for word in ['business', 'commerce', 'trade', 'economic', 'tax', 'finance']):
+            return 'business'
+        elif any(word in text_lower for word in ['environment', 'climate', 'pollution', 'energy', 'green', 'renewable']):
+            return 'environment'
+        elif any(word in text_lower for word in ['transportation', 'highway', 'transit', 'vehicle', 'road', 'infrastructure']):
+            return 'transportation'
+        elif any(word in text_lower for word in ['crime', 'criminal', 'justice', 'police', 'court', 'law enforcement']):
+            return 'criminal-justice'
+        elif any(word in text_lower for word in ['housing', 'property', 'real estate', 'zoning', 'development']):
+            return 'housing'
+        else:
+            return 'civic'
+    
+    def _get_first_history_date(self, history: List[Dict]) -> str:
+        """Get the first date from bill history"""
+        if history and len(history) > 0:
+            return history[0].get('date', '')
+        return ''
+    
+    def _get_last_history_date(self, history: List[Dict]) -> str:
+        """Get the last date from bill history"""
+        if history and len(history) > 0:
+            return history[-1].get('date', '')
+        return ''
+    
+    def _parse_date(self, date_str: str) -> Optional[datetime]:
+        """Parse date string to datetime object"""
+        if not date_str:
+            return None
+        
+        try:
+            # Try different date formats
+            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%Y-%m-%d %H:%M:%S', '%m-%d-%Y']:
+                try:
+                    return datetime.strptime(str(date_str), fmt)
+                except ValueError:
+                    continue
+            return None
+        except Exception:
+            return None
+    
+    def _get_pdf_url(self, texts: List[Dict[str, Any]]) -> str:
+        """Extract PDF URL from bill texts"""
+        try:
+            if texts and len(texts) > 0:
+                return texts[0].get('state_link', '')
+            return ''
+        except Exception:
+            return ''
+    
+    def _generate_basic_analysis(self, bill: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate basic AI analysis for bills - matching your Azure SQL schema"""
+        try:
+            title = bill.get('title', '')
+            description = bill.get('description', '')
+            category = bill.get('category', 'civic')
+            
+            # Generate summaries based on category and content
+            if title:
+                summary = f"{category.title()} legislation: {title[:150]}{'...' if len(title) > 150 else ''}"
+            else:
+                summary = f"Bill relating to {category}"
+            
+            talking_points = []
+            if category == 'education':
+                talking_points = ["Impact on schools and students", "Educational funding implications", "Teacher and staff effects"]
+            elif category == 'healthcare':
+                talking_points = ["Healthcare access implications", "Insurance and coverage effects", "Public health impact"]
+            elif category == 'business':
+                talking_points = ["Economic impact assessment", "Business regulatory effects", "Tax implications"]
+            elif category == 'environment':
+                talking_points = ["Environmental protection measures", "Climate change considerations", "Sustainability requirements"]
+            else:
+                talking_points = ["Legislative policy changes", "Implementation requirements", "Stakeholder impacts"]
+            
+            return {
+                # Matching your Azure SQL schema field names
+                'ai_summary': summary,
+                'ai_executive_summary': f"This {category} bill addresses legislative matters in the {category} sector.",
+                'ai_talking_points': "; ".join(talking_points),
+                'ai_key_points': f"Key focus: {category.title()} policy reform",
+                'ai_business_impact': 'Business impact assessment pending detailed analysis',
+                'ai_potential_impact': f'Potential impact on {category} sector and related stakeholders',
+                'ai_version': '1.0'
+            }
+            
+        except Exception as e:
+            print(f"❌ Error generating analysis: {e}")
+            return {
+                'ai_summary': 'Analysis pending',
+                'ai_executive_summary': 'Executive summary pending',
+                'ai_talking_points': 'Talking points pending',
+                'ai_key_points': 'Key points pending',
+                'ai_business_impact': 'Business impact pending',
+                'ai_potential_impact': 'Potential impact pending',
+                'ai_version': '1.0'
+            }
+    
+    def search_and_analyze_bills(self, state: str, query: str, limit: int = 50, 
+                               ai_client=None, db_manager=None, process_one_by_one: bool = False) -> Dict[str, Any]:
+        """
+        *** MAIN METHOD CALLED BY YOUR MAIN.PY ***
+        Search and analyze bills with AI summaries
+        Now supports one-by-one processing to database with REAL AI
+        """
+        try:
+            print(f"🔍 LegiScan: Starting search_and_analyze_bills")
+            print(f"   - State: {state}")
+            print(f"   - Query: '{query}'")
+            print(f"   - Limit: {limit}")
+            print(f"   - Process one-by-one: {process_one_by_one}")
+            
+            # Search for bills
+            search_result = self.search_bills(state, query, limit)
+            
+            if not search_result['success']:
+                print(f"❌ Search failed: {search_result.get('error')}")
+                return search_result
+            
+            bills = search_result['bills']
+            print(f"🔍 Got {len(bills)} bills from search")
+            
+            # Processing results tracking
+            detailed_bills = []
+            processing_results = {
+                'total_fetched': len(bills),
+                'total_processed': 0,
+                'total_saved': 0,
+                'errors': []
+            }
+            
+            # Get detailed information for each bill
+            for i, bill in enumerate(bills[:limit]):
+                try:
+                    bill_number = bill.get('bill_number', f'Bill {i+1}')
+                    print(f"🔍 Processing bill {i+1}/{len(bills)}: {bill_number}")
+                    
+                    # Get detailed bill info
+                    detailed_bill = self._get_detailed_bill_info(bill, i+1)
+                    
+                    # If processing one-by-one, handle AI analysis and database save here
+                    if process_one_by_one and ai_client and db_manager:
+                        try:
+                            # Step 1: Real AI Analysis
+                            print(f"🤖 Running REAL AI analysis for bill {bill_number}")
+                            ai_analysis = self._run_ai_analysis(detailed_bill, ai_client)
+                            detailed_bill.update(ai_analysis)
+                            
+                            # Step 2: Prepare for database
+                            db_data = self._prepare_bill_for_database(detailed_bill)
+                            
+                            # Step 3: Save to database
+                            if self._save_bill_to_database(db_data, db_manager):
+                                processing_results['total_saved'] += 1
+                                print(f"✅ Bill {bill_number} saved to database with REAL AI analysis")
+                            else:
+                                print(f"❌ Failed to save bill {bill_number} to database")
+                                
+                        except Exception as ai_db_error:
+                            error_msg = f"AI/DB error for bill {bill_number}: {str(ai_db_error)}"
+                            print(f"❌ {error_msg}")
+                            processing_results['errors'].append(error_msg)
+                    
+                    detailed_bills.append(detailed_bill)
+                    processing_results['total_processed'] += 1
+                    print(f"✅ Processed bill {i+1}")
+                        
+                except Exception as e:
+                    error_msg = f"Error processing bill {i+1}: {str(e)}"
+                    print(f"❌ {error_msg}")
+                    processing_results['errors'].append(error_msg)
+                    # Still add the bill with basic data
+                    detailed_bills.append(bill)
+            
+            print(f"✅ LegiScan: Returning {len(detailed_bills)} analyzed bills")
+            
+            result = {
+                'success': True,
+                'bills': detailed_bills,
+                'bills_found': len(detailed_bills),
+                'query': query,
+                'state': state,
                 'timestamp': datetime.now().isoformat()
             }
             
-        except requests.exceptions.Timeout:
-            print("⏱️ DEBUG: Federal Register API timed out, using fallback")
-            return self._generate_fallback_executive_orders(start_date, end_date)
+            # Add processing results if one-by-one processing was used
+            if process_one_by_one:
+                result['processing_results'] = processing_results
+            
+            return result
+            
         except Exception as e:
-            print(f"❌ Error fetching executive orders: {e}")
-            return self._generate_fallback_executive_orders(start_date, end_date)
-    
-    def _process_executive_order_optimized(self, raw_order: Dict, order_num: int) -> Optional[Dict]:
-        """
-        Optimized processing of executive order data
-        """
-        try:
-            # Safely extract basic information
-            title = raw_order.get('title', '').strip()
-            abstract = raw_order.get('abstract', '').strip()
-            document_number = raw_order.get('document_number', '')
-            
-            # Extract dates
-            signing_date = raw_order.get('signing_date')
-            publication_date = raw_order.get('publication_date')
-            
-            # Use signing date, fallback to publication date
-            order_date = signing_date or publication_date or datetime.now().strftime('%Y-%m-%d')
-            
-            # Extract URLs
-            html_url = raw_order.get('html_url', '')
-            pdf_url = raw_order.get('pdf_url', '')
-            
-            # Extract EO number
-            eo_number = raw_order.get('executive_order_number')
-            if not eo_number:
-                # Try to extract from title
-                import re
-                match = re.search(r'(\d+)', title)
-                eo_number = match.group(1) if match else f"2025{order_num:03d}"
-            
-            # Skip if insufficient data
-            if not title and not document_number:
-                return None
-            
-            # Categorize
-            category = self._categorize_executive_order_optimized(title, abstract)
-            
-            # Generate AI analysis
-            ai_analysis = self._generate_executive_order_analysis(title, abstract, category)
-            
+            print(f"❌ Error in search_and_analyze_bills: {e}")
+            import traceback
+            traceback.print_exc()
             return {
-                'id': document_number or f"EO{eo_number}",
-                'executive_order_number': str(eo_number),
-                'title': title or f"Executive Order {eo_number}",
-                'abstract': abstract or "Executive order details not available",
-                'signing_date': order_date,
-                'publication_date': publication_date or order_date,
-                'document_number': document_number,
-                'category': category,
-                'html_url': html_url,
-                'pdf_url': pdf_url,
-                'ai_summary': ai_analysis.get('summary', ''),
-                'ai_talking_points': ai_analysis.get('talking_points', ''),
-                'ai_business_impact': ai_analysis.get('business_impact', ''),
-                'ai_potential_impact': ai_analysis.get('potential_impact', ''),
-                'source': 'Federal Register API',
-                'created_at': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
+                'success': False,
+                'error': str(e),
+                'bills': []
+            }
+    
+    def _get_detailed_bill_info(self, bill: Dict[str, Any], bill_num: int) -> Dict[str, Any]:
+        """Get detailed bill information"""
+        try:
+            # Try to get detailed info if we have a bill_id
+            if bill.get('bill_id') and str(bill.get('bill_id')).strip():
+                print(f"   Getting details for bill_id: {bill.get('bill_id')}")
+                detail_result = self.get_bill_details(str(bill['bill_id']))
+                if detail_result.get('success'):
+                    return detail_result['bill']
+                else:
+                    print(f"⚠️ Used search data for bill {bill_num} (detail fetch failed)")
+                    return bill
+            else:
+                print(f"⚠️ No bill_id for bill {bill_num}, using search data")
+                return bill
+        except Exception as e:
+            print(f"❌ Error getting detailed info for bill {bill_num}: {e}")
+            return bill
+    
+    def _run_ai_analysis(self, bill: Dict[str, Any], ai_client) -> Dict[str, Any]:
+        """Run AI analysis on a single bill using your REAL ai.py module"""
+        try:
+            print(f"🤖 Running REAL AI analysis for bill {bill.get('bill_number', 'Unknown')}")
+            
+            # Import and use your real AI module
+            try:
+                from ai import analyze_legiscan_bill
+                print("✅ Successfully imported real AI module (ai.py)")
+                
+                # Handle async properly - your AI function is async
+                try:
+                    # Try to run in existing event loop
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # We're in an async context, but need to run sync
+                        # Create a new thread to run the async function
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, analyze_legiscan_bill(bill))
+                            ai_analysis = future.result(timeout=60)  # 60 second timeout
+                    else:
+                        # No loop running, create new one
+                        ai_analysis = asyncio.run(analyze_legiscan_bill(bill))
+                        
+                except RuntimeError:
+                    # Fallback: create new event loop in thread
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, analyze_legiscan_bill(bill))
+                        ai_analysis = future.result(timeout=60)
+                
+                print(f"✅ REAL AI analysis completed for bill {bill.get('bill_number', 'Unknown')}")
+                print(f"   AI version: {ai_analysis.get('ai_version', 'unknown')}")
+                
+                return ai_analysis
+                
+            except ImportError as e:
+                print(f"❌ Could not import AI module: {e}")
+                print("   Falling back to basic analysis")
+                return self._generate_basic_analysis(bill)
+                
+        except Exception as e:
+            print(f"❌ Real AI analysis error for bill {bill.get('bill_number', 'Unknown')}: {e}")
+            # Return fallback analysis
+            return {
+                'ai_summary': f'<p>AI analysis encountered an error: {str(e)}</p>',
+                'ai_executive_summary': f'<p>AI analysis encountered an error: {str(e)}</p>',
+                'ai_talking_points': f'<p>AI analysis encountered an error: {str(e)}</p>',
+                'ai_key_points': f'<p>AI analysis encountered an error: {str(e)}</p>',
+                'ai_business_impact': f'<p>AI analysis encountered an error: {str(e)}</p>',
+                'ai_potential_impact': f'<p>AI analysis encountered an error: {str(e)}</p>',
+                'ai_version': 'error_fallback_v1'
+            }
+    
+    def _prepare_bill_text_for_ai(self, bill: Dict[str, Any]) -> str:
+        """Extract and clean bill text for AI analysis"""
+        text_parts = []
+        
+        if bill.get('title'):
+            text_parts.append(f"Title: {bill['title']}")
+        if bill.get('description'):
+            text_parts.append(f"Description: {bill['description']}")
+        if bill.get('text'):
+            text_parts.append(f"Full Text: {bill['text']}")
+        
+        return "\n\n".join(text_parts)
+    
+    def _prepare_bill_for_database(self, bill: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare bill data for database insertion - FIXES the session parameter issue"""
+        try:
+            # Clean and format dates
+            introduced_date = self._safe_date_convert(bill.get('introduced_date'))
+            last_action_date = self._safe_date_convert(bill.get('last_action_date'))
+            
+            # Prepare database data - REMOVE problematic fields
+            db_data = {
+                "bill_id": str(bill.get('bill_id', '')),
+                "bill_number": bill.get('bill_number', ''),
+                "title": bill.get('title', ''),
+                "description": bill.get('description', ''),
+                "state": bill.get('state', ''),
+                "state_abbr": bill.get('state_abbr', ''),
+                "status": bill.get('status', ''),
+                "category": bill.get('category', ''),
+                "introduced_date": introduced_date,
+                "last_action_date": last_action_date,
+                "session_id": bill.get('session_id', ''),
+                "session_name": bill.get('session_name', ''),
+                "bill_type": bill.get('bill_type', ''),
+                "body": bill.get('body', ''),
+                "legiscan_url": bill.get('legiscan_url', ''),
+                "pdf_url": bill.get('pdf_url', ''),
+                # AI analysis fields
+                "ai_summary": bill.get('ai_summary', ''),
+                "ai_executive_summary": bill.get('ai_executive_summary', ''),
+                "ai_talking_points": bill.get('ai_talking_points', ''),
+                "ai_key_points": bill.get('ai_key_points', ''),
+                "ai_business_impact": bill.get('ai_business_impact', ''),
+                "ai_potential_impact": bill.get('ai_potential_impact', ''),
+                "ai_version": bill.get('ai_version', '1.0'),
+                # Timestamps
+                "created_at": datetime.utcnow(),
+                "last_updated": datetime.utcnow()
             }
             
+            # Remove any None values
+            db_data = {k: v for k, v in db_data.items() if v is not None}
+            
+            return db_data
+            
         except Exception as e:
-            print(f"❌ DEBUG: Error processing executive order {order_num}: {e}")
+            print(f"❌ Error preparing bill data for database: {e}")
+            raise
+    
+    def _safe_date_convert(self, date_value) -> Optional[str]:
+        """Safely convert date values to string format"""
+        if not date_value:
+            return None
+            
+        try:
+            if isinstance(date_value, str):
+                # Handle different date formats
+                if ' 00:00:00' in date_value:
+                    return date_value.split(' ')[0]  # Remove time part
+                return date_value
+            elif hasattr(date_value, 'strftime'):
+                return date_value.strftime('%Y-%m-%d')
+            else:
+                return str(date_value)
+        except Exception as e:
+            print(f"⚠️ Error converting date {date_value}: {e}")
             return None
     
-    def _categorize_executive_order_optimized(self, title: str, abstract: str) -> str:
-        """
-        Optimized categorization of executive orders
-        """
-        content = f"{title.lower()} {abstract.lower()}".strip()
-        
-        if not content:
-            return 'not-applicable'
-        
-        # Healthcare
-        if any(word in content for word in ['health', 'medical', 'healthcare', 'medicine', 'hospital']):
-            return 'healthcare'
-        
-        # Education  
-        elif any(word in content for word in ['education', 'school', 'student', 'university', 'college']):
-            return 'education'
-        
-        # Engineering/Infrastructure
-        elif any(word in content for word in ['infrastructure', 'engineering', 'construction', 'technology']):
-            return 'engineering'
-        
-        # Civic/Government (most common for EOs)
-        else:
-            return 'civic'
-    
-    def _generate_executive_order_analysis(self, title: str, abstract: str, category: str) -> Dict:
-        """
-        Generate AI analysis for executive orders
-        """
-        if not title:
-            title = "Executive Order"
-        
-        if not abstract:
-            abstract = "Executive order details not available"
-        
-        # Generate analysis
-        summary = f"Executive Order: {title}. This {category} order addresses important federal policy matters."
-        if len(abstract) > 50:
-            summary = f"Executive Order: {title}. {abstract}"
-            if len(summary) > 300:
-                summary = summary[:300] + "..."
-        
-        talking_points = f"1. This executive order addresses {category} policy priorities. 2. Federal agencies will coordinate implementation. 3. Impact will be monitored and assessed."
-        business_impact = f"1. May affect {category} sector operations. 2. Could require compliance updates. 3. May create new business opportunities."
-        potential_impact = f"1. Strengthens {category} policy framework. 2. Improves federal coordination. 3. Advances long-term objectives."
-        
-        return {
-            'summary': summary,
-            'talking_points': talking_points,
-            'business_impact': business_impact,
-            'potential_impact': potential_impact
-        }
-    
-    def _generate_fallback_executive_orders(self, start_date: str, end_date: str) -> Dict:
-        """
-        Generate fallback executive orders when API fails
-        """
-        print("🔄 DEBUG: Generating fallback executive orders")
-        
-        # Create some realistic sample executive orders
-        fallback_orders = [
-            {
-                'id': 'EO15001',
-                'executive_order_number': '15001',
-                'title': 'Strengthening American Energy Security',
-                'abstract': 'This order establishes policies to enhance domestic energy production and reduce dependence on foreign energy sources.',
-                'signing_date': '2025-01-20',
-                'publication_date': '2025-01-21',
-                'document_number': '2025-01234',
-                'category': 'engineering',
-                'html_url': 'https://www.federalregister.gov/documents/2025/01/21/2025-01234',
-                'pdf_url': 'https://www.federalregister.gov/documents/2025/01/21/2025-01234.pdf',
-                'ai_summary': 'Executive Order: Strengthening American Energy Security. This engineering order addresses important federal policy matters relating to energy independence and domestic production.',
-                'ai_talking_points': '1. This executive order addresses engineering policy priorities. 2. Federal agencies will coordinate implementation. 3. Impact will be monitored and assessed.',
-                'ai_business_impact': '1. May affect engineering sector operations. 2. Could require compliance updates. 3. May create new business opportunities in energy sector.',
-                'ai_potential_impact': '1. Strengthens engineering policy framework. 2. Improves federal coordination. 3. Advances long-term energy objectives.',
-                'source': 'Fallback Data',
-                'created_at': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
-            },
-            {
-                'id': 'EO15002', 
-                'executive_order_number': '15002',
-                'title': 'Improving Healthcare Access and Affordability',
-                'abstract': 'This order directs federal agencies to review and streamline healthcare regulations to improve access and reduce costs.',
-                'signing_date': '2025-01-22',
-                'publication_date': '2025-01-23',
-                'document_number': '2025-01235',
-                'category': 'healthcare',
-                'html_url': 'https://www.federalregister.gov/documents/2025/01/23/2025-01235',
-                'pdf_url': 'https://www.federalregister.gov/documents/2025/01/23/2025-01235.pdf',
-                'ai_summary': 'Executive Order: Improving Healthcare Access and Affordability. This healthcare order addresses important federal policy matters relating to medical care accessibility and cost reduction.',
-                'ai_talking_points': '1. This executive order addresses healthcare policy priorities. 2. Federal agencies will coordinate implementation. 3. Impact will be monitored and assessed.',
-                'ai_business_impact': '1. May affect healthcare sector operations. 2. Could require compliance updates. 3. May create new business opportunities in medical services.',
-                'ai_potential_impact': '1. Strengthens healthcare policy framework. 2. Improves federal coordination. 3. Advances long-term health objectives.',
-                'source': 'Fallback Data',
-                'created_at': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
-            }
-        ]
-        
-        return {
-            'results': fallback_orders,
-            'count': len(fallback_orders),
-            'date_range': f"{start_date} to {end_date}",
-            'source': 'Fallback Data (API Unavailable)',
-            'timestamp': datetime.now().isoformat()
-        }
-
-# ========================================
-# STEP 2: ADD DEBUG LOGS TO YOUR BACKEND
-# ========================================
-
-# In your FastAPI backend, add these debug prints to your endpoints:
-
-@app.post("/api/legiscan/search-and-analyze")
-async def search_and_analyze_bills(request: SearchRequest, db: Session = Depends(get_db)):
-    print(f"🔍 BACKEND DEBUG: search-and-analyze called with: {request}")
-    
-    try:
-        # Your LegiScan API call
-        result = legiscan_api.search_and_analyze_bills(
-            state=request.state,
-            query=request.query, 
-            limit=request.limit
-        )
-        
-        print(f"🔍 BACKEND DEBUG: LegiScan returned: {result}")
-        print(f"🔍 BACKEND DEBUG: Bills in result: {len(result.get('bills', []))}")
-        
-        # Check if save_to_db is working
-        if request.save_to_db and result.get('bills'):
-            print(f"🔍 BACKEND DEBUG: Attempting to save {len(result['bills'])} bills to database")
-            
-            saved_count = 0
-            for i, bill_data in enumerate(result['bills']):
-                try:
-                    print(f"🔍 BACKEND DEBUG: Processing bill {i+1}: {bill_data.get('title', 'No title')[:50]}...")
-                    
-                    # Check if bill already exists
-                    existing_bill = db.query(StateLegislation).filter(
-                        StateLegislation.bill_id == bill_data.get('bill_id'),
-                        StateLegislation.state == request.state
-                    ).first()
-                    
-                    if existing_bill:
-                        print(f"🔍 BACKEND DEBUG: Bill {i+1} already exists, updating...")
-                        # Update existing bill
-                        for key, value in bill_data.items():
-                            if hasattr(existing_bill, key):
-                                setattr(existing_bill, key, value)
-                    else:
-                        print(f"🔍 BACKEND DEBUG: Bill {i+1} is new, creating...")
-                        # Create new bill
-                        bill = StateLegislation(**bill_data)
-                        db.add(bill)
-                    
-                    saved_count += 1
-                    
-                except Exception as e:
-                    print(f"❌ BACKEND DEBUG: Error saving bill {i+1}: {e}")
-                    print(f"❌ BACKEND DEBUG: Bill data: {bill_data}")
-                    continue
-            
-            try:
-                db.commit()
-                print(f"✅ BACKEND DEBUG: Successfully committed {saved_count} bills to database")
+    def _save_bill_to_database(self, db_data: Dict[str, Any], db_manager) -> bool:
+        """Save individual bill to database"""
+        try:
+            # Use the database manager's save_bill method
+            result = db_manager.save_bill(db_data)
+            return result is not None
                 
-                # Verify they were saved
-                total_bills = db.query(StateLegislation).filter(StateLegislation.state == request.state).count()
-                print(f"🔍 BACKEND DEBUG: Total bills in database for {request.state}: {total_bills}")
-                
-            except Exception as e:
-                print(f"❌ BACKEND DEBUG: Error committing to database: {e}")
-                db.rollback()
-                return {"success": False, "error": f"Database commit failed: {str(e)}"}
-        
-        return {
-            "success": True,
-            "bills_analyzed": len(result.get('bills', [])),
-            "message": f"Successfully analyzed {len(result.get('bills', []))} bills"
-        }
-        
-    except Exception as e:
-        print(f"❌ BACKEND DEBUG: Error in search-and-analyze: {e}")
-        return {"success": False, "error": str(e)}
-
-@app.post("/api/state-legislation/fetch")
-async def fetch_state_legislation(request: StateLegislationRequest, db: Session = Depends(get_db)):
-    print(f"🔍 BACKEND DEBUG: state-legislation/fetch called with: {request}")
+        except Exception as e:
+            print(f"❌ Error saving bill {db_data.get('bill_id', 'unknown')}: {e}")
+            return False
     
-    try:
-        total_fetched = 0
-        
-        for state in request.states:
-            print(f"🔍 BACKEND DEBUG: Processing state: {state}")
+    def optimized_bulk_fetch(self, state: str, limit: int = 50, recent_only: bool = True) -> Dict[str, Any]:
+        """
+        *** BULK FETCH METHOD CALLED BY YOUR MAIN.PY ***
+        Optimized bulk fetch for state legislation
+        """
+        try:
+            print(f"🔍 LegiScan: Starting optimized_bulk_fetch")
+            print(f"   - State: {state}")
+            print(f"   - Limit: {limit}")
+            print(f"   - Recent only: {recent_only}")
             
-            # Use your optimized bulk fetch
-            result = legiscan_api.optimized_bulk_fetch(
-                state=state,
-                limit=request.bills_per_state,
-                recent_only=True
-            )
+            # Use search without query to get recent bills
+            result = self.search_bills(state, query=None, limit=limit)
             
-            print(f"🔍 BACKEND DEBUG: Bulk fetch result for {state}: {result}")
-            
-            if result.get('success') and result.get('bills'):
+            if result['success']:
                 bills = result['bills']
-                print(f"🔍 BACKEND DEBUG: Got {len(bills)} bills from LegiScan for {state}")
+                print(f"✅ Bulk fetch successful: {len(bills)} bills")
                 
-                if request.save_to_db:
-                    print(f"🔍 BACKEND DEBUG: Saving {len(bills)} bills to database for {state}")
-                    
-                    for i, bill_data in enumerate(bills):
-                        try:
-                            print(f"🔍 BACKEND DEBUG: Saving bill {i+1} for {state}: {bill_data.get('title', 'No title')[:50]}...")
-                            
-                            # Ensure state is set correctly
-                            bill_data['state'] = state
-                            
-                            # Check if bill exists
-                            existing_bill = db.query(StateLegislation).filter(
-                                StateLegislation.bill_id == bill_data.get('bill_id'),
-                                StateLegislation.state == state
-                            ).first()
-                            
-                            if existing_bill:
-                                print(f"🔍 BACKEND DEBUG: Updating existing bill {i+1}")
-                                for key, value in bill_data.items():
-                                    if hasattr(existing_bill, key):
-                                        setattr(existing_bill, key, value)
-                            else:
-                                print(f"🔍 BACKEND DEBUG: Creating new bill {i+1}")
-                                bill = StateLegislation(**bill_data)
-                                db.add(bill)
-                            
-                            total_fetched += 1
-                            
-                        except Exception as e:
-                            print(f"❌ BACKEND DEBUG: Error saving bill {i+1} for {state}: {e}")
-                            print(f"❌ BACKEND DEBUG: Bill data: {bill_data}")
-                            continue
-                
-                try:
-                    db.commit()
-                    print(f"✅ BACKEND DEBUG: Successfully committed bills for {state}")
-                    
-                    # Verify save
-                    saved_count = db.query(StateLegislation).filter(StateLegislation.state == state).count()
-                    print(f"🔍 BACKEND DEBUG: Verified {saved_count} bills in database for {state}")
-                    
-                except Exception as e:
-                    print(f"❌ BACKEND DEBUG: Error committing {state} bills: {e}")
-                    db.rollback()
+                return {
+                    'success': True,
+                    'bills': bills,
+                    'bills_processed': len(bills),
+                    'state': state,
+                    'timestamp': datetime.now().isoformat()
+                }
             else:
-                print(f"⚠️ BACKEND DEBUG: No bills returned for {state}: {result}")
-        
-        return {
-            "success": True,
-            "bills_fetched": total_fetched,
-            "message": f"Successfully fetched {total_fetched} bills"
-        }
-        
-    except Exception as e:
-        print(f"❌ BACKEND DEBUG: Error in fetch endpoint: {e}")
-        return {"success": False, "error": str(e)}
-    
-# ========================================
-# STEP 3: CHECK YOUR DATABASE MODEL
-# ========================================
-
-# Make sure your StateLegislation model matches what you're trying to save:
-
-class StateLegislation(Base):
-    __tablename__ = "state_legislation"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    bill_id = Column(String, index=True)  # Make sure this exists
-    bill_number = Column(String, index=True)
-    title = Column(String)
-    description = Column(Text)
-    state = Column(String, index=True)  # Make sure this exists and is indexed
-    status = Column(String)
-    category = Column(String)
-    # ... other fields
-    
-    # Make sure you have these AI fields if your LegiScan API returns them
-    ai_summary = Column(Text, nullable=True)
-    ai_talking_points = Column(Text, nullable=True) 
-    ai_business_impact = Column(Text, nullable=True)
-    ai_potential_impact = Column(Text, nullable=True)
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# ========================================
-# STEP 4: TEST DATABASE CONNECTION
-# ========================================
-
-# Add this test endpoint to verify your database is working:
-
-@app.get("/api/test-database")
-async def test_database(db: Session = Depends(get_db)):
-    try:
-        # Test creating a simple bill
-        test_bill = StateLegislation(
-            bill_id="TEST123",
-            bill_number="TEST-BILL-1",
-            title="Test Bill for Database Connection",
-            description="This is a test bill to verify database connectivity",
-            state="CA",
-            status="Active",
-            category="civic"
-        )
-        
-        db.add(test_bill)
-        db.commit()
-        
-        # Try to read it back
-        saved_bill = db.query(StateLegislation).filter(StateLegislation.bill_id == "TEST123").first()
-        
-        if saved_bill:
-            # Clean up test data
-            db.delete(saved_bill)
-            db.commit()
-            
+                print(f"❌ Bulk fetch failed: {result.get('error')}")
+                return {
+                    'success': False,
+                    'error': result.get('error'),
+                    'bills': []
+                }
+                
+        except Exception as e:
+            print(f"❌ Error in optimized_bulk_fetch: {e}")
             return {
-                "success": True,
-                "message": "Database connection working correctly",
-                "test_bill_saved": True
+                'success': False,
+                'error': str(e),
+                'bills': []
             }
-        else:
-            return {
-                "success": False,
-                "message": "Test bill was not saved correctly"
-            }
-            
-    except Exception as e:
-        db.rollback()
-        return {
-            "success": False,
-            "error": f"Database test failed: {str(e)}"
-        }
 
-# ========================================
-# STEP 5: CHECK YOUR LEGISCAN API KEY
-# ========================================
-
-# Add this test endpoint to verify LegiScan API is working:
-
-@app.get("/api/test-legiscan")
-async def test_legiscan():
+# Test function to verify the API works
+def test_legiscan_api():
+    """Test function to verify LegiScan API is working"""
     try:
-        # Test if LegiScan API is working
-        result = legiscan_api.search_and_analyze_bills(
-            state="CA",
-            query="test",
-            limit=1
-        )
-        
-        return {
-            "success": result.get('success', False),
-            "bills_found": len(result.get('bills', [])),
-            "message": "LegiScan API test completed",
-            "result": result
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"LegiScan API test failed: {str(e)}"
-        }
-
-# ========================================
-# TROUBLESHOOTING CHECKLIST
-# ========================================
-
-"""
-COMMON ISSUES TO CHECK:
-
-1. DATABASE CONNECTION:
-   - Is your database running?
-   - Are database credentials correct?
-   - Is the StateLegislation table created?
-
-2. LEGISCAN API:
-   - Is LEGISCAN_API_KEY set in your .env file?
-   - Is the API key valid?
-   - Are you hitting rate limits?
-
-3. DATA MISMATCH:
-   - Does your StateLegislation model have all the fields that LegiScan returns?
-   - Are field names matching exactly?
-   - Are data types compatible?
-
-4. TRANSACTION ISSUES:
-   - Are commits happening properly?
-   - Are rollbacks clearing your data?
-   - Are there constraint violations?
-
-5. DEBUGGING STEPS:
-   - Test /api/test-database first
-   - Test /api/test-legiscan second  
-   - Then test your fetch endpoints
-   - Check terminal logs for errors
-"""
-
-# ========================================
-# QUICK FIXES TO TRY
-# ========================================
-
-# Fix 1: Simplify your save logic
-def save_bill_simple(db: Session, bill_data: dict, state: str):
-    """Simplified bill saving with better error handling"""
-    try:
-        # Ensure required fields
-        bill_data['state'] = state
-        if not bill_data.get('bill_id'):
-            bill_data['bill_id'] = f"unknown_{int(time.time())}"
-        
-        # Remove any fields that don't exist in your model
-        allowed_fields = [
-            'bill_id', 'bill_number', 'title', 'description', 'state', 
-            'status', 'category', 'ai_summary', 'ai_talking_points',
-            'ai_business_impact', 'ai_potential_impact', 'legiscan_url'
-        ]
-        
-        clean_data = {k: v for k, v in bill_data.items() if k in allowed_fields}
-        
-        # Create and save
-        bill = StateLegislation(**clean_data)
-        db.add(bill)
-        db.flush()  # Flush to get any SQL errors before commit
-        
-        return True
-        
-    except Exception as e:
-        print(f"Error saving bill: {e}")
-        return False
-
-# Fix 2: Test with minimal data
-@app.post("/api/test-save-bill")
-async def test_save_bill(db: Session = Depends(get_db)):
-    """Test saving a minimal bill to isolate the issue"""
-    try:
-        minimal_bill = {
-            'bill_id': f'TEST{int(time.time())}',
-            'title': 'Test Bill Save',
-            'state': 'CA',
-            'category': 'civic'
-        }
-        
-        bill = StateLegislation(**minimal_bill)
-        db.add(bill)
-        db.commit()
-        
-        return {"success": True, "message": "Minimal bill saved successfully"}
-        
-    except Exception as e:
-        db.rollback()
-        return {"success": False, "error": str(e)}
-    
-# Test functions
-def test_optimized_legiscan():
-    """Test the optimized LegiScan integration"""
-    
-    try:
+        print("🧪 Testing LegiScan API initialization...")
         api = LegiScanAPI()
         
-        # Test optimized bulk fetch
-        print("\n🔍 Testing Optimized Bulk Fetch...")
-        result = api.optimized_bulk_fetch('CA', limit=5)
+        print("🧪 Testing search functionality...")
+        result = api.search_bills("CA", "test", 1)
         
+        print(f"✅ LegiScan API test result: {result.get('success')}")
         if result.get('success'):
-            print(f"✅ Optimized bulk fetch successful: {result['bills_processed']} bills")
-            return True
+            print(f"   Found {len(result.get('bills', []))} bills")
         else:
-            print(f"❌ Optimized bulk fetch failed: {result.get('error', 'Unknown error')}")
+            print(f"   Error: {result.get('error')}")
             
-            # Test search and analyze as fallback
-            print("\n🔍 Testing Search and Analyze...")
-            search_result = api.search_and_analyze_bills('CA', 'healthcare', limit=5)
-            
-            if search_result.get('success'):
-                print(f"✅ Search and analyze successful: {search_result['bills_analyzed']} bills")
-                return True
-            else:
-                print(f"❌ Search and analyze failed: {search_result.get('error', 'Unknown error')}")
-                return False
-            
+        return result.get('success', False)
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f"❌ LegiScan API test failed: {e}")
         return False
-
-
-def test_optimized_federal_register():
-    """Test the optimized Federal Register API"""
-    
-    try:
-        api = FederalRegisterAPI()
-        
-        print("\n🔍 Testing Optimized Federal Register API...")
-        result = api.fetch_executive_orders(
-            start_date="2025-01-20",
-            end_date="2025-06-01",
-            per_page=5
-        )
-        
-        if result.get('results'):
-            print(f"✅ Federal Register fetch successful: {result['count']} orders")
-            return True
-        else:
-            print("❌ Federal Register fetch failed")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        return False
-
 
 if __name__ == "__main__":
-    print("===== TESTING OPTIMIZED APIS =====")
-    
-    print("\n🔍 Testing Optimized LegiScan API...")
-    legiscan_success = test_optimized_legiscan()
-    
-    print("\n🔍 Testing Optimized Federal Register API...")
-    federal_success = test_optimized_federal_register()
-    
-    if legiscan_success and federal_success:
-        print("\n✅ All optimized tests passed!")
-    else:
-        print(f"\n⚠️ Test results - LegiScan: {'✅' if legiscan_success else '❌'}, Federal Register: {'✅' if federal_success else '❌'}")
-    
-    print("\n📋 KEY OPTIMIZATIONS IMPLEMENTED:")
-    print("1. ✅ Reduced timeouts and batch sizes")
-    print("2. ✅ Added fallback methods for bulk operations") 
-    print("3. ✅ Improved error handling and recovery")
-    print("4. ✅ Added rate limiting delays")
-    print("5. ✅ Recent bills filtering for bulk fetch")
-    print("6. ✅ Optimized search-based fallback")
-    print("7. ✅ Better timeout configuration")
-    print("8. ✅ Reduced API call frequency")
-    
-    print("\n🎯 RECOMMENDATIONS FOR FRONTEND:")
-    print("• Use search_and_analyze_bills() for topic searches (works great)")
-    print("• Use optimized_bulk_fetch() for bulk operations (smaller batches)")
-    print("• Set reasonable expectations: 5-10 bills for bulk, 10-15 for search")
-    print("• Add timeout handling in your frontend fetch calls")
-    print("• Show progress indicators for longer operations")
+    print("🧪 Testing LegiScan API...")
+    test_legiscan_api()
