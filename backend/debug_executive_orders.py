@@ -12,8 +12,8 @@ def test_connection():
         # Your credentials from .env
         server = os.getenv('AZURE_SQL_SERVER')  # sql-legislation-tracker.database.windows.net
         database = os.getenv('AZURE_SQL_DATABASE')  # db-executiveorders
-        username = os.getenv('AZURE_SQL_USERNAME')  # david.anderson
-        password = os.getenv('AZURE_SQL_PASSWORD')  # _MOREgroup25!
+        username = os.getenv('AZURE_SQL_USERNAME')  
+        password = os.getenv('AZURE_SQL_PASSWORD')  
         
         print(f"🔍 Connecting to:")
         print(f"   Server: {server}")
