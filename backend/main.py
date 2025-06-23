@@ -1102,7 +1102,7 @@ except Exception as e:
 # EXECUTIVE ORDERS DATABASE FUNCTIONS
 # ===============================
 
-def get_executive_orders_from_db(limit=100, offset=0, filters=None):
+def get_executive_orders_from_db(limit=1000, offset=0, filters=None):
     """Get executive orders using EXACT column names from your table"""
     try:
         print(f"🔍 DEBUG: Function called with limit={limit}, offset={offset}")

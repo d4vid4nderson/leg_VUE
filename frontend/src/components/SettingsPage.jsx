@@ -173,7 +173,7 @@ const SettingsPage = ({
             responseTime: null
           },
           azureAI: {
-            status: data.integrations?.ai_analysis === 'connected' ? 'healthy' : 'error',
+            status: data.integrations?.enhanced_ai_analysis === 'connected' ? 'healthy' : 'error',
             message: data.integrations?.ai_analysis === 'connected' ? 'Azure AI connected' : 'Azure AI not configured',
             responseTime: null
           },
