@@ -15,8 +15,9 @@ from contextlib import asynccontextmanager
 
 
 # FastAPI imports
-from fastapi import FastAPI, HTTPException, Query, Path, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, Path, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRouter
 from pydantic import BaseModel
 import requests
 import aiohttp
@@ -28,10 +29,11 @@ from database_connection import test_database_connection
 from status_endpoints import router as status_router
 from ai_status import check_azure_ai_configuration
 from executive_orders_db import (
-    get_executive_orders_from_db, save_executive_orders_to_db,
+    get_executive_orders_from_db,
     get_executive_order_by_number, create_highlights_table,
     add_highlight_direct, remove_highlight_direct, get_user_highlights_direct
 )
+from database_azure_fixed import save_legislation_to_azure_sql
 
 
 # Environment variables loading
@@ -68,6 +70,122 @@ SUPPORTED_STATES = {
     "South Carolina": "SC",
     "Texas": "TX",
 }
+
+# ================================
+# EXCUTIVE ORDER COUNT CHECK
+# ================================
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+@router.get("/api/executive-orders/check-count")
+async def check_executive_orders_count():
+    """
+    Check Federal Register for total count and compare with database count
+    Returns status indicating if fetch is needed
+    """
+    try:
+        # 1. Get count from Federal Register API
+        federal_register_count = await get_federal_register_count()
+        
+        # 2. Get count from your database
+        database_count = await get_database_count()
+        
+        # 3. Calculate difference
+        new_orders_available = max(0, federal_register_count - database_count)
+        needs_fetch = new_orders_available > 0
+        
+        logger.info(f"📊 Count Check - Federal Register: {federal_register_count}, Database: {database_count}, New: {new_orders_available}")
+        
+        return {
+            "success": True,
+            "federal_register_count": federal_register_count,
+            "database_count": database_count,
+            "new_orders_available": new_orders_available,
+            "needs_fetch": needs_fetch,
+            "last_checked": datetime.now().isoformat(),
+            "message": f"Found {new_orders_available} new executive orders available" if needs_fetch else "Database is up to date"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking counts: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "federal_register_count": 0,
+            "database_count": 0,
+            "new_orders_available": 0,
+            "needs_fetch": False,
+            "message": "Error checking for updates"
+        }
+
+async def get_federal_register_count():
+    """Get total count from Federal Register API without fetching all data"""
+    try:
+        # Use the same API endpoint but with minimal data to get count
+        base_url = "https://www.federalregister.gov/api/v1"
+        
+        # Convert date to API format
+        start_date = "2025-01-20"  # Trump inauguration
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        params = {
+            'conditions[correction]': '0',
+            'conditions[president]': 'donald-trump',
+            'conditions[presidential_document_type]': 'executive_order',
+            'conditions[publication_date][gte]': start_date,
+            'conditions[publication_date][lte]': end_date,
+            'conditions[type][]': 'PRESDOCU',
+            'per_page': '1',  # Minimal data - we just want the count
+            'fields[]': ['document_number']  # Minimal fields
+        }
+        
+        response = requests.get(f"{base_url}/documents.json", params=params, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            total_count = data.get('count', 0)
+            logger.info(f"📊 Federal Register reports {total_count} total executive orders")
+            return total_count
+        else:
+            logger.error(f"❌ Federal Register API error: {response.status_code}")
+            return 0
+            
+    except Exception as e:
+        logger.error(f"❌ Error getting Federal Register count: {e}")
+        return 0
+
+async def get_database_count():
+    """Get total count from your database"""
+    try:
+        # Replace this with your actual database query
+        # Example using your existing database connection:
+       
+        from database_connection import get_db_connection
+
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM dbo.executive_orders 
+            WHERE president = 'donald-trump' 
+            AND eo_number IS NOT NULL 
+            AND eo_number != ''
+        """)
+        
+        count = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"📊 Database has {count} executive orders")
+        return count
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting database count: {e}")
+        return 0
 
 # ===============================
 # ENHANCED AI INTEGRATION FROM ai.py
@@ -703,7 +821,6 @@ class EnhancedLegiScanClient:
                                 'ai_version': 'error'
                             }
                     
-                    # Step 2c: Build complete bill record
                     complete_bill = {
                         'bill_id': bill_id,
                         'bill_number': detailed_bill.get('bill_number', ''),
@@ -728,7 +845,8 @@ class EnhancedLegiScanClient:
                         'search_relevance': bill_summary.get('relevance', 0),
                         'source': 'Enhanced LegiScan API',
                         'created_at': datetime.now().isoformat(),
-                        'last_updated': datetime.now().isoformat()
+                        'last_updated': datetime.now().isoformat(),
+                        'reviewed': False  # ✅ ADD THIS LINE
                     }
                     
                     # Step 2d: Add AI analysis results
@@ -840,10 +958,11 @@ class StateLegislationDatabaseManager:
                     session_id = ?, session_name = ?, bill_type = ?, body = ?,
                     legiscan_url = ?, pdf_url = ?, ai_summary = ?, ai_executive_summary = ?,
                     ai_talking_points = ?, ai_key_points = ?, ai_business_impact = ?,
-                    ai_potential_impact = ?, ai_version = ?, last_updated = ?
+                    ai_potential_impact = ?, ai_version = ?, last_updated = ?, reviewed = ?
                 WHERE bill_id = ?
                 """
                 
+                # Around line 285, add reviewed to the values tuple:
                 values = (
                     bill_data.get('bill_number', ''),
                     bill_data.get('title', ''),
@@ -868,8 +987,9 @@ class StateLegislationDatabaseManager:
                     bill_data.get('ai_potential_impact', ''),
                     bill_data.get('ai_version', '1.0'),
                     datetime.utcnow(),
+                    bill_data.get('reviewed', False),  # ✅ ADD THIS LINE
                     bill_data.get('bill_id')
-                )
+)
                 
                 cursor.execute(update_query, values)
                 print(f"✅ Updated existing bill: {bill_data.get('bill_id')}")
@@ -883,8 +1003,8 @@ class StateLegislationDatabaseManager:
                     session_id, session_name, bill_type, body,
                     legiscan_url, pdf_url, ai_summary, ai_executive_summary,
                     ai_talking_points, ai_key_points, ai_business_impact,
-                    ai_potential_impact, ai_version, created_at, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ai_potential_impact, ai_version, created_at, last_updated, reviewed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 
                 values = (
@@ -912,7 +1032,8 @@ class StateLegislationDatabaseManager:
                     bill_data.get('ai_potential_impact', ''),
                     bill_data.get('ai_version', '1.0'),
                     datetime.utcnow(),
-                    datetime.utcnow()
+                    datetime.utcnow(),
+                    bill_data.get('reviewed', False)  # ✅ ADD THIS LINE
                 )
                 
                 cursor.execute(insert_query, values)
@@ -1670,7 +1791,7 @@ async def debug_database_msi_connection():
 
 
 @app.get("/api/debug/connectivity")
-async def debug_connectivity():
+async def debug_connectivity(request: Request):
     """Debug endpoint for testing frontend-backend connectivity"""
     try:
         # Gather system information
@@ -1824,9 +1945,301 @@ async def fetch_executive_orders_endpoint(request: ExecutiveOrderFetchRequest):
 #        "supported_states": list(SUPPORTED_STATES.keys())
 #    }
 
+ # ===============================
+# REVIEW STATUS API ENDPOINTS  
+# ===============================
+
+@app.patch("/api/state-legislation/{id}/review")
+async def update_state_legislation_review_status(
+    id: str,
+    request: dict
+):
+    """Update review status for state legislation"""
+    try:
+        reviewed = request.get('reviewed', False)
+        
+        print(f"🔍 BACKEND: Received ID: {id}")
+        print(f"🔍 BACKEND: Setting reviewed to: {reviewed}")
+        
+        conn = get_azure_sql_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="Database connection failed")
+        
+        cursor = conn.cursor()
+        
+        # First, let's see what's actually in the database
+        cursor.execute("SELECT TOP 3 id, bill_id, title FROM dbo.state_legislation ORDER BY last_updated DESC")
+        sample_records = cursor.fetchall()
+        print(f"🔍 BACKEND: Sample records in database:")
+        for record in sample_records:
+            print(f"   id: {record[0]}, bill_id: {record[1]}, title: {record[2][:30]}...")
+        
+        # Try to find the record multiple ways
+        search_attempts = [
+            ("Direct ID match", "SELECT id FROM dbo.state_legislation WHERE id = ?", id),
+            ("Direct bill_id match", "SELECT id FROM dbo.state_legislation WHERE bill_id = ?", id),
+            ("String ID match", "SELECT id FROM dbo.state_legislation WHERE CAST(id AS VARCHAR) = ?", str(id)),
+            ("String bill_id match", "SELECT id FROM dbo.state_legislation WHERE CAST(bill_id AS VARCHAR) = ?", str(id))
+        ]
+        
+        found_record_id = None
+        for attempt_name, query, param in search_attempts:
+            try:
+                print(f"🔍 BACKEND: Trying {attempt_name} with param: {param}")
+                cursor.execute(query, param)
+                result = cursor.fetchone()
+                if result:
+                    found_record_id = result[0]
+                    print(f"✅ BACKEND: Found record with {attempt_name}, database ID: {found_record_id}")
+                    break
+                else:
+                    print(f"❌ BACKEND: No match with {attempt_name}")
+            except Exception as e:
+                print(f"❌ BACKEND: Error with {attempt_name}: {e}")
+        
+        if not found_record_id:
+            print(f"❌ BACKEND: Could not find any record for ID: {id}")
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"State legislation not found for ID: {id}")
+        
+        # Update the record
+        update_query = "UPDATE dbo.state_legislation SET reviewed = ? WHERE id = ?"
+        cursor.execute(update_query, reviewed, found_record_id)
+        rows_affected = cursor.rowcount
+        
+        print(f"🔍 BACKEND: Updated {rows_affected} rows")
+        
+        if rows_affected == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="No rows were updated")
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ BACKEND: Successfully updated record {found_record_id}")
+        
+        return {
+            "success": True,
+            "message": f"Review status updated to {reviewed}",
+            "id": id,
+            "database_id": found_record_id,
+            "reviewed": reviewed
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating state legislation review status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update review status: {str(e)}")
+    
+@app.patch("/api/test-patch/{id}")
+async def test_patch(id: str):
+    return {"test": "patch works", "id": id}
+
 # ===============================
 # EXECUTIVE ORDERS DATABASE FUNCTIONS
 # ===============================
+
+# NOTE: check alchemy here
+def get_executive_orders_from_db(limit=1000, offset=0, filters=None):
+    """Get executive orders using EXACT column names from your table"""
+    try:
+        print(f"🔍 DEBUG: Function called with limit={limit}, offset={offset}")
+        
+        # Build SQL query using YOUR EXACT column names
+        base_query = """
+                SELECT 
+                    id,
+                    document_number,
+                    eo_number,
+                    title,
+                    summary,
+                    signing_date,
+                    publication_date,
+                    citation,
+                    presidential_document_type,
+                    category,
+                    html_url,
+                    pdf_url,
+                    trump_2025_url,
+                    ai_summary,
+                    ai_executive_summary,
+                    ai_key_points,
+                    ai_talking_points,
+                    ai_business_impact,
+                    ai_potential_impact,
+                    ai_version,
+                    source,
+                    raw_data_available,
+                    processing_status,
+                    error_message,
+                    created_at,
+                    last_updated,
+                    last_scraped_at,
+                    content,
+                    tags,
+                    ai_analysis,
+                    reviewed
+                FROM dbo.executive_orders
+                """
+        
+        # Add WHERE clause if filters exist
+        where_conditions = []
+        params = []
+        
+        if filters:
+            if filters.get('search'):
+                where_conditions.append("(title LIKE ? OR summary LIKE ? OR ai_summary LIKE ?)")
+                search_term = f"%{filters['search']}%"
+                params.extend([search_term, search_term, search_term])
+                print(f"🔍 DEBUG: Added search filter: {search_term}")
+            
+            if filters.get('category'):
+                where_conditions.append("category = ?")
+                params.append(filters['category'])
+                print(f"🔍 DEBUG: Added category filter: {filters['category']}")
+        
+        if where_conditions:
+            base_query += " WHERE " + " AND ".join(where_conditions)
+        
+        # Add ORDER BY and pagination
+        base_query += " ORDER BY publication_date DESC, eo_number DESC"
+        base_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+        
+        print(f"🔍 DEBUG: Final SQL Query:")
+        print(f"    {base_query}")
+        
+        # Execute query
+        conn = get_azure_sql_connection()
+        if not conn:
+            return {'success': False, 'message': 'No database connection', 'results': [], 'count': 0}
+        
+        cursor = conn.cursor()
+        
+        # Get total count
+        count_query = "SELECT COUNT(*) FROM dbo.executive_orders"
+        if where_conditions:
+            count_query += " WHERE " + " AND ".join(where_conditions)
+        
+        cursor.execute(count_query, params if where_conditions else [])
+        total_count = cursor.fetchone()[0]
+        print(f"🔍 DEBUG: Total count from database: {total_count}")
+        
+        # Execute main query
+        cursor.execute(base_query, params)
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        print(f"🔍 DEBUG: Raw rows fetched: {len(rows)}")
+        
+        # Convert to API format
+        results = []
+        for i, row in enumerate(rows):
+            db_record = dict(zip(columns, row))
+            
+            if i < 3:
+                print(f"🔍 DEBUG: Row {i+1}: eo_number={db_record.get('eo_number')}, title={db_record.get('title', '')[:30]}...")
+            
+            # Map your database columns to API format
+            api_record = {
+                # Core identification
+                'id': db_record.get('id'),
+                'bill_id': db_record.get('id'),
+                'eo_number': db_record.get('eo_number'),
+                'executive_order_number': db_record.get('eo_number'),
+                'bill_number': db_record.get('eo_number'),
+                'document_number': db_record.get('document_number'),
+                
+                # Content
+                'title': db_record.get('title', 'Untitled Executive Order'),
+                'summary': db_record.get('summary', ''),
+                'description': db_record.get('summary', ''),
+                'content': db_record.get('content', ''),
+                
+                # Dates
+                'signing_date': db_record.get('signing_date'),
+                'publication_date': db_record.get('publication_date'),
+                'introduced_date': db_record.get('signing_date'),
+                'last_action_date': db_record.get('publication_date'),
+                
+                # URLs
+                'html_url': db_record.get('html_url', ''),
+                'pdf_url': db_record.get('pdf_url', ''),
+                'trump_2025_url': db_record.get('trump_2025_url', ''),
+                'legiscan_url': db_record.get('html_url', ''),
+                
+                # Metadata
+                'citation': db_record.get('citation', ''),
+                'presidential_document_type': db_record.get('presidential_document_type', ''),
+                'category': db_record.get('category', 'civic'),
+                'source': db_record.get('source', 'Federal Register'),
+                'tags': db_record.get('tags', ''),
+                
+                # AI Analysis
+                'ai_summary': db_record.get('ai_summary', ''),
+                'ai_executive_summary': db_record.get('ai_executive_summary', ''),
+                'ai_key_points': db_record.get('ai_key_points', ''),
+                'ai_talking_points': db_record.get('ai_talking_points', ''),
+                'ai_business_impact': db_record.get('ai_business_impact', ''),
+                'ai_potential_impact': db_record.get('ai_potential_impact', ''),
+                'ai_version': db_record.get('ai_version', ''),
+                'ai_analysis': db_record.get('ai_analysis', ''),
+                'ai_processed': bool(
+                    db_record.get('ai_summary') or 
+                    db_record.get('ai_executive_summary') or 
+                    db_record.get('ai_analysis')
+                ),
+                
+                # Processing Status
+                'processing_status': db_record.get('processing_status', ''),
+                'raw_data_available': db_record.get('raw_data_available', False),
+                'error_message': db_record.get('error_message', ''),
+                
+                # Timestamps
+                'created_at': db_record.get('created_at'),
+                'last_updated': db_record.get('last_updated'),
+                'last_scraped_at': db_record.get('last_scraped_at'),
+                
+                # API-specific fields
+                'bill_type': 'executive_order',
+                'state': 'Federal',
+                'president': 'Donald Trump'
+            }
+            
+            # Format dates
+            for date_field in ['signing_date', 'publication_date']:
+                if api_record.get(date_field):
+                    try:
+                        if hasattr(api_record[date_field], 'strftime'):
+                            api_record[f'formatted_{date_field}'] = api_record[date_field].strftime('%Y-%m-%d')
+                        else:
+                            api_record[f'formatted_{date_field}'] = str(api_record[date_field])
+                    except:
+                        api_record[f'formatted_{date_field}'] = str(api_record[date_field])
+            
+            results.append(api_record)
+        
+        cursor.close()
+        conn.close()
+        
+        print(f"🔍 DEBUG: Successfully processed {len(results)} executive orders")
+        
+        return {
+            'success': True,
+            'results': results,
+            'count': len(results),
+            'total': total_count
+        }
+        
+    except Exception as e:
+        print(f"❌ DEBUG: Error in get_executive_orders_from_db: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'success': False,
+            'message': str(e),
+            'results': [],
+            'count': 0
+        }
 
 def save_executive_orders_to_db(orders):
     """Save executive orders using existing save_legislation_to_db"""
@@ -1870,7 +2283,7 @@ def save_executive_orders_to_db(orders):
             cleaned_orders.append(cleaned_order)
         
         print(f"🔍 Saving {len(cleaned_orders)} executive orders (cleaned data)")
-        return save_legislation_to_db(cleaned_orders)
+        return save_legislation_to_azure_sql(cleaned_orders)
         
     except Exception as e:
         print(f"❌ Error saving executive orders: {e}")
@@ -2404,7 +2817,7 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
             session_name, bill_type, body, legiscan_url, pdf_url,
             ai_summary, ai_executive_summary, ai_talking_points, ai_key_points,
             ai_business_impact, ai_potential_impact, ai_version,
-            created_at, last_updated
+            created_at, last_updated, reviewed
         FROM dbo.state_legislation
         """
         
@@ -2516,7 +2929,10 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
                 'last_updated': db_record.get('last_updated'),
                 
                 # Source
-                'source': 'Database'
+                'source': 'Database',
+
+                # Reviewed status
+                'reviewed': db_record.get('reviewed', False)
             }
             
             # Format dates
@@ -2574,7 +2990,7 @@ def save_state_legislation_to_db(bills):
             cleaned_bills.append(cleaned_bill)
         
         print(f"🔍 Saving {len(cleaned_bills)} state bills to database")
-        return save_legislation_to_db(cleaned_bills)
+        return save_legislation_to_azure_sql(cleaned_bills)
         
     except Exception as e:
         print(f"❌ Error saving state legislation: {e}")
@@ -2606,6 +3022,64 @@ except ImportError as e:
 # MAIN ENDPOINTS
 # ===============================
 
+@app.get("/api/executive-orders/debug-count")
+async def debug_database_count():
+    """Debug endpoint to check database counts"""
+    try:
+        from database_connection import get_db_connection
+        # NOTE: check Alchemy to Pyodbc here 
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get various counts
+        debug_info = {}
+        
+        # Total count
+        cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+        debug_info['total_rows'] = cursor.fetchone()[0]
+        
+        # By president
+        cursor.execute("SELECT president, COUNT(*) FROM dbo.executive_orders GROUP BY president")
+        president_counts = cursor.fetchall()
+        debug_info['by_president'] = {p[0]: p[1] for p in president_counts}
+        
+        # Trump orders with different criteria
+        cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders WHERE president = 'donald-trump'")
+        debug_info['trump_total'] = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders WHERE president = 'Donald Trump'")
+        debug_info['trump_capitalized'] = cursor.fetchone()[0]
+        
+        # Check field availability
+        cursor.execute("SELECT TOP 5 eo_number, document_number, executive_order_number, title FROM dbo.executive_orders")
+        samples = cursor.fetchall()
+        debug_info['sample_data'] = [
+            {
+                'eo_number': s[0],
+                'document_number': s[1], 
+                'executive_order_number': s[2],
+                'title': s[3][:50] if s[3] else None
+            } for s in samples
+        ]
+        
+        # Check column names
+        cursor.execute("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'executive_orders'")
+        columns = cursor.fetchall()
+        debug_info['table_columns'] = [c[0] for c in columns]
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "debug_info": debug_info
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.get("/")
 async def root():

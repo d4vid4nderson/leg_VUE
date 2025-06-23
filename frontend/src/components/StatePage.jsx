@@ -1,4 +1,4 @@
-// Complete StatePage.jsx with all original functionality plus fixed highlighting and cleaned meta tags
+// Complete StatePage.jsx with database-driven review status functionality and pagination
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -172,6 +172,7 @@ const cleanCategory = (category) => {
   return validCategories.includes(mappedCategory) ? mappedCategory : 'not-applicable';
 };
 
+
 // Category-specific styling for fetch status bar
 const getCategoryStyles = (category) => {
   switch (category) {
@@ -244,6 +245,107 @@ const EXTENDED_FILTERS = [
   }
 ];
 
+// NEW: Review Status API Service
+class ReviewStatusAPI {
+  static async updateStateLegislationReviewStatus(billId, isReviewed) {
+    try {
+      console.log('📝 Updating state legislation review status:', billId, isReviewed);
+      
+      const response = await fetch(`${API_URL}/api/state-legislation/${billId}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reviewed: isReviewed
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update review status: ${response.status}`);
+      }
+      
+      console.log('✅ State legislation review status updated');
+      return true;
+    } catch (error) {
+      console.error('❌ Error updating state legislation review status:', error);
+      throw error;
+    }
+  }
+}
+
+// NEW: Enhanced hook for managing review status using database
+const useReviewStatus = (items, itemType) => {
+  const [reviewLoading, setReviewLoading] = useState(new Set());
+
+  // Get item ID based on type
+  const getItemId = useCallback((item) => {
+    if (itemType === 'state_legislation') {
+      // For state legislation, use the database ID or bill_id
+      return item.id || item.bill_id;
+    }
+    return null;
+  }, [itemType]);
+
+  // Toggle review status
+  const toggleReviewStatus = async (item) => {
+    const itemId = getItemId(item);
+    
+    if (!itemId) {
+      console.error('❌ No valid item ID for review status');
+      return;
+    }
+
+    const isCurrentlyReviewed = item.reviewed === true || item.reviewed === 1;
+    const newReviewStatus = !isCurrentlyReviewed;
+    
+    // Add to loading state
+    setReviewLoading(prev => new Set([...prev, itemId]));
+
+    try {
+      await ReviewStatusAPI.updateStateLegislationReviewStatus(itemId, newReviewStatus);
+      
+      console.log('✅ Review status toggled successfully');
+      return newReviewStatus; // Return the new status so parent can update state
+    } catch (error) {
+      console.error('❌ Failed to toggle review status:', error);
+      throw error;
+    } finally {
+      // Remove from loading state
+      setReviewLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
+    }
+  };
+
+  // Check if item is reviewed (reads directly from item data)
+  const isItemReviewed = useCallback((item) => {
+    return item.reviewed === true || item.reviewed === 1;
+  }, []);
+
+  // Check if item is currently being processed
+  const isItemReviewLoading = useCallback((item) => {
+    const itemId = getItemId(item);
+    return itemId ? reviewLoading.has(itemId) : false;
+  }, [reviewLoading, getItemId]);
+
+  // Calculate review counts
+  const reviewCounts = useMemo(() => {
+    const total = items.length || 0;
+    const reviewed = items.filter(item => isItemReviewed(item)).length;
+    const notReviewed = total - reviewed;
+    
+    return { total, reviewed, notReviewed };
+  }, [items, isItemReviewed]);
+
+  return {
+    toggleReviewStatus,
+    isItemReviewed,
+    isItemReviewLoading,
+    reviewCounts
+  };
+};
+
 const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) => {
   // Core state
   const [stateOrders, setStateOrders] = useState([]);
@@ -255,9 +357,32 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
   const [selectedFilters, setSelectedFilters] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   
-  // Review status state
-  const [reviewedBills, setReviewedBills] = useState(new Set());
-  const [markingReviewed, setMarkingReviewed] = useState(new Set());
+  // ✅ NEW: PAGINATION STATE (copied from ExecutiveOrdersPage)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    per_page: 25,
+    total_pages: 1,
+    count: 0
+  });
+
+  // 🔢 NEW: FILTER COUNTS STATE (copied from ExecutiveOrdersPage)
+  const [allFilterCounts, setAllFilterCounts] = useState({
+    civic: 0,
+    education: 0,
+    engineering: 0,
+    healthcare: 0,
+    reviewed: 0,
+    not_reviewed: 0,
+    total: 0
+  });
+  
+  // NEW: Database-driven review status (replaces localStorage)
+  const {
+    toggleReviewStatus,
+    isItemReviewed,
+    isItemReviewLoading,
+    reviewCounts
+  } = useReviewStatus(stateOrders, 'state_legislation');
   
   // Highlights state - Local state for immediate UI feedback
   const [localHighlights, setLocalHighlights] = useState(new Set());
@@ -564,16 +689,863 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
       const newFilters = prev.includes(filterKey)
         ? prev.filter(f => f !== filterKey)
         : [...prev, filterKey];
+      
+      console.log('🔄 Filter toggled:', filterKey, 'New filters:', newFilters);
+      
+      // After updating filters, fetch filtered data from database
+      setTimeout(() => {
+        if (newFilters.length > 0 || stateSearchTerm) {
+          fetchFilteredData(newFilters, stateSearchTerm, 1);
+        } else {
+          fetchFromDatabase(1);
+        }
+      }, 100);
+      
       return newFilters;
     });
   };
 
   const clearAllFilters = () => {
+    console.log('🔄 Clearing all filters');
     setSelectedFilters([]);
     setStateSearchTerm('');
+    
+    // Fetch all data without filters
+    setTimeout(() => {
+      fetchFromDatabase(1);
+    }, 100);
   };
 
-  // FIXED: Load existing highlights on component mount - using same pattern as ExecutiveOrdersPage
+  // ✅ FIXED: Fetch from database with proper pagination AND date sorting
+  const fetchFromDatabase = useCallback(async (pageNum = 1) => {
+    try {
+      setStateLoading(true);
+      setStateError(null);
+      setFetchStatus('📊 Loading state legislation from database...');
+
+      console.log(`🔍 Fetching page ${pageNum} for state: ${stateName}...`);
+
+      const perPage = 25;
+      const stateAbbr = SUPPORTED_STATES[stateName];
+      
+      // ✅ NEW: Add explicit date sorting parameters
+      const url = `${API_URL}/api/state-legislation?state=${stateAbbr}&page=${pageNum}&per_page=${perPage}&order_by=introduced_date&order=desc`;
+      console.log('🔍 Fetching from URL with date sorting:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        // If date sorting isn't supported by backend, try without it
+        console.log('🔄 Date sorting not supported, trying without sorting...');
+        const fallbackUrl = `${API_URL}/api/state-legislation?state=${stateAbbr}&page=${pageNum}&per_page=${perPage}`;
+        const fallbackResponse = await fetch(fallbackUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!fallbackResponse.ok) {
+          throw new Error(`HTTP ${fallbackResponse.status}: ${fallbackResponse.statusText}`);
+        }
+        
+        const fallbackData = await fallbackResponse.json();
+        
+        // ✅ CLIENT-SIDE SORTING: Sort by date if backend doesn't support it
+        let ordersArray = [];
+        if (Array.isArray(fallbackData)) {
+          ordersArray = fallbackData;
+        } else if (fallbackData.results && Array.isArray(fallbackData.results)) {
+          ordersArray = fallbackData.results;
+        } else if (fallbackData.data && Array.isArray(fallbackData.data)) {
+          ordersArray = fallbackData.data;
+        } else if (fallbackData.state_legislation && Array.isArray(fallbackData.state_legislation)) {
+          ordersArray = fallbackData.state_legislation;
+        }
+        
+        // ✅ IMPROVED SORTING: Better date sorting for display
+        ordersArray.sort((a, b) => {
+          const getDate = (bill) => {
+            const dateStr = bill.introduced_date || bill.last_action_date || bill.signing_date || '1900-01-01';
+            const parsedDate = new Date(dateStr);
+            return isNaN(parsedDate.getTime()) ? new Date('1900-01-01') : parsedDate;
+          };
+          
+          const dateA = getDate(a);
+          const dateB = getDate(b);
+          
+          console.log(`📅 Main sort: ${a.title?.substring(0, 30)} (${dateA.toDateString()}) vs ${b.title?.substring(0, 30)} (${dateB.toDateString()})`);
+          
+          return dateB - dateA; // Newest first (descending)
+        });
+        
+        // Use the display-sorted data with simple reverse numbering
+        const totalCount = fallbackData.total || fallbackData.count || ordersArray.length;
+        const totalPages = fallbackData.total_pages || Math.ceil(totalCount / perPage);
+        
+        const transformedBills = ordersArray.map((bill, index) => {
+          const uniqueId = getStateBillId(bill) || `fallback-${pageNum}-${index}`;
+          
+          return {
+            id: uniqueId,
+            bill_id: uniqueId,
+            title: bill?.title || 'Untitled Bill',
+            status: cleanStatus(bill?.status),
+            category: cleanCategory(bill?.category),
+            description: bill?.description || bill?.ai_summary || 'No description available',
+            tags: [cleanCategory(bill?.category)].filter(Boolean),
+            summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
+            bill_number: bill?.bill_number,
+            state: bill?.state || stateName,
+            legiscan_url: bill?.legiscan_url,
+            ai_talking_points: bill?.ai_talking_points,
+            ai_business_impact: bill?.ai_business_impact,
+            ai_potential_impact: bill?.ai_potential_impact,
+            introduced_date: bill?.introduced_date,
+            last_action_date: bill?.last_action_date,
+            reviewed: bill?.reviewed || false,
+            executive_order_number: bill?.bill_number || uniqueId,
+            signing_date: bill?.introduced_date,
+            ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
+            order_type: 'state_legislation',
+            source_page: 'state-legislation',
+            index: index
+          };
+        });
+
+        // ✅ SET STATE: Update orders and pagination with proper count
+        setStateOrders(transformedBills);
+        setPagination({
+          page: pageNum,
+          per_page: perPage,
+          total_pages: totalPages,
+          count: Math.max(totalCount, transformedBills.length) // Ensure count is never 0
+        });
+
+        console.log(`✅ Updated state - Page: ${pageNum}/${totalPages}, Count: ${Math.max(totalCount, transformedBills.length)}`);
+        console.log(`🔢 First bill should be numbered: ${Math.max(totalCount, transformedBills.length) - ((pageNum - 1) * perPage + 0)}`);
+
+        setFetchStatus(`✅ Loaded ${transformedBills.length} of ${Math.max(totalCount, transformedBills.length)} bills (Page ${pageNum}/${totalPages}) - Sorted by date`);
+        setHasData(transformedBills.length > 0);
+        setTimeout(() => setFetchStatus(null), 4000);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('🔍 API Response:', data);
+
+      // ✅ COMPREHENSIVE DATA EXTRACTION: Handle different response formats
+      let ordersArray = [];
+      let totalCount = 0;
+      let currentPage = pageNum;
+      
+      if (Array.isArray(data)) {
+        ordersArray = data;
+        totalCount = data.length;
+        console.log('🔍 Using data directly as array');
+      } else if (data.results && Array.isArray(data.results)) {
+        ordersArray = data.results;
+        totalCount = data.total || data.count || 0;  
+        currentPage = data.page || pageNum;                           
+        console.log('🔍 Using data.results - total:', totalCount, 'current page:', currentPage);
+      } else if (data.data && Array.isArray(data.data)) {
+        ordersArray = data.data;
+        totalCount = data.total || data.count || 0;  
+        currentPage = data.page || pageNum;
+        console.log('🔍 Using data.data');
+      } else if (data.state_legislation && Array.isArray(data.state_legislation)) {
+        ordersArray = data.state_legislation;
+        totalCount = data.total || data.count || 0;  
+        currentPage = data.page || pageNum;
+        console.log('🔍 Using data.state_legislation');
+      } else {
+        console.error('🔍 Could not find bills array in response!');
+        console.error('🔍 Available fields:', Object.keys(data));
+        throw new Error('No bills found in API response');
+      }
+
+      // Calculate totalPages after we have all the data
+      const totalPages = data.total_pages || Math.ceil(totalCount / perPage);
+
+      console.log(`🔍 Extracted ${ordersArray.length} bills from page ${currentPage}`);
+      console.log(`🔍 Total count: ${totalCount}, Total pages: ${totalPages}`);
+
+      // Transform bills with enhanced compatibility and CLEANED META VALUES
+      const transformedBills = ordersArray.map((bill, index) => {
+        const uniqueId = getStateBillId(bill) || `fallback-${pageNum}-${index}`;
+        
+        return {
+          id: uniqueId,
+          bill_id: uniqueId,
+          title: bill?.title || 'Untitled Bill',
+          status: cleanStatus(bill?.status),
+          category: cleanCategory(bill?.category),
+          description: bill?.description || bill?.ai_summary || 'No description available',
+          tags: [cleanCategory(bill?.category)].filter(Boolean),
+          summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
+          bill_number: bill?.bill_number,
+          state: bill?.state || stateName,
+          legiscan_url: bill?.legiscan_url,
+          ai_talking_points: bill?.ai_talking_points,
+          ai_business_impact: bill?.ai_business_impact,
+          ai_potential_impact: bill?.ai_potential_impact,
+          introduced_date: bill?.introduced_date,
+          last_action_date: bill?.last_action_date,
+          reviewed: bill?.reviewed || false,
+          executive_order_number: bill?.bill_number || uniqueId,
+          signing_date: bill?.introduced_date,
+          ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
+          order_type: 'state_legislation',
+          source_page: 'state-legislation',
+          index: index
+        };
+      });
+
+      console.log(`🔍 Transformed ${transformedBills.length} bills`);
+
+      // ✅ SET STATE: Update orders and pagination
+      setStateOrders(transformedBills);
+      setPagination({
+        page: currentPage,
+        per_page: perPage,
+        total_pages: totalPages,
+        count: totalCount
+      });
+
+      console.log(`✅ Updated state - Page: ${currentPage}/${totalPages}, Count: ${totalCount}`);
+
+      setFetchStatus(`✅ Loaded ${transformedBills.length} of ${totalCount} bills (Page ${currentPage}/${totalPages})`);
+      setHasData(transformedBills.length > 0);
+      setTimeout(() => setFetchStatus(null), 4000);
+
+    } catch (err) {
+      console.error('❌ Error details:', err);
+      setStateError(`Failed to load state legislation: ${err.message}`);
+      setFetchStatus(`❌ Error: ${err.message}`);
+      setTimeout(() => setFetchStatus(null), 5000);
+      setStateOrders([]);
+      setHasData(false);
+    } finally {
+      setStateLoading(false);
+    }
+  }, [stateName, getStateBillId]);
+
+  // 🔢 NEW: Function to fetch filter counts from entire database
+  const fetchFilterCounts = useCallback(async () => {
+    try {
+      console.log('📊 Fetching filter counts from entire database...');
+      
+      const stateAbbr = SUPPORTED_STATES[stateName];
+      
+      // Start with smaller sample sizes that your API can handle
+      let totalCount = 0;
+      let categoryCounts = { civic: 0, education: 0, engineering: 0, healthcare: 0 };
+      let allOrders = [];
+      
+      // Try different approaches in order of preference
+      const approaches = [
+        { per_page: 100, description: '100 items' },
+        { per_page: 50, description: '50 items' },
+        { per_page: 25, description: '25 items (fallback)' }
+      ];
+      
+      let successfulApproach = null;
+      
+      for (const approach of approaches) {
+        try {
+          console.log(`📊 Trying to fetch ${approach.description}...`);
+          
+          const sampleResponse = await fetch(`${API_URL}/api/state-legislation?state=${stateAbbr}&page=1&per_page=${approach.per_page}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (sampleResponse.ok) {
+            const sampleData = await sampleResponse.json();
+            let sampleOrders = [];
+            
+            if (Array.isArray(sampleData)) {
+              sampleOrders = sampleData;
+              totalCount = sampleData.length;
+            } else if (sampleData.results && Array.isArray(sampleData.results)) {
+              sampleOrders = sampleData.results;
+              totalCount = sampleData.total || sampleData.count || 0;
+            } else if (sampleData.data && Array.isArray(sampleData.data)) {
+              sampleOrders = sampleData.data;
+              totalCount = sampleData.total || sampleData.count || 0;
+            } else if (sampleData.state_legislation && Array.isArray(sampleData.state_legislation)) {
+              sampleOrders = sampleData.state_legislation;
+              totalCount = sampleData.total || sampleData.count || 0;
+            }
+
+            allOrders = sampleOrders;
+            successfulApproach = approach;
+            console.log(`✅ Successfully fetched ${sampleOrders.length} orders using ${approach.description}`);
+            console.log(`📊 Total count from API: ${totalCount}`);
+            break;
+          }
+        } catch (err) {
+          console.log(`❌ Failed to fetch ${approach.description}:`, err.message);
+          continue;
+        }
+      }
+      
+      if (!successfulApproach) {
+        throw new Error('All fetch approaches failed');
+      }
+
+      // Count categories from the sample we got
+      FILTERS.forEach(filter => {
+        categoryCounts[filter.key] = allOrders.filter(order => cleanCategory(order?.category) === filter.key).length;
+      });
+      
+      console.log('📊 Category counts from sample:', categoryCounts);
+
+      // If we only got a small sample but the total is larger, estimate the full counts
+      if (allOrders.length < totalCount && totalCount > 0) {
+        const scaleFactor = totalCount / allOrders.length;
+        console.log(`📊 Scaling factor: ${scaleFactor} (${totalCount} total / ${allOrders.length} sample)`);
+        
+        // Scale up the category counts proportionally
+        Object.keys(categoryCounts).forEach(key => {
+          categoryCounts[key] = Math.round(categoryCounts[key] * scaleFactor);
+        });
+        
+        console.log('📊 Scaled category counts:', categoryCounts);
+      }
+
+      // Get reviewed counts from current data
+      const reviewedCount = stateOrders.filter(bill => isItemReviewed(bill)).length;
+
+      const newFilterCounts = {
+        ...categoryCounts,
+        reviewed: reviewedCount,
+        not_reviewed: Math.max(0, totalCount - reviewedCount),
+        total: totalCount
+      };
+
+      console.log('📊 Final filter counts:', newFilterCounts);
+      setAllFilterCounts(newFilterCounts);
+
+    } catch (error) {
+      console.error('❌ Error fetching filter counts:', error);
+      
+      // Enhanced fallback using current page data
+      const fallbackCounts = {};
+      FILTERS.forEach(filter => {
+        fallbackCounts[filter.key] = stateOrders.filter(order => cleanCategory(order?.category) === filter.key).length;
+      });
+      
+      const total = pagination.count || stateOrders.length || 0; // Use pagination total if available
+      const reviewed = stateOrders.filter(order => isItemReviewed(order)).length;
+      
+      console.log('📊 Using fallback counts with pagination total:', total);
+      
+      setAllFilterCounts({
+        ...fallbackCounts,
+        reviewed: reviewed,
+        not_reviewed: Math.max(0, total - reviewed),
+        total: total
+      });
+    }
+  }, [stateOrders, stateName, pagination.count, isItemReviewed]);
+
+  // 🔍 NEW: Get ALL filtered data, not just paginated results
+  const fetchAllFilteredData = useCallback(async (filters, search) => {
+    try {
+      console.log(`🔍 Fetching ALL filtered data - Filters: ${filters.join(',')}, Search: "${search}"`);
+
+      const stateAbbr = SUPPORTED_STATES[stateName];
+      
+      // Build URL to get ALL results (use reasonable page size)
+      let url = `${API_URL}/api/state-legislation?state=${stateAbbr}&per_page=100`;
+      
+      // Add category filters
+      const categoryFilters = filters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
+      if (categoryFilters.length > 0) {
+        if (categoryFilters.length === 1) {
+          url += `&category=${categoryFilters[0]}`;
+        } else {
+          url += `&category=${categoryFilters.join(',')}`;
+        }
+      }
+      
+      // Add search parameter
+      if (search && search.trim()) {
+        url += `&search=${encodeURIComponent(search.trim())}`;
+      }
+      
+      console.log('🔍 All Filtered URL:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Better error handling for 422
+      if (!response.ok) {
+        if (response.status === 422) {
+          console.error('❌ 422 Error - Backend rejected parameters. Trying without filters...');
+          
+          // Try fallback without category filter
+          const fallbackUrl = `${API_URL}/api/state-legislation?state=${stateAbbr}&per_page=100`;
+          const fallbackResponse = await fetch(fallbackUrl, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            console.log('✅ Fallback request successful, applying client-side filters');
+            
+            // Apply client-side filtering
+            let allOrdersArray = [];
+            if (Array.isArray(fallbackData)) {
+              allOrdersArray = fallbackData;
+            } else if (fallbackData.results && Array.isArray(fallbackData.results)) {
+              allOrdersArray = fallbackData.results;
+            } else if (fallbackData.data && Array.isArray(fallbackData.data)) {
+              allOrdersArray = fallbackData.data;
+            } else if (fallbackData.state_legislation && Array.isArray(fallbackData.state_legislation)) {
+              allOrdersArray = fallbackData.state_legislation;
+            }
+            
+            console.log(`🔍 Fallback got ${allOrdersArray.length} total bills from backend`);
+            
+            // Filter client-side by category
+            if (categoryFilters.length > 0) {
+              console.log(`🔍 Filtering for categories: ${categoryFilters.join(', ')}`);
+              const beforeFilter = allOrdersArray.length;
+              allOrdersArray = allOrdersArray.filter(bill => {
+                const cleanedCategory = cleanCategory(bill?.category);
+                const hasCategory = categoryFilters.includes(cleanedCategory);
+                if (hasCategory) {
+                  console.log(`✅ Bill "${bill.title}" matches category "${cleanedCategory}"`);
+                } else {
+                  console.log(`❌ Bill "${bill.title}" has category "${cleanedCategory}" (not in ${categoryFilters.join(', ')})`);
+                }
+                return hasCategory;
+              });
+              console.log(`🔍 Category filtering: ${beforeFilter} -> ${allOrdersArray.length} bills`);
+            }
+            
+            // Filter by search term
+            if (search && search.trim()) {
+              const searchLower = search.toLowerCase();
+              const beforeSearch = allOrdersArray.length;
+              allOrdersArray = allOrdersArray.filter(bill =>
+                bill.title?.toLowerCase().includes(searchLower) ||
+                bill.ai_summary?.toLowerCase().includes(searchLower) ||
+                bill.description?.toLowerCase().includes(searchLower)
+              );
+              console.log(`🔍 Search filtering: ${beforeSearch} -> ${allOrdersArray.length} bills`);
+            }
+            
+            // Transform the filtered orders
+            const allTransformedOrders = allOrdersArray.map((bill, index) => {
+              const uniqueId = getStateBillId(bill) || `bill-all-${index}`;
+              
+              return {
+                id: uniqueId,
+                bill_id: uniqueId,
+                title: bill?.title || 'Untitled Bill',
+                status: cleanStatus(bill?.status),
+                category: cleanCategory(bill?.category),
+                description: bill?.description || bill?.ai_summary || 'No description available',
+                tags: [cleanCategory(bill?.category)].filter(Boolean),
+                summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
+                bill_number: bill?.bill_number,
+                state: bill?.state || stateName,
+                legiscan_url: bill?.legiscan_url,
+                ai_talking_points: bill?.ai_talking_points,
+                ai_business_impact: bill?.ai_business_impact,
+                ai_potential_impact: bill?.ai_potential_impact,
+                introduced_date: bill?.introduced_date,
+                last_action_date: bill?.last_action_date,
+                reviewed: bill?.reviewed || false,
+                executive_order_number: bill?.bill_number || uniqueId,
+                signing_date: bill?.introduced_date,
+                ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
+                order_type: 'state_legislation',
+                source_page: 'state-legislation',
+                index: index
+              };
+            });
+
+            // Apply review status filtering
+            let finalAllOrders = allTransformedOrders;
+            const hasReviewedFilter = filters.includes('reviewed');
+            const hasNotReviewedFilter = filters.includes('not_reviewed');
+            
+            if (hasReviewedFilter && !hasNotReviewedFilter) {
+              finalAllOrders = allTransformedOrders.filter(bill => isItemReviewed(bill));
+            } else if (hasNotReviewedFilter && !hasReviewedFilter) {
+              finalAllOrders = allTransformedOrders.filter(bill => !isItemReviewed(bill));
+            }
+
+            console.log(`🔍 Client-side filtered results: ${finalAllOrders.length} bills`);
+            return finalAllOrders;
+          }
+        }
+        
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('🔍 All Filtered API Response:', data);
+
+      // Extract ALL orders from response
+      let allOrdersArray = [];
+      
+      if (Array.isArray(data)) {
+        allOrdersArray = data;
+      } else if (data.results && Array.isArray(data.results)) {
+        allOrdersArray = data.results;
+      } else if (data.data && Array.isArray(data.data)) {
+        allOrdersArray = data.data;
+      } else if (data.state_legislation && Array.isArray(data.state_legislation)) {
+        allOrdersArray = data.state_legislation;
+      }
+
+      // Transform ALL orders
+      const allTransformedOrders = allOrdersArray.map((bill, index) => {
+        const uniqueId = getStateBillId(bill) || `bill-all-${index}`;
+        
+        return {
+          id: uniqueId,
+          bill_id: uniqueId,
+          title: bill?.title || 'Untitled Bill',
+          status: cleanStatus(bill?.status),
+          category: cleanCategory(bill?.category),
+          description: bill?.description || bill?.ai_summary || 'No description available',
+          tags: [cleanCategory(bill?.category)].filter(Boolean),
+          summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
+          bill_number: bill?.bill_number,
+          state: bill?.state || stateName,
+          legiscan_url: bill?.legiscan_url,
+          ai_talking_points: bill?.ai_talking_points,
+          ai_business_impact: bill?.ai_business_impact,
+          ai_potential_impact: bill?.ai_potential_impact,
+          introduced_date: bill?.introduced_date,
+          last_action_date: bill?.last_action_date,
+          reviewed: bill?.reviewed || false,
+          executive_order_number: bill?.bill_number || uniqueId,
+          signing_date: bill?.introduced_date,
+          ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
+          order_type: 'state_legislation',
+          source_page: 'state-legislation',
+          index: index
+        };
+      });
+
+      // Apply client-side review status filtering
+      let finalAllOrders = allTransformedOrders;
+      const hasReviewedFilter = filters.includes('reviewed');
+      const hasNotReviewedFilter = filters.includes('not_reviewed');
+      
+      if (hasReviewedFilter && !hasNotReviewedFilter) {
+        finalAllOrders = allTransformedOrders.filter(bill => isItemReviewed(bill));
+      } else if (hasNotReviewedFilter && !hasReviewedFilter) {
+        finalAllOrders = allTransformedOrders.filter(bill => !isItemReviewed(bill));
+      }
+
+      console.log(`🔍 All Filtered Results: ${finalAllOrders.length} bills`);
+      return finalAllOrders;
+
+    } catch (err) {
+      console.error('❌ All filtered fetch failed:', err);
+      console.log('🔄 Falling back to client-side filtering only');
+      
+      // Ultimate fallback - try to get all data without any parameters
+      try {
+        const stateAbbr = SUPPORTED_STATES[stateName];
+        const basicResponse = await fetch(`${API_URL}/api/state-legislation?state=${stateAbbr}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (basicResponse.ok) {
+          const basicData = await basicResponse.json();
+          let basicOrders = [];
+          
+          if (Array.isArray(basicData)) {
+            basicOrders = basicData;
+          } else if (basicData.results && Array.isArray(basicData.results)) {
+            basicOrders = basicData.results;
+          } else if (basicData.data && Array.isArray(basicData.data)) {
+            basicOrders = basicData.data;
+          } else if (basicData.state_legislation && Array.isArray(basicData.state_legislation)) {
+            basicOrders = basicData.state_legislation;
+          }
+          
+          // Apply all filtering client-side
+          const categoryFilters = filters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
+          
+          let filteredOrders = basicOrders;
+          
+          // Filter by category
+          if (categoryFilters.length > 0) {
+            filteredOrders = filteredOrders.filter(bill => 
+              categoryFilters.includes(cleanCategory(bill?.category))
+            );
+          }
+          
+          // Filter by search
+          if (search && search.trim()) {
+            const searchLower = search.toLowerCase();
+            filteredOrders = filteredOrders.filter(bill =>
+              bill.title?.toLowerCase().includes(searchLower) ||
+              bill.ai_summary?.toLowerCase().includes(searchLower) ||
+              bill.description?.toLowerCase().includes(searchLower)
+            );
+          }
+          
+          console.log(`🔄 Ultimate fallback: ${filteredOrders.length} filtered bills`);
+          
+          // Transform and return
+          return filteredOrders.map((bill, index) => ({
+            id: getStateBillId(bill) || `bill-all-${index}`,
+            bill_id: getStateBillId(bill) || `bill-all-${index}`,
+            title: bill?.title || 'Untitled Bill',
+            status: cleanStatus(bill?.status),
+            category: cleanCategory(bill?.category),
+            description: bill?.description || bill?.ai_summary || 'No description available',
+            tags: [cleanCategory(bill?.category)].filter(Boolean),
+            summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
+            bill_number: bill?.bill_number,
+            state: bill?.state || stateName,
+            legiscan_url: bill?.legiscan_url,
+            ai_talking_points: bill?.ai_talking_points,
+            ai_business_impact: bill?.ai_business_impact,
+            ai_potential_impact: bill?.ai_potential_impact,
+            introduced_date: bill?.introduced_date,
+            last_action_date: bill?.last_action_date,
+            reviewed: bill?.reviewed || false,
+            executive_order_number: bill?.bill_number || (getStateBillId(bill) || `bill-all-${index}`),
+            signing_date: bill?.introduced_date,
+            ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
+            order_type: 'state_legislation',
+            source_page: 'state-legislation',
+            index: index
+          }));
+        }
+      } catch (ultimateError) {
+        console.error('❌ Ultimate fallback also failed:', ultimateError);
+      }
+      
+      return [];
+    }
+  }, [stateName, getStateBillId, isItemReviewed]);
+
+  // 🔍 NEW: Database-level filtering function with proper pagination
+  const fetchFilteredData = useCallback(async (filters, search, pageNum = 1) => {
+    try {
+      setStateLoading(true);
+      setStateError(null);
+      setFetchStatus('🔍 Filtering state legislation...');
+
+      console.log(`🔍 fetchFilteredData called with filters: ${filters}, search: "${search}", page: ${pageNum}`);
+
+      // First, get ALL filtered results to show correct total count
+      const allFilteredOrders = await fetchAllFilteredData(filters, search);
+      const totalFilteredCount = allFilteredOrders.length;
+
+      console.log(`🔍 Got ${totalFilteredCount} total filtered bills from fetchAllFilteredData`);
+
+      if (totalFilteredCount === 0) {
+        console.log('🔍 No filtered results found');
+        setStateOrders([]);
+        setPagination({
+          page: 1,
+          per_page: 25,
+          total_pages: 0,
+          count: 0
+        });
+        setFetchStatus(`❌ No results found for selected filters`);
+        setHasData(false);
+        setTimeout(() => setFetchStatus(null), 4000);
+        return;
+      }
+
+      // Now paginate the results client-side for correct display
+      const perPage = 25;
+      const startIndex = (pageNum - 1) * perPage;
+      const endIndex = startIndex + perPage;
+      const paginatedOrders = allFilteredOrders.slice(startIndex, endIndex);
+      
+      console.log(`🔍 Paginating: showing items ${startIndex + 1}-${Math.min(endIndex, totalFilteredCount)} of ${totalFilteredCount} total`);
+      console.log(`🔍 Paginated bills count: ${paginatedOrders.length}`);
+
+      // Calculate correct pagination
+      const totalPages = Math.ceil(totalFilteredCount / perPage);
+
+      // Update state with paginated results but correct total count
+      setStateOrders(paginatedOrders);
+      setPagination({
+        page: pageNum,
+        per_page: perPage,
+        total_pages: totalPages,
+        count: totalFilteredCount
+      });
+
+      console.log(`🔍 Set pagination: page ${pageNum}/${totalPages}, total count: ${totalFilteredCount}`);
+
+      setFetchStatus(`✅ Found ${totalFilteredCount} filtered bills, showing page ${pageNum} of ${totalPages}`);
+      setHasData(paginatedOrders.length > 0);
+      setTimeout(() => setFetchStatus(null), 4000);
+
+    } catch (err) {
+      console.error('❌ Filtered fetch failed:', err);
+      setStateError(`Failed to filter state legislation: ${err.message}`);
+      setFetchStatus(`❌ Filter error: ${err.message}`);
+      setTimeout(() => setFetchStatus(null), 5000);
+      setStateOrders([]);
+      setHasData(false);
+    } finally {
+      setStateLoading(false);
+    }
+  }, [fetchAllFilteredData]);
+
+  // ✅ NEW: PAGE CHANGE HANDLER
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`🔄 Changing to page ${newPage} with filters:`, selectedFilters);
+    
+    if (selectedFilters.length > 0 || stateSearchTerm) {
+      fetchFilteredData(selectedFilters, stateSearchTerm, newPage);
+    } else {
+      fetchFromDatabase(newPage);
+    }
+  }, [selectedFilters, stateSearchTerm, fetchFromDatabase, fetchFilteredData]);
+
+  // Handle search
+  const handleSearch = useCallback(() => {
+    console.log(`🔍 Searching for: "${stateSearchTerm}"`);
+    if (selectedFilters.length > 0 || stateSearchTerm) {
+      fetchFilteredData(selectedFilters, stateSearchTerm, 1);
+    }
+  }, [stateSearchTerm, selectedFilters, fetchFilteredData]);
+
+  // 🔢 NEW: Dynamic filter counts based on current filtering state
+  const updateFilterCounts = useCallback(async (activeFilters, searchTerm) => {
+    try {
+      if (activeFilters.length === 0 && !searchTerm) {
+        // No filters active - show total database counts
+        await fetchFilterCounts();
+        return;
+      }
+
+      console.log('📊 Updating filter counts for active filters:', activeFilters);
+      
+      // For filtered state, get ALL data and count client-side
+      try {
+        const stateAbbr = SUPPORTED_STATES[stateName];
+        const response = await fetch(`${API_URL}/api/state-legislation?state=${stateAbbr}&per_page=200`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          let allOrders = [];
+          
+          if (Array.isArray(data)) {
+            allOrders = data;
+          } else if (data.results && Array.isArray(data.results)) {
+            allOrders = data.results;
+          } else if (data.data && Array.isArray(data.data)) {
+            allOrders = data.data;
+          } else if (data.state_legislation && Array.isArray(data.state_legislation)) {
+            allOrders = data.state_legislation;
+          }
+
+          // Apply base filters (search term, but not the specific category we're counting)
+          let baseFilteredOrders = allOrders;
+          
+          // Apply search if present
+          if (searchTerm && searchTerm.trim()) {
+            const searchLower = searchTerm.toLowerCase();
+            baseFilteredOrders = baseFilteredOrders.filter(bill =>
+              bill.title?.toLowerCase().includes(searchLower) ||
+              bill.ai_summary?.toLowerCase().includes(searchLower) ||
+              bill.description?.toLowerCase().includes(searchLower)
+            );
+          }
+
+          // Count categories from ALL filtered results (not just the active filter)
+          const newCategoryCounts = {};
+          FILTERS.forEach(filter => {
+            newCategoryCounts[filter.key] = baseFilteredOrders.filter(bill => cleanCategory(bill?.category) === filter.key).length;
+          });
+
+          // Count review status from filtered results
+          const reviewedCount = baseFilteredOrders.filter(bill => {
+            return bill.reviewed === true || bill.reviewed === 1;
+          }).length;
+
+          const totalFiltered = baseFilteredOrders.length;
+
+          const updatedCounts = {
+            ...newCategoryCounts,
+            reviewed: reviewedCount,
+            not_reviewed: totalFiltered - reviewedCount,
+            total: totalFiltered
+          };
+
+          console.log('📊 Updated filter counts:', updatedCounts);
+          setAllFilterCounts(updatedCounts);
+        }
+      } catch (countError) {
+        console.error('❌ Error updating filter counts, using fallback');
+        // Fallback to current data
+        const fallbackCounts = {};
+        FILTERS.forEach(filter => {
+          fallbackCounts[filter.key] = stateOrders.filter(bill => cleanCategory(bill?.category) === filter.key).length;
+        });
+        
+        const reviewed = stateOrders.filter(bill => isItemReviewed(bill)).length;
+        
+        setAllFilterCounts({
+          ...fallbackCounts,
+          reviewed: reviewed,
+          not_reviewed: Math.max(0, stateOrders.length - reviewed),
+          total: stateOrders.length
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error updating filter counts:', error);
+    }
+  }, [stateName, fetchFilterCounts, stateOrders, isItemReviewed]);
+
+  // Update filter counts when filters or search changes
+  useEffect(() => {
+    if (stateOrders.length > 0) {
+      updateFilterCounts(selectedFilters, stateSearchTerm);
+    }
+  }, [selectedFilters, stateSearchTerm, stateOrders.length, updateFilterCounts]);
+
+  // UPDATED: Load existing highlights on component mount - using same pattern as ExecutiveOrdersPage
   useEffect(() => {
     const loadExistingHighlights = async () => {
       try {
@@ -648,55 +1620,57 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     }
   }, [stateOrders.length]);
 
-  // Load/save reviewed bills from localStorage
+  // 🚀 NEW: AUTO-LOAD: Auto-load data from database on component mount
   useEffect(() => {
-    try {
-      const savedReviewed = localStorage.getItem('reviewedStateBills');
-      if (savedReviewed) {
-        setReviewedBills(new Set(JSON.parse(savedReviewed)));
-      }
-    } catch (error) {
-      console.error('Error loading reviewed bills:', error);
-    }
-  }, []);
+    if (stateName && SUPPORTED_STATES[stateName]) {
+      console.log('🚀 Component mounted - attempting auto-load...');
+      
+      const autoLoad = async () => {
+        try {
+          console.log('📊 Auto-loading state legislation from database...');
+          await fetchFromDatabase(1);
+          console.log('✅ Auto-load completed successfully');
+        } catch (err) {
+          console.error('❌ Auto-load failed:', err);
+          // Don't show error for auto-load failure, just log it
+          setStateOrders([]);
+          setHasData(false);
+        }
+      };
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('reviewedStateBills', JSON.stringify([...reviewedBills]));
-    } catch (error) {
-      console.error('Error saving reviewed bills:', error);
+      // Small delay to ensure component is fully mounted
+      const timeoutId = setTimeout(autoLoad, 100);
+      
+      return () => clearTimeout(timeoutId);
     }
-  }, [reviewedBills]);
+  }, [stateName, fetchFromDatabase]); // Depend on stateName and fetchFromDatabase
 
-  // Toggle review status function
+  // NEW: Enhanced review status handler using database
   const handleToggleReviewStatus = async (bill) => {
-    const billId = getStateBillId(bill);
-    if (!billId) return;
-    
-    const isCurrentlyReviewed = reviewedBills.has(billId);
-    setMarkingReviewed(prev => new Set([...prev, billId]));
-    
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
+      console.log('🔍 Frontend: Bill object:', bill);
+      console.log('🔍 Frontend: Available IDs:', {
+        id: bill.id,
+        bill_id: bill.bill_id,
+        bill_number: bill.bill_number
+      });
       
-      if (isCurrentlyReviewed) {
-        setReviewedBills(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(billId);
-          return newSet;
-        });
-      } else {
-        setReviewedBills(prev => new Set([...prev, billId]));
-      }
+      // The ID being sent should be the database ID (bill.id), not bill_id
+      const idToSend = bill.id || bill.bill_id;
+      console.log('🔍 Frontend: ID being sent to API:', idToSend);
+      const newStatus = await toggleReviewStatus(bill);
       
+      // Update the local state to reflect the change immediately
+      setStateOrders(prevOrders => 
+        prevOrders.map(order => 
+          (order.id === bill.id || order.bill_id === bill.bill_id) 
+            ? { ...order, reviewed: newStatus }
+            : order
+        )
+      );
     } catch (error) {
       console.error('Error toggling review status:', error);
-    } finally {
-      setMarkingReviewed(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(billId);
-        return newSet;
-      });
+      // Optionally show an error message to the user
     }
   };
 
@@ -825,21 +1799,23 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     return billId ? highlightLoading.has(billId) : false;
   }, [highlightLoading, getStateBillId]);
 
-  // Count functions for filter display
-  const reviewCounts = useMemo(() => {
-    const total = stateOrders.length || 0;
-    const reviewed = stateOrders.filter(bill => reviewedBills.has(getStateBillId(bill))).length;
-    const notReviewed = total - reviewed;
-    return { total, reviewed, notReviewed };
-  }, [stateOrders, reviewedBills, getStateBillId]);
+  // ✅ NEW: Count functions for filter display (copied from ExecutiveOrdersPage)
+  const reviewCountsFromFilter = useMemo(() => {
+    return {
+      total: allFilterCounts.total || 0,
+      reviewed: allFilterCounts.reviewed || 0,
+      notReviewed: allFilterCounts.not_reviewed || 0
+    };
+  }, [allFilterCounts]);
 
   const categoryCounts = useMemo(() => {
-    const counts = {};
-    FILTERS.forEach(filter => {
-      counts[filter.key] = stateOrders.filter(bill => bill?.category === filter.key).length;
-    });
-    return counts;
-  }, [stateOrders]);
+    return {
+      civic: allFilterCounts.civic || 0,
+      education: allFilterCounts.education || 0,
+      engineering: allFilterCounts.engineering || 0,
+      healthcare: allFilterCounts.healthcare || 0
+    };
+  }, [allFilterCounts]);
 
   // Click outside to close dropdown
   useEffect(() => {
@@ -852,100 +1828,13 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch existing data on component mount
-  useEffect(() => {
-    if (stateName && SUPPORTED_STATES[stateName]) {
-      fetchExistingData();
-    }
-  }, [stateName]);
-
-  const fetchExistingData = async () => {
-    setStateLoading(true);
-    setStateError(null);
-    
-    try {
-      const stateAbbr = SUPPORTED_STATES[stateName];
-      console.log('🔍 Fetching data for state:', stateName, 'Abbreviation:', stateAbbr);
-      
-      const urls = [
-        `${API_URL}/api/state-legislation?state=${stateAbbr}`,
-        `${API_URL}/api/state-legislation?state=${stateName}`
-      ];
-      
-      let response;
-      let data;
-      
-      for (const url of urls) {
-        console.log('🔍 Trying URL:', url);
-        response = await fetch(url);
-        
-        if (response.ok) {
-          data = await response.json();
-          console.log('🔍 Response data:', data);
-          
-          if (data.results && data.results.length > 0) {
-            console.log('✅ Found data with URL:', url);
-            break;
-          }
-        }
-      }
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const results = data?.results || [];
-      
-      // Transform bills with enhanced compatibility and CLEANED META VALUES
-      const transformedBills = results.map((bill, index) => {
-        const uniqueId = getStateBillId(bill) || `fallback-${index}`;
-        
-        return {
-          // Core identification
-          id: uniqueId,
-          bill_id: uniqueId,
-          
-          // Standard bill fields with CLEANED VALUES
-          title: bill?.title || 'Untitled Bill',
-          status: cleanStatus(bill?.status), // ✅ CLEANED STATUS
-          category: cleanCategory(bill?.category), // ✅ CLEANED CATEGORY
-          description: bill?.description || bill?.ai_summary || 'No description available',
-          tags: [cleanCategory(bill?.category)].filter(Boolean), // ✅ CLEANED TAGS
-          summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
-          bill_number: bill?.bill_number,
-          state: bill?.state || stateName,
-          legiscan_url: bill?.legiscan_url,
-          ai_talking_points: bill?.ai_talking_points,
-          ai_business_impact: bill?.ai_business_impact,
-          ai_potential_impact: bill?.ai_potential_impact,
-          introduced_date: bill?.introduced_date,
-          last_action_date: bill?.last_action_date,
-          
-          // Highlights page compatibility
-          executive_order_number: bill?.bill_number || uniqueId,
-          signing_date: bill?.introduced_date,
-          ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
-          
-          // Backend compatibility
-          order_type: 'state_legislation',
-          source_page: 'state-legislation'
-        };
-      });
-      
-      console.log('🔍 Transformed bills:', transformedBills.length, 'bills');
-      setStateOrders(transformedBills);
-      setHasData(transformedBills.length > 0);
-    } catch (error) {
-      console.error('❌ Error fetching existing state legislation:', error);
-      setStateError(error.message);
-      setHasData(false);
-      setStateOrders([]);
-    } finally {
-      setStateLoading(false);
-    }
-  };
-
-  // Enhanced topic-based fetch function with category tracking
+  // ✅ ULTRA-SIMPLE: Just number items sequentially on each page
+  const getSequentialNumber = useCallback((index, pageInfo) => {
+    // Don't try to be clever - just number items 1, 2, 3... on each page
+    // Or if we want continuous numbering, use a simple calculation
+    const itemsPerPage = 25; // Fixed assumption
+    return (pageInfo.page - 1) * itemsPerPage + index + 1;
+  }, []);
   const handleQuickFetchByTopic = async (topic, description) => {
     if (fetchingData) return;
     
@@ -975,7 +1864,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         );
         
         setTimeout(() => {
-          fetchExistingData();
+          fetchFromDatabase(1);
         }, 1000);
       } else {
         setFetchStatus(`❌ Error: ${data.message || 'Unknown error'}`);
@@ -993,7 +1882,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     }
   };
 
-  // Filter the orders with multiple filter support
+  // UPDATED: Filter the orders with database-driven review status
   const filteredStateOrders = useMemo(() => {
     if (!Array.isArray(stateOrders)) {
       return [];
@@ -1004,19 +1893,19 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     // Apply category filters
     const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
     if (categoryFilters.length > 0) {
-      filtered = filtered.filter(bill => categoryFilters.includes(bill?.category));
+      filtered = filtered.filter(bill => categoryFilters.includes(cleanCategory(bill?.category)));
     }
 
-    // Apply review status filters
+    // Apply review status filters - NOW USING DATABASE VALUES
     const hasReviewedFilter = selectedFilters.includes('reviewed');
     const hasNotReviewedFilter = selectedFilters.includes('not_reviewed');
     
     if (hasReviewedFilter && hasNotReviewedFilter) {
       // Both selected, show all
     } else if (hasReviewedFilter) {
-      filtered = filtered.filter(bill => reviewedBills.has(getStateBillId(bill)));
+      filtered = filtered.filter(bill => isItemReviewed(bill));
     } else if (hasNotReviewedFilter) {
-      filtered = filtered.filter(bill => !reviewedBills.has(getStateBillId(bill)));
+      filtered = filtered.filter(bill => !isItemReviewed(bill));
     }
     
     // Apply search filter
@@ -1036,7 +1925,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     }
     
     return filtered;
-  }, [stateOrders, selectedFilters, reviewedBills, stateSearchTerm, getStateBillId]);
+  }, [stateOrders, selectedFilters, stateSearchTerm, isItemReviewed]);
 
   // Get dynamic styles for fetch status bar
   const fetchStatusStyles = getCategoryStyles(lastFetchedCategory);
@@ -1128,12 +2017,11 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                   {FILTERS.map(filter => {
                     const IconComponent = filter.icon;
                     const isActive = isFilterActive(filter.key);
-                    const count = categoryCounts[filter.key] || 0;
                     return (
                       <button
                         key={filter.key}
                         onClick={() => toggleFilter(filter.key)}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center ${
                           isActive
                             ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
                               filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
@@ -1181,7 +2069,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                       <span>Reviewed</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">({reviewCounts.reviewed})</span>
+                      <span className="text-xs text-gray-500">({reviewCountsFromFilter.reviewed})</span>
                       {isFilterActive('reviewed') && (
                         <Check size={14} className="text-green-600" />
                       )}
@@ -1200,7 +2088,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                       <span>Not Reviewed</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">({reviewCounts.notReviewed})</span>
+                      <span className="text-xs text-gray-500">({reviewCountsFromFilter.notReviewed})</span>
                       {isFilterActive('not_reviewed') && (
                         <Check size={14} className="text-red-600" />
                       )}
@@ -1219,8 +2107,16 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
               placeholder={`Search ${stateName} legislation...`}
               value={stateSearchTerm}
               onChange={(e) => setStateSearchTerm(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
             />
+            {stateSearchTerm && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                  {stateOrders.length} found
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Clear Filters Button */}
@@ -1390,36 +2286,54 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             ) : stateError ? (
               <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md">
                 <p className="font-semibold mb-2">Error loading {stateName} legislation:</p>
-                <p className="text-sm">{stateError}</p>
+                <p className="text-sm mb-4">{stateError}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => fetchFromDatabase(pagination.page)}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all duration-300"
+                  >
+                    Try Again
+                  </button>
+                </div>
               </div>
-            ) : filteredStateOrders.length > 0 ? (
+            ) : stateOrders.length > 0 ? (
               <div className="space-y-6">
-                {filteredStateOrders.map((bill, index) => {
+                {stateOrders.map((bill, index) => {
                   if (!bill || typeof bill !== 'object') {
                     console.warn('Invalid bill data at index', index, bill);
                     return null;
                   }
 
                   const billId = getStateBillId(bill);
-                  const isReviewed = reviewedBills.has(billId);
+                  const isReviewed = isItemReviewed(bill);
                   const isExpanded = isBillExpanded(bill);
+                  
+                  // 🔢 ULTRA-SIMPLE: Basic sequential numbering
+                  const actualBillNumber = getSequentialNumber(index, pagination);
+                  
+                  // Debug logging for troubleshooting
+                  if (index < 3) { // Only log first 3 items to avoid spam
+                    console.log(`🔢 Bill ${index}: "${bill.title?.substring(0, 30)}..." = #${actualBillNumber}`);
+                    console.log(`📊 Backend pagination: ${pagination.count} total, ${pagination.total_pages} pages`);
+                    console.log(`📊 Actual data: ${stateOrders.length} items in memory`);
+                  }
 
                   return (
                     <div key={bill.id || index} className={`bg-white rounded-lg shadow-sm border overflow-hidden transition-all duration-300 ${
                       isReviewed ? 'border-green-200 bg-green-50' : 'border-gray-200'
                     }`}>
                       {/* Bill Header */}
-                      <div className="flex items-start justify-between px-6 pt-6 pb-3">
+                      <div className="flex items-start justify-between px-6 pt-6 pb-2">
                         <div 
-                          className="flex-1 pr-4 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
+                          className="flex-1 pr-4 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2"
                           onClick={() => toggleBillExpansion(bill)}
                         >
-                          <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                            {index + 1}. {cleanBillTitle(bill.title)}
+                          <h3 className="text-base font-semibold text-gray-900 mb-2">
+                            {actualBillNumber}. {cleanBillTitle(bill.title)}
                           </h3>
                           
                           {/* Bill Number and Dates */}
-                          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-3">
+                          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
                             {bill.bill_number && (
                               <>
                                 <span className="font-semibold">Bill #{bill.bill_number}</span>
@@ -1451,16 +2365,16 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                         
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2">
-                          {/* Toggle Review Status Button */}
+                          {/* NEW: Database-driven Review Status Button */}
                           <button
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
                               handleToggleReviewStatus(bill);
                             }}
-                            disabled={markingReviewed.has(billId)}
+                            disabled={isItemReviewLoading(bill)}
                             className={`p-2 rounded-md transition-all duration-300 ${
-                              markingReviewed.has(billId)
+                              isItemReviewLoading(bill)
                                 ? 'text-gray-500 cursor-not-allowed'
                                 : isReviewed
                                 ? 'text-green-600 bg-green-100 hover:bg-green-200'
@@ -1468,7 +2382,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                             }`}
                             title={isReviewed ? "Mark as not reviewed" : "Mark as reviewed"}
                           >
-                            {markingReviewed.has(billId) ? (
+                            {isItemReviewLoading(bill) ? (
                               <RefreshIcon size={16} className="animate-spin" />
                             ) : (
                               <Check size={16} className={isReviewed ? "text-green-600" : ""} />
@@ -1532,7 +2446,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
                       {/* AI Summary - Always show if available */}
                       {bill.summary && bill.summary !== 'No AI summary available' && (
-                        <div className="mb-4 mt-4 mx-6">
+                        <div className="mb-4 mx-6">
                           <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
                             <div className="flex items-center gap-2 mb-2">
                               <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
@@ -1556,12 +2470,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                         </div>
                       )}
 
-                      {/* Description - Always show */}
-                      <div className="px-6 pb-4">
-                        <p className="text-gray-700">{bill.description || 'No description available'}</p>
-                      </div>
-
-                      {/* Expanded AI Content Section */}
+                      {/* Expanded Content Section */}
                       {isExpanded && (
                         <div>
                           {/* AI Talking Points */}
@@ -1599,63 +2508,64 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                               </div>
                             </div>
                           )}
+
+                          {/* Action Buttons - Now in expanded section */}
+                          <div className="px-6 pb-6">
+                            <div className="flex gap-2">
+                              {bill.legiscan_url && (
+                                <a
+                                  href={bill.legiscan_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 transition-all duration-300"
+                                >
+                                  <ExternalLink size={16} />
+                                  <span>View on LegiScan</span>
+                                </a>
+                              )}
+                              <button 
+                                type="button"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 transition-all duration-300"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  
+                                  // Create bill report
+                                  const billReport = [
+                                    bill.title,
+                                    'Bill #' + (bill.bill_number || 'N/A'),
+                                    'State: ' + (bill.state || 'N/A'),
+                                    'Status: ' + (bill.status || 'Unknown'),
+                                    'Category: ' + (bill.category || 'N/A'),
+                                    'Reviewed: ' + (isReviewed ? 'Yes' : 'No'),
+                                    '',
+                                    bill.summary && bill.summary !== 'No AI summary available' ? 'AI Summary: ' + bill.summary : '',
+                                    bill.description ? 'Description: ' + bill.description : '',
+                                    bill.ai_talking_points ? 'Key Talking Points: ' + stripHtmlTags(bill.ai_talking_points) : '',
+                                    bill.ai_business_impact ? 'Business Impact: ' + stripHtmlTags(bill.ai_business_impact) : '',
+                                    bill.ai_potential_impact ? 'Long-term Impact: ' + stripHtmlTags(bill.ai_potential_impact) : '',
+                                    bill.legiscan_url ? 'LegiScan URL: ' + bill.legiscan_url : ''
+                                  ].filter(line => line.length > 0).join('\n');
+                                  
+                                  // Try to copy to clipboard
+                                  if (copyToClipboard && typeof copyToClipboard === 'function') {
+                                    copyToClipboard(billReport);
+                                    console.log('✅ Copied bill report to clipboard');
+                                  } else if (navigator.clipboard) {
+                                    navigator.clipboard.writeText(billReport).catch(console.error);
+                                    console.log('✅ Copied bill report to clipboard (fallback)');
+                                  } else {
+                                    console.log('❌ Copy to clipboard not available');
+                                  }
+                                }}
+                              >
+                                <Copy size={16} />
+                                <span>Copy Details</span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       )}
-
-                      {/* Action Buttons */}
-                      <div className="px-6 pb-6">
-                        <div className="flex gap-2">
-                          {bill.legiscan_url && (
-                            <a
-                              href={bill.legiscan_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 transition-all duration-300"
-                            >
-                              <ExternalLink size={16} />
-                              <span>View on LegiScan</span>
-                            </a>
-                          )}
-                          <button 
-                            type="button"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 transition-all duration-300"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              
-                              // Create bill report
-                              const billReport = [
-                                bill.title,
-                                'Bill #' + (bill.bill_number || 'N/A'),
-                                'State: ' + (bill.state || 'N/A'),
-                                'Status: ' + (bill.status || 'Unknown'),
-                                'Category: ' + (bill.category || 'N/A'),
-                                '',
-                                bill.summary && bill.summary !== 'No AI summary available' ? 'AI Summary: ' + bill.summary : '',
-                                bill.description ? 'Description: ' + bill.description : '',
-                                bill.ai_talking_points ? 'Key Talking Points: ' + stripHtmlTags(bill.ai_talking_points) : '',
-                                bill.ai_business_impact ? 'Business Impact: ' + stripHtmlTags(bill.ai_business_impact) : '',
-                                bill.ai_potential_impact ? 'Long-term Impact: ' + stripHtmlTags(bill.ai_potential_impact) : '',
-                                bill.legiscan_url ? 'LegiScan URL: ' + bill.legiscan_url : ''
-                              ].filter(line => line.length > 0).join('\n');
-                              
-                              // Try to copy to clipboard
-                              if (copyToClipboard && typeof copyToClipboard === 'function') {
-                                copyToClipboard(billReport);
-                                console.log('✅ Copied bill report to clipboard');
-                              } else if (navigator.clipboard) {
-                                navigator.clipboard.writeText(billReport).catch(console.error);
-                                console.log('✅ Copied bill report to clipboard (fallback)');
-                              } else {
-                                console.log('❌ Copy to clipboard not available');
-                              }
-                            }}
-                          >
-                            <Copy size={16} />
-                            <span>Copy Details</span>
-                          </button>
-                        </div>
-                      </div>
                     </div>
                   );
                 })}
@@ -1687,6 +2597,105 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
           </div>
         </div>
       </div>
+
+      {/* ✅ NEW: PAGINATION SECTION (copied from ExecutiveOrdersPage) */}
+      {!stateLoading && !stateError && (
+        <>
+          {/* Show pagination if there are multiple pages */}
+          {stateOrders.length > 0 && pagination.total_pages > 1 && (
+            <div className="mt-6 flex justify-center">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page <= 1}
+                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(pagination.total_pages, 5) }, (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-2 text-sm font-medium rounded-md ${
+                          pagination.page === pageNum
+                            ? 'text-blue-600 bg-blue-50 border border-blue-300'
+                            : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  
+                  {/* Show more pages info if there are many pages */}
+                  {pagination.total_pages > 5 && (
+                    <>
+                      <span className="px-2 text-gray-500">...</span>
+                      <button
+                        onClick={() => handlePageChange(pagination.total_pages)}
+                        className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                      >
+                        {pagination.total_pages}
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                <button
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page >= pagination.total_pages}
+                  className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+                
+                {/* Page info */}
+                <div className="ml-4 text-sm text-gray-600">
+                  {selectedFilters.length > 0 || stateSearchTerm ? (
+                    <>
+                      Showing {Math.min((pagination.page - 1) * pagination.per_page + 1, pagination.count)}-{Math.min(pagination.page * pagination.per_page, pagination.count)} of {pagination.count} filtered results
+                      {pagination.total_pages > 1 && ` (Page ${pagination.page} of ${pagination.total_pages})`}
+                    </>
+                  ) : (
+                    <>
+                      Page {pagination.page} of {pagination.total_pages} ({pagination.count} total bills)
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Show filter summary when filtering */}
+          {(selectedFilters.length > 0 || stateSearchTerm) && (
+            <div className="mt-4 text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                <span>
+                  {stateOrders.length === 0 ? 'No results' : `${pagination.count} total results`} for: 
+                  {selectedFilters.length > 0 && (
+                    <span className="font-medium ml-1">
+                      {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
+                    </span>
+                  )}
+                  {stateSearchTerm && (
+                    <span className="font-medium ml-1">"{stateSearchTerm}"</span>
+                  )}
+                </span>
+                {pagination.count > 25 && (
+                  <span className="text-xs bg-blue-100 px-2 py-1 rounded">
+                    {pagination.total_pages} pages
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          
+        </>
+      )}
 
       {/* Universal CSS Styles - Same as ExecutiveOrdersPage */}
       <style>{`
