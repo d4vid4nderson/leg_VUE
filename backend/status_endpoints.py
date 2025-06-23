@@ -120,7 +120,8 @@ async def get_status():
     federal_register_status = await check_federal_register_availability()
     
     # Get environment
-    environment = os.getenv("ENVIRONMENT", "development")
+    raw_env = os.getenv("ENVIRONMENT", "development")
+    environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
     
     return {
         "timestamp": datetime.now().isoformat(),
@@ -150,7 +151,8 @@ async def get_status():
 async def debug_database_msi_connection():
     """Debug endpoint for testing MSI database connection"""
     try:
-        environment = os.getenv("ENVIRONMENT", "development")
+        raw_env = os.getenv("ENVIRONMENT", "development")
+        environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
         log_output = []
         
         log_output.append(f"🔍 Environment: {environment}")

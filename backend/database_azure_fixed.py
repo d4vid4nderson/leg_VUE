@@ -48,7 +48,8 @@ def build_azure_sql_connection():
 
 def build_connection_string_with_managed_identity():
     """Build Azure SQL connection string using system-assigned identity"""
-    environment = os.getenv("ENVIRONMENT", "development")
+    raw_env = os.getenv("ENVIRONMENT", "development")
+    environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
     
@@ -132,7 +133,8 @@ def build_connection_string_with_managed_identity():
 # DATABASE_URL = os.getenv('DATABASE_URL') or build_azure_sql_connection()
 
 
-environment = os.getenv("ENVIRONMENT", "development")
+raw_env = os.getenv("ENVIRONMENT", "development")
+environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
 if environment == "production":
     DATABASE_URL = build_connection_string_with_managed_identity()
     print(f"🚀 Using managed identity connection for production")

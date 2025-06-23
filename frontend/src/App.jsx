@@ -30,14 +30,14 @@ console.log('🔍 Component imports check:', {
 import { useLoadingAnimation } from './hooks/useLoadingAnimation';
 
 // Utils
-import { getApiUrl } from './utils/helpers';
 import { SUPPORTED_STATES } from './utils/constants';
 
 // Styles
 import './index.css';
 
 // Constants
-const API_URL = getApiUrl();
+import API_URL from './config/api';
+
 const APP_VERSION = '2.1.0';
 
 // Temporary fallback component for missing components

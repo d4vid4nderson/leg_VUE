@@ -21,8 +21,7 @@ import {
   Wrench
 } from 'lucide-react';
 
-// Backend API URL - Fixed for artifact environment
-const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
+import API_URL from '../config/api';
 
 // FIXED: Enhanced ID generation for Executive Orders - More robust and consistent
 const getExecutiveOrderId = (order) => {

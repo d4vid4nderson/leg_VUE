@@ -26,6 +26,8 @@ import {
   CheckCircle
 } from 'lucide-react';
 
+import API_URL from '../config/api';
+
 // ADDED: Debug Panel Component - Integrated directly into this file
 const HighlightsDebugPanel = ({ apiUrl }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -473,8 +475,6 @@ const HighlightsDebugPanel = ({ apiUrl }) => {
   );
 };
 
-// Backend API URL - Same as ExecutiveOrdersPage
-const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
 
 // Import the same helper functions from ExecutiveOrdersPage
 const getExecutiveOrderNumber = (order) => {
@@ -881,7 +881,6 @@ class HighlightsAPI {
       console.log('🔍 Fetching highlights for user:', userId);
       
       const endpoints = [
-        `${API_URL}/api/user-highlights?user_id=user123`,
         `${API_URL}/api/highlights?user_id=${userId}`,
         `${API_URL}/api/user-highlights?user_id=${userId}`
       ];
@@ -892,7 +891,6 @@ class HighlightsAPI {
           if (response.ok) {
             const data = await response.json();
             
-            // FIX: Extract highlights from the correct property
             let highlights = [];
             if (Array.isArray(data)) {
               highlights = data;

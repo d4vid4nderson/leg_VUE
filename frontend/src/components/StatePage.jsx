@@ -22,10 +22,11 @@ import {
 
 import { FILTERS, SUPPORTED_STATES } from '../utils/constants';
 import { 
-  getApiUrl,
   stripHtmlTags,
   generateUniqueId
 } from '../utils/helpers';
+
+import API_URL from '../config/api';
 
 // Create a custom CategoryTag component that handles not-applicable and uses FILTER icons
 const CustomCategoryTag = ({ category }) => {
@@ -78,7 +79,6 @@ const CustomCategoryTag = ({ category }) => {
   );
 };
 
-const API_URL = getApiUrl();
 
 // Function to clean and validate status values - only allow specific statuses
 const cleanStatus = (status) => {

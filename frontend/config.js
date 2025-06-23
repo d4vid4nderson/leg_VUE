@@ -1,5 +1,5 @@
 // src/config/config.js
-import API_URL from './api';
+import API_URL from 'src/config/api';
 
 const isProduction = import.meta.env.MODE === 'production';
 

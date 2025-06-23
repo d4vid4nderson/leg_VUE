@@ -22,9 +22,7 @@ import {
   EyeOff
 } from 'lucide-react';
 
-import { getApiUrl } from '../utils/helpers';
-
-const API_URL = getApiUrl();
+import API_URL from '../config/api';
 
 // Password required for database clearing (change this to whatever you want)
 const REQUIRED_PASSWORD = "DELETE_DATABASE_2024";

@@ -21,6 +21,7 @@ from pydantic import BaseModel
 import requests
 import aiohttp
 
+from database_azure_fixed import test_azure_sql_connection
 
 # Import our new fixed modules
 from database_connection import test_database_connection
@@ -986,7 +987,9 @@ class DatabaseConnection:
     
     def _build_connection_string(self):
         """Build database connection string based on environment"""
-        environment = os.getenv("ENVIRONMENT", "development")
+        raw_env = os.getenv("ENVIRONMENT", "development")
+        environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
+
         server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
         database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
         
@@ -1500,27 +1503,58 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Detect environment using container indicators as a fallback
+raw_env = os.getenv("ENVIRONMENT", "development")
+environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
 
-# Get environment
-environment = os.getenv("ENVIRONMENT", "development")
 
-# CORS setup with environment-based configuration
+# Get the frontend URL from environment variable if set
+frontend_url = os.getenv("FRONTEND_URL", "")
+
+# CORS setup
 if environment == "production":
-    # Production - restrict to specific domain
-    cors_origins = ["https://leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io"]
-    print(f"✅ Production CORS configured for {cors_origins}")
+    cors_origins = [
+        "https://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
+        "http://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io"
+    ]
+    print(f"✅ CORS configured for specific origins: {cors_origins}")
 else:
-    # Development - allow all origins
-    cors_origins = ["*"]
-    print(f"⚠️ Development CORS configured - allowing all origins")
+    cors_origins = ["*"]  # Development only
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    max_age=86400  # Cache preflight requests for 24 hours
 )
+
+# Handle OPTIONS requests explicitly
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    return {}
+
+
+## CORS setup with environment-based configuration
+#if environment == "production":
+#    cors_origins = [
+#        "https://leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io",
+#        "http://leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io",
+#        "leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io"
+#    ]
+#    print(f"✅ Production CORS configured for: {cors_origins}")
+#else:
+#    cors_origins = ["*"]
+#    print(f"⚠️ Development CORS configured - allowing all origins")
+#
+#app.add_middleware(
+#    CORSMiddleware,
+#    allow_origins=cors_origins,
+#    allow_credentials=True,
+#    allow_methods=["*"],
+#    allow_headers=["*"],
+#)
 
 # Include status router
 app.include_router(status_router)
@@ -1535,11 +1569,15 @@ async def debug_database_msi_connection():
     """Debug endpoint for testing MSI database connection"""
     try:
         # Environment check
-        environment = os.getenv("ENVIRONMENT", "development")
+        raw_env = os.getenv("ENVIRONMENT", "development")
+        environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
+
         log_output = []
         
         log_output.append(f"🔍 Environment: {environment}")
         log_output.append(f"🔍 Testing Azure SQL connection via MSI authentication...")
+        log_output.append(f"🔍 Container indicators: CONTAINER_APP_NAME={os.getenv('CONTAINER_APP_NAME', 'Not set')}")
+        log_output.append(f"🔍 MSI indicator: MSI_ENDPOINT={os.getenv('MSI_ENDPOINT', 'Not set')}")
         
         # Connection parameters
         server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
@@ -1578,18 +1616,31 @@ async def debug_database_msi_connection():
             
             # Test table access
             try:
-                log_output.append("🔍 Testing table access to user_highlights...")
-                cursor.execute("SELECT TOP 1 * FROM user_highlights")
-                columns = [column[0] for column in cursor.description]
-                log_output.append(f"✅ Table access successful! Found columns: {', '.join(columns)}")
+                log_output.append("🔍 Testing table access...")
+                # Try accessing various tables to help debug
+                tables_to_test = ['user_highlights', 'state_legislation', 'executive_orders', 'sys.tables']
                 
-                # Get count of highlights
-                cursor.execute("SELECT COUNT(*) FROM user_highlights")
-                count = cursor.fetchone()[0]
-                log_output.append(f"📊 Total highlights in database: {count}")
-                
+                for table in tables_to_test:
+                    try:
+                        if table == 'sys.tables':
+                            cursor.execute("SELECT TOP 5 name FROM sys.tables")
+                        else:
+                            cursor.execute(f"SELECT TOP 1 * FROM {table}")
+                            
+                        columns = [column[0] for column in cursor.description]
+                        log_output.append(f"✅ Table '{table}' access successful! Found columns: {', '.join(columns)}")
+                    except Exception as table_error:
+                        log_output.append(f"⚠️ Table '{table}' access failed: {str(table_error)}")
             except Exception as table_error:
                 log_output.append(f"⚠️ Table access test failed: {str(table_error)}")
+                
+            # Get MSI principal info if possible
+            try:
+                cursor.execute("SELECT SUSER_SNAME()")
+                user = cursor.fetchone()
+                log_output.append(f"👤 Connected as: {user[0] if user else 'Unknown'}")
+            except:
+                log_output.append("⚠️ Could not determine connected user")
                 
             conn.close()
             success = True
@@ -1606,14 +1657,55 @@ async def debug_database_msi_connection():
             log_output.append("🔍 MSI authentication error detected!")
             log_output.append("👉 Make sure system-assigned identity is enabled on your container app")
             log_output.append("👉 Make sure identity has access to SQL Database")
+            log_output.append("👉 Double-check you've added the MSI as a user in SQL Database")
         
         success = False
     
     return {
         "success": success,
         "logs": log_output,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "environment": environment
     }
+
+
+@app.get("/api/debug/connectivity")
+async def debug_connectivity():
+    """Debug endpoint for testing frontend-backend connectivity"""
+    try:
+        # Gather system information
+        environment = "production" if os.getenv("ENVIRONMENT") == "production" or bool(os.getenv("CONTAINER_APP_NAME")) else "development"
+        
+        # Database connection test
+        db_connection_working = False
+        try:
+            db_connection_working = test_database_connection()
+        except:
+            pass
+            
+        return {
+            "success": True,
+            "backend_reachable": True,
+            "timestamp": datetime.now().isoformat(),
+            "environment": environment,
+            "system_info": {
+                "hostname": os.getenv("HOSTNAME", "Unknown"),
+                "container_app_name": os.getenv("CONTAINER_APP_NAME", "Not running in container app"),
+                "python_version": os.getenv("PYTHON_VERSION", "Unknown"),
+                "database_connection": "Working" if db_connection_working else "Not working"
+            },
+            "request_info": {
+                "headers": dict(request.headers),
+                "client_host": request.client.host,
+                "url": str(request.url)
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
 
 
 @app.post("/api/executive-orders/fetch")
@@ -2514,6 +2606,7 @@ except ImportError as e:
 # MAIN ENDPOINTS
 # ===============================
 
+
 @app.get("/")
 async def root():
     """Root endpoint with system status"""
@@ -2521,20 +2614,24 @@ async def root():
     db_working = False
     connection_method = "Unknown"
     
+    # New environment detection
+    raw_env = os.getenv("ENVIRONMENT", "development")
+    environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
+    
     try:
         # First try normal connection
         db_working = test_database_connection()
-        connection_method = "MSI" if os.getenv("ENVIRONMENT") == "production" else "SQL Auth"
+        connection_method = "MSI" if environment == "production" else "SQL Auth"
         
         # If SQL auth fails in development but we're in a container, try MSI as fallback
-        if not db_working and os.getenv("ENVIRONMENT") != "production" and os.getenv("CONTAINER_APP_NAME"):
+        if not db_working and environment != "production" and os.getenv("CONTAINER_APP_NAME"):
             logger.warning("⚠️ SQL Auth failed in container, trying MSI as fallback")
             # Override environment temporarily
-            os.environ["ENVIRONMENT"] = "production"
+            temp_env = "production"
             db_working = test_database_connection()
             connection_method = "MSI (Fallback)"
-            # Restore environment
-            os.environ["ENVIRONMENT"] = "development"
+            # No need to restore since we're not modifying os.environ
+        
     except Exception as e:
         logger.error(f"❌ Database connection test error: {e}")
     
@@ -2553,7 +2650,7 @@ async def root():
             "legiscan": "available" if LEGISCAN_INITIALIZED else "not_available",
             "azure_ai": "available" if ENHANCED_AI_AVAILABLE else "not_configured"
         },
-        "environment": os.getenv("ENVIRONMENT", "development"),
+        "environment": environment,
         "container": bool(os.getenv("CONTAINER_APP_NAME"))
     }
 
@@ -2581,9 +2678,13 @@ async def get_status():
     
     # Test Enhanced Azure AI connection
     enhanced_ai_status = await check_enhanced_ai_connection()
+
+    raw_env = os.getenv("ENVIRONMENT", "development")
+    environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
+
     
     return {
-        "environment": os.getenv("ENVIRONMENT", "development"),
+        "environment": environment,
         "app_version": "14.0.0-Enhanced-AI-Integration - Executive Orders & State Legislation",
         "database": {
             "status": "connected" if (db_working or azure_sql_working) else "connection_issues",

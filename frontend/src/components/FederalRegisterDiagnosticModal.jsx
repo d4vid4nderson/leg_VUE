@@ -24,9 +24,7 @@ import {
   Globe          // NEW
 } from 'lucide-react';
 
-import { getApiUrl } from '../utils/helpers';
-
-const API_URL = getApiUrl();
+import API_URL from '../config/api';
 
 // Federal Register Diagnostic Modal Component - ADD THIS NEW COMPONENT
 const FederalRegisterDiagnosticModal = ({ isOpen, onClose, onStatusUpdate }) => {

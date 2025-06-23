@@ -66,7 +66,7 @@ def create_sample_env_file():
     sample_env = """# LegislationVue Environment Configuration
 
 # Optional: Environment
-ENVIRONMENT=development
+ENVIRONMENT=os.getenv('ENVIRONMENT', 'development')
 """
     
     # Check if .env exists

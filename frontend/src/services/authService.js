@@ -1,8 +1,6 @@
 // src/services/authService.js
-import { getApiUrl } from "../config/api";
 
-// Use the function to get the API URL
-const API_URL = getApiUrl();
+import API_URL from "../config/api";
 
 /**
  * Service for handling authentication-related operations

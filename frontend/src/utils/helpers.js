@@ -1,11 +1,24 @@
 import { FILTERS } from './constants';
 
 // API URL configuration
+// API URL configuration
 export const getApiUrl = () => {
   if (import.meta.env?.VITE_API_URL) return import.meta.env.VITE_API_URL;
   if (typeof process !== 'undefined' && process.env?.VITE_API_URL) return process.env.VITE_API_URL;
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') return 'http://localhost:8000';
-  return 'https://your-api-domain.com';
+  
+  // Check if we're in production/Azure environment
+  if (window.location.hostname.includes('azurecontainerapps.io') || 
+      window.location.hostname.includes('azure')) {
+    return ''; // Use relative URL in production
+  }
+  
+  // Only use localhost in actual local development
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:8000';
+  }
+  
+  // Default to relative URL for any other environment
+  return '';
 };
 
 // Get Order ID - works for both executive orders and state bills

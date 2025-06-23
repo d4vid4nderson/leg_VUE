@@ -8,16 +8,17 @@ logger = logging.getLogger(__name__)
 
 
 def get_connection_string():
-    """Get database connection string with environment-based authentication"""
-    environment = os.getenv("ENVIRONMENT", "development")
-    logger.info(f"🔍 Environment: {environment}")
+    """Get database connection string with container-based detection for MSI"""
+    
+    # Check for container environment indicators
+    is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
     
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
     
-    # Use MSI in production, SQL Auth in development
-    if environment == "production":
-        logger.info("🔐 Using MSI authentication for database connection")
+    # Use MSI if we're in a container (Azure), SQL Auth otherwise
+    if is_container:
+        logger.info("🔐 Using MSI authentication (container detected)")
         connection_string = (
             "Driver={ODBC Driver 18 for SQL Server};"
             f"Server=tcp:{server},1433;"
@@ -28,15 +29,11 @@ def get_connection_string():
             "Connection Timeout=30;"
         )
     else:
-        # Development - use SQL auth
+        # Local development - use SQL auth
         username = os.getenv('AZURE_SQL_USERNAME')
         password = os.getenv('AZURE_SQL_PASSWORD')
         
-        # Debug print to see actual values
-        logger.info(f"🔑 DEBUG: AZURE_SQL_USERNAME = '{username}'")
-        logger.info(f"🔑 DEBUG: AZURE_SQL_PASSWORD length = {len(password) if password else 0}")
-        logger.info(f"DEBUG: ENVIRONMENT = '{environment}'")
-        
+        logger.info(f"🔑 Using SQL authentication (local development)")
         if all([username, password]):
             logger.info("🔑 Using SQL authentication for development")
             connection_string = (
@@ -48,10 +45,10 @@ def get_connection_string():
                 "Encrypt=yes;"
                 "TrustServerCertificate=no;"
                 "Connection Timeout=30;"
-            )
+            ) 
         else:
-            logger.error("❌ Missing SQL credentials for development mode")
-            raise ValueError("SQL credentials required in development mode")
+            logger.error("❌ Missing SQL credentials for local development")
+            raise ValueError("SQL credentials required in local development")
     
     logger.info(f"🔌 Connecting to database: {connection_string[:50]}...")
     return connection_string
@@ -60,9 +57,23 @@ def get_database_connection():
     """Get a direct pyodbc database connection"""
     try:
         connection_string = get_connection_string()
-        return pyodbc.connect(connection_string, timeout=30)
+        print(f"🔍 Attempting to connect with connection string prefix: {connection_string[:50]}...")
+        
+        # Add connection attempt logging
+        is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
+        print(f"🔐 Environment detection: Container environment: {is_container}")
+        print(f"🔐 MSI_ENDPOINT: {os.getenv('MSI_ENDPOINT', 'Not set')}")
+        print(f"🔐 Server: {os.getenv('AZURE_SQL_SERVER', 'Default server')}")
+        print(f"🔐 Database: {os.getenv('AZURE_SQL_DATABASE', 'Default database')}")
+        
+        # Try to connect with timeout and retry
+        conn = pyodbc.connect(connection_string, timeout=30)
+        print("✅ Database connection successful!")
+        return conn
     except Exception as e:
-        logger.error(f"❌ Failed to get database connection: {e}")
+        print(f"❌ Failed to get database connection: {e}")
+        print(f"❌ Error type: {type(e).__name__}")
+        print(f"❌ Connection string prefix: {connection_string[:50]}...")
         raise
 
 @contextmanager
@@ -103,9 +114,21 @@ def get_db_connection():
         if conn:
             conn.close()
 
+
 def test_database_connection():
     """Test database connection"""
     try:
+        # Print connection environment info
+        is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
+        server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+        database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+        
+        print(f"🔍 Testing database connection:")
+        print(f"   • Environment: {'Container/MSI' if is_container else 'Local/SQL Auth'}")
+        print(f"   • Server: {server}")
+        print(f"   • Database: {database}")
+        print(f"   • MSI_ENDPOINT: {'Set' if os.getenv('MSI_ENDPOINT') else 'Not set'}")
+        
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT 1 AS test_value")
@@ -113,14 +136,29 @@ def test_database_connection():
             cursor.close()
             
             if result and result[0] == 1:
-                logger.info("✅ Database connection successful")
+                print("✅ Database connection successful")
+                
+                # Try to get current user for debugging
+                try:
+                    user_cursor = conn.cursor()
+                    user_cursor.execute("SELECT CURRENT_USER, USER_NAME()")
+                    user_info = user_cursor.fetchone()
+                    print(f"✅ Connected as: CURRENT_USER={user_info[0]}, USER_NAME={user_info[1]}")
+                    user_cursor.close()
+                except Exception as user_error:
+                    print(f"⚠️ Could not determine user: {user_error}")
+                
                 return True
             else:
-                logger.error("❌ Database test query failed")
+                print("❌ Database test query failed")
                 return False
     except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
+        print(f"❌ Database connection failed: {e}")
+        print(f"❌ Error type: {type(e).__name__}")
+        if "ActiveDirectoryMSI" in str(e):
+            print("🔍 MSI authentication error - check system identity configuration")
         return False
+
 
 def execute_query(query, params=None, fetch_one=False, fetch_all=False):
     """Execute a query and optionally fetch results"""
