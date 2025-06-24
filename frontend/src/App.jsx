@@ -37,8 +37,9 @@ import './index.css';
 
 // Constants
 import API_URL from './config/api';
+import packageJson from '../package.json';
+const APP_VERSION = packageJson.version;
 
-const APP_VERSION = '2.1.0';
 
 // Temporary fallback component for missing components
 const FallbackComponent = ({ componentName, ...props }) => (
