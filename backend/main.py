@@ -1,43 +1,38 @@
 # COMPLETE Enhanced main.py with ai.py Integration
+import asyncio
+import json
+import logging
+import math
 import os
 import re
-import asyncio
 import time
-import json
-import math
-import logging
-import pyodbc
 import traceback
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional, Dict, Any, List
-from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional
 
-
-# FastAPI imports
-from fastapi import FastAPI, HTTPException, Query, Path, BackgroundTasks, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.routing import APIRouter
-from pydantic import BaseModel
-import requests
 import aiohttp
-
-from database_azure_fixed import test_azure_sql_connection
-
+import pyodbc
+import requests
+from ai_status import check_azure_ai_configuration
+from database_azure_fixed import (save_legislation_to_azure_sql,
+                                  test_azure_sql_connection)
 # Import our new fixed modules
 from database_connection import test_database_connection
-from status_endpoints import router as status_router
-from ai_status import check_azure_ai_configuration
-from executive_orders_db import (
-    get_executive_orders_from_db,
-    get_executive_order_by_number, create_highlights_table,
-    add_highlight_direct, remove_highlight_direct, get_user_highlights_direct
-)
-from database_azure_fixed import save_legislation_to_azure_sql
-
-
 # Environment variables loading
 from dotenv import load_dotenv
+from executive_orders_db import (add_highlight_direct, create_highlights_table,
+                                 get_executive_order_by_number,
+                                 get_executive_orders_from_db,
+                                 get_user_highlights_direct,
+                                 remove_highlight_direct)
+# FastAPI imports
+from fastapi import (BackgroundTasks, FastAPI, HTTPException, Path, Query,
+                     Request)
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
 load_dotenv(override=True)
 
 print("🔍 ENVIRONMENT VARIABLE DEBUG:")
@@ -74,50 +69,6 @@ SUPPORTED_STATES = {
 # ================================
 # EXCUTIVE ORDER COUNT CHECK
 # ================================
-
-router = APIRouter()
-logger = logging.getLogger(__name__)
-
-@router.get("/api/executive-orders/check-count")
-async def check_executive_orders_count():
-    """
-    Check Federal Register for total count and compare with database count
-    Returns status indicating if fetch is needed
-    """
-    try:
-        # 1. Get count from Federal Register API
-        federal_register_count = await get_federal_register_count()
-        
-        # 2. Get count from your database
-        database_count = await get_database_count()
-        
-        # 3. Calculate difference
-        new_orders_available = max(0, federal_register_count - database_count)
-        needs_fetch = new_orders_available > 0
-        
-        logger.info(f"📊 Count Check - Federal Register: {federal_register_count}, Database: {database_count}, New: {new_orders_available}")
-        
-        return {
-            "success": True,
-            "federal_register_count": federal_register_count,
-            "database_count": database_count,
-            "new_orders_available": new_orders_available,
-            "needs_fetch": needs_fetch,
-            "last_checked": datetime.now().isoformat(),
-            "message": f"Found {new_orders_available} new executive orders available" if needs_fetch else "Database is up to date"
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error checking counts: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "federal_register_count": 0,
-            "database_count": 0,
-            "new_orders_available": 0,
-            "needs_fetch": False,
-            "message": "Error checking for updates"
-        }
 
 async def get_federal_register_count():
     """Get total count from Federal Register API without fetching all data"""
@@ -1174,23 +1125,15 @@ HIGHLIGHTS_DB_AVAILABLE = AZURE_SQL_AVAILABLE
 
 
 
-from database_connection import (
-    test_database_connection, 
-    get_database_connection, 
-    get_db_cursor,
-    execute_query
-)
-
+from database_connection import (execute_query, get_database_connection,
+                                 get_db_cursor, test_database_connection)
 # 2. Add proper imports for executive orders and highlights
-from executive_orders_db import (
-    get_executive_orders_from_db,
-    save_executive_orders_to_db,
-    get_executive_order_by_number,
-    create_highlights_table,
-    add_highlight_direct,
-    remove_highlight_direct,
-    get_user_highlights_direct
-)
+from executive_orders_db import (add_highlight_direct, create_highlights_table,
+                                 get_executive_order_by_number,
+                                 get_executive_orders_from_db,
+                                 get_user_highlights_direct,
+                                 remove_highlight_direct,
+                                 save_executive_orders_to_db)
 
 # 3. Update database availability checks
 # Replace:
@@ -1205,7 +1148,8 @@ EXECUTIVE_ORDERS_AVAILABLE = True
 # from simple_executive_orders import ...
 # With:
 try:
-    from simple_executive_orders import fetch_executive_orders_simple_integration
+    from simple_executive_orders import \
+        fetch_executive_orders_simple_integration
     SIMPLE_EO_AVAILABLE = True
     print("✅ Simple Executive Orders API available")
 except ImportError as e:
@@ -1597,18 +1541,6 @@ except ImportError as e:
 # CRITICAL MISSING ENDPOINT - ADD THIS TO YOUR MAIN.PY
 # ===============================
 
-#@asynccontextmanager
-#async def lifespan(app: FastAPI):
-#    """Startup and shutdown"""
-#    print("🔄 Starting LegislationVue API with Azure SQL Integration...")
-#    yield
-#
-#app = FastAPI(
-#    title="LegislationVue API - Azure SQL Integration",
-#    description="API for Executive Orders and State Legislation with Azure SQL Integration",
-#    version="13.0.0-Azure-SQL-Integration",
-#    lifespan=lifespan
-#)
 
 
 @asynccontextmanager
@@ -1623,6 +1555,8 @@ app = FastAPI(
     version="14.0.0-Enhanced-AI-Integration",
     lifespan=lifespan
 )
+
+logger = logging.getLogger(__name__)
 
 # Detect environment using container indicators as a fallback
 raw_env = os.getenv("ENVIRONMENT", "development")
@@ -1657,32 +1591,53 @@ async def options_handler(path: str):
     return {}
 
 
-## CORS setup with environment-based configuration
-#if environment == "production":
-#    cors_origins = [
-#        "https://leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io",
-#        "http://leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io",
-#        "leg-vue.ashyground-1cf783d6.centralus.azurecontainerapps.io"
-#    ]
-#    print(f"✅ Production CORS configured for: {cors_origins}")
-#else:
-#    cors_origins = ["*"]
-#    print(f"⚠️ Development CORS configured - allowing all origins")
-#
-#app.add_middleware(
-#    CORSMiddleware,
-#    allow_origins=cors_origins,
-#    allow_credentials=True,
-#    allow_methods=["*"],
-#    allow_headers=["*"],
-#)
-
-# Include status router
-app.include_router(status_router)
 
 # ===============================
 # ESSENTIAL ENDPOINT - THIS IS WHAT YOUR FRONTEND IS CALLING
 # ===============================
+
+
+@app.get("/api/executive-orders/check-count")
+async def check_executive_orders_count():
+    """
+    Check Federal Register for total count and compare with database count
+    Returns status indicating if fetch is needed
+    """
+    try:
+        # 1. Get count from Federal Register API
+        federal_register_count = await get_federal_register_count()
+        
+        # 2. Get count from your database
+        database_count = await get_database_count()
+        
+        # 3. Calculate difference
+        new_orders_available = max(0, federal_register_count - database_count)
+        needs_fetch = new_orders_available > 0
+        
+        logger.info(f"📊 Count Check - Federal Register: {federal_register_count}, Database: {database_count}, New: {new_orders_available}")
+        
+        return {
+            "success": True,
+            "federal_register_count": federal_register_count,
+            "database_count": database_count,
+            "new_orders_available": new_orders_available,
+            "needs_fetch": needs_fetch,
+            "last_checked": datetime.now().isoformat(),
+            "message": f"Found {new_orders_available} new executive orders available" if needs_fetch else "Database is up to date"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking counts: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "federal_register_count": 0,
+            "database_count": 0,
+            "new_orders_available": 0,
+            "needs_fetch": False,
+            "message": "Error checking for updates"
+        }
+
 
 
 @app.get("/api/debug/database-msi")
@@ -3006,6 +2961,7 @@ def save_state_legislation_to_db(bills):
 ENHANCED_AI_AVAILABLE = False
 try:
     from ai import analyze_executive_order
+
     # Check Azure AI configuration
     ai_status = check_azure_ai_configuration()
     if ai_status["status"] == "connected":
@@ -3215,7 +3171,7 @@ async def check_legiscan_connection():
     
     try:
         import httpx
-        
+
         # Test with a simple LegiScan API call
         url = f"https://api.legiscan.com/?key={api_key}&op=getSessionList&state=CA"
         

@@ -918,7 +918,6 @@ const checkForNewOrders = useCallback(async (showLoading = false) => {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
       }
     });
 
