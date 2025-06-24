@@ -16,7 +16,7 @@ variables:
   frontendImageName: 'legis-vue-frontend'
   tag: '$(Build.BuildId)'
   vmImageName: 'ubuntu-latest'
-  azureServiceConnection: 'sc-ado-moregroup'
+  azureSubscription: 'da3b208d-e23d-4e3b-8901-1ee297dd91f0'
   containerRegistry: 'moregroupdev.azurecr.io'
   resourceGroupName: 'rg-legislation-tracker'
   backendContainerAppName: 'legis-vue-backend'
@@ -31,59 +31,49 @@ stages:
     pool:
       vmImage: $(vmImageName)
     steps:
-    - task: Docker@2
-      displayName: Build Backend Image
+    - task: AzureCLI@2
+      displayName: Build and Push Backend Image
       inputs:
-        containerRegistry: $(azureServiceConnection)
-        repository: $(containerRegistry)/$(backendImageName)
-        command: build
-        Dockerfile: '$(Build.SourcesDirectory)/backend/Dockerfile'
-        tags: |
-          $(tag)
-          latest
-
-    - task: Docker@2
-      displayName: Push Backend Image
-      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-      inputs:
-        containerRegistry: $(azureServiceConnection)
-        repository: $(containerRegistry)/$(backendImageName)
-        command: push
-        tags: |
-          $(tag)
-          latest
+        azureSubscription: $(azureSubscription)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          # Login to ACR
+          az acr login --name moregroupdev
+          
+          # Build image
+          docker build -t $(containerRegistry)/$(backendImageName):$(tag) -t $(containerRegistry)/$(backendImageName):latest ./backend
+          
+          # Push image
+          docker push $(containerRegistry)/$(backendImageName):$(tag)
+          docker push $(containerRegistry)/$(backendImageName):latest
 
   - job: BuildFrontend
     displayName: Build Frontend
     pool:
       vmImage: $(vmImageName)
     steps:
-    - task: Docker@2
-      displayName: Build Frontend Image
+    - task: AzureCLI@2
+      displayName: Build and Push Frontend Image
       inputs:
-        containerRegistry: $(azureServiceConnection)
-        repository: $(containerRegistry)/$(frontendImageName)
-        command: build
-        Dockerfile: '$(Build.SourcesDirectory)/frontend/Dockerfile'
-        tags: |
-          $(tag)
-          latest
-
-    - task: Docker@2
-      displayName: Push Frontend Image
-      condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-      inputs:
-        containerRegistry: $(azureServiceConnection)
-        repository: $(containerRegistry)/$(frontendImageName)
-        command: push
-        tags: |
-          $(tag)
-          latest
+        azureSubscription: $(azureSubscription)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          # Login to ACR
+          az acr login --name moregroupdev
+          
+          # Build image
+          docker build -t $(containerRegistry)/$(frontendImageName):$(tag) -t $(containerRegistry)/$(frontendImageName):latest ./frontend
+          
+          # Push image
+          docker push $(containerRegistry)/$(frontendImageName):$(tag)
+          docker push $(containerRegistry)/$(frontendImageName):latest
 
 - stage: Deploy
   displayName: Deploy to Container Apps
   dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  condition: succeeded()
   jobs:
   - job: DeployBackend
     displayName: Deploy Backend
@@ -93,7 +83,7 @@ stages:
     - task: AzureCLI@2
       displayName: Deploy Backend to Container App
       inputs:
-        azureSubscription: $(azureServiceConnection)
+        azureSubscription: $(azureSubscription)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
@@ -111,7 +101,7 @@ stages:
     - task: AzureCLI@2
       displayName: Deploy Frontend to Container App
       inputs:
-        azureSubscription: $(azureServiceConnection)
+        azureSubscription: $(azureSubscription)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
