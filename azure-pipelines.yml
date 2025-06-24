@@ -34,10 +34,10 @@ stages:
     - task: Docker@2
       displayName: Build Backend Image
       inputs:
-        command: build
-        repository: $(containerRegistry)/$(backendImageName)
-        dockerfile: '$(Build.SourcesDirectory)/backend/Dockerfile'
         containerRegistry: $(azureServiceConnection)
+        repository: $(containerRegistry)/$(backendImageName)
+        command: build
+        Dockerfile: '$(Build.SourcesDirectory)/backend/Dockerfile'
         tags: |
           $(tag)
           latest
@@ -46,9 +46,9 @@ stages:
       displayName: Push Backend Image
       condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
       inputs:
-        command: push
-        repository: $(containerRegistry)/$(backendImageName)
         containerRegistry: $(azureServiceConnection)
+        repository: $(containerRegistry)/$(backendImageName)
+        command: push
         tags: |
           $(tag)
           latest
@@ -61,10 +61,10 @@ stages:
     - task: Docker@2
       displayName: Build Frontend Image
       inputs:
-        command: build
-        repository: $(containerRegistry)/$(frontendImageName)
-        dockerfile: '$(Build.SourcesDirectory)/frontend/Dockerfile'
         containerRegistry: $(azureServiceConnection)
+        repository: $(containerRegistry)/$(frontendImageName)
+        command: build
+        Dockerfile: '$(Build.SourcesDirectory)/frontend/Dockerfile'
         tags: |
           $(tag)
           latest
@@ -73,9 +73,9 @@ stages:
       displayName: Push Frontend Image
       condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
       inputs:
-        command: push
-        repository: $(containerRegistry)/$(frontendImageName)
         containerRegistry: $(azureServiceConnection)
+        repository: $(containerRegistry)/$(frontendImageName)
+        command: push
         tags: |
           $(tag)
           latest
