@@ -21,6 +21,7 @@ variables:
   resourceGroupName: 'rg-legislation-tracker'
   backendContainerAppName: 'legis-vue-backend'
   frontendContainerAppName: 'legis-vue-frontend'
+  keyVaultName: 'kv-legislation-tracker'
 
 stages:
 - stage: Build
@@ -41,8 +42,8 @@ stages:
           # Login to ACR
           az acr login --name moregroupdev
           
-          # Build image
-          docker build -t $(containerRegistry)/$(backendImageName):$(tag) -t $(containerRegistry)/$(backendImageName):latest ./backend
+          # Build image with platform specification
+          docker build --platform linux/amd64 -t $(containerRegistry)/$(backendImageName):$(tag) -t $(containerRegistry)/$(backendImageName):latest ./backend
           
           # Push image
           docker push $(containerRegistry)/$(backendImageName):$(tag)
@@ -63,8 +64,8 @@ stages:
           # Login to ACR
           az acr login --name moregroupdev
           
-          # Build image
-          docker build -t $(containerRegistry)/$(frontendImageName):$(tag) -t $(containerRegistry)/$(frontendImageName):latest ./frontend
+          # Build image with platform specification
+          docker build --platform linux/amd64 -t $(containerRegistry)/$(frontendImageName):$(tag) -t $(containerRegistry)/$(frontendImageName):latest ./frontend
           
           # Push image
           docker push $(containerRegistry)/$(frontendImageName):$(tag)
@@ -87,11 +88,32 @@ stages:
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
+          # Update container app with new image and explicitly set all Key Vault references
           az containerapp update \
             --name $(backendContainerAppName) \
             --resource-group $(resourceGroupName) \
             --container-name $(backendContainerAppName) \
-            --image $(containerRegistry)/$(backendImageName):$(tag)
+            --image $(containerRegistry)/$(backendImageName):$(tag) \
+            --set-env-vars \
+              "AZURE-ENDPOINT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-ENDPOINT" \
+              "AZURE-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-KEY" \
+              "AZURE-MODEL-NAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-MODEL-NAME" \
+              "AZURE-SQL-DATABASE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-DATABASE" \
+              "AZURE-SQL-PASSWORD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-PASSWORD" \
+              "AZURE-SQL-SERVER=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-SERVER" \
+              "AZURE-SQL-USERNAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-USERNAME" \
+              "DEBUG-MODE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/DEBUG-MODE" \
+              "ENVIRONMENT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/ENVIRONMENT" \
+              "FROM-EMAIL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/FROM-EMAIL" \
+              "LEGISCAN-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/LEGISCAN-API-KEY" \
+              "MANAGED-IDENTITY-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/MANAGED-IDENTITY-CLIENT-ID" \
+              "SENDGRID-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SENDGRID-API-KEY" \
+              "SQL-ECHO=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SQL-ECHO" \
+              "VITE-API-URL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL" \
+              "VITE-API-URL-PROD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL-PROD" \
+              "VITE-AZURE-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-CLIENT-ID" \
+              "VITE-AZURE-TENANT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-TENANT-ID" \
+              "PYTHONUNBUFFERED=1"
 
   - job: DeployFrontend
     displayName: Deploy Frontend
@@ -105,8 +127,28 @@ stages:
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
+          # Update container app with new image and explicitly set all Key Vault references
           az containerapp update \
             --name $(frontendContainerAppName) \
             --resource-group $(resourceGroupName) \
             --container-name $(frontendContainerAppName) \
-            --image $(containerRegistry)/$(frontendImageName):$(tag)
+            --image $(containerRegistry)/$(frontendImageName):$(tag) \
+            --set-env-vars \
+              "AZURE-ENDPOINT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-ENDPOINT" \
+              "AZURE-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-KEY" \
+              "AZURE-MODEL-NAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-MODEL-NAME" \
+              "AZURE-SQL-DATABASE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-DATABASE" \
+              "AZURE-SQL-PASSWORD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-PASSWORD" \
+              "AZURE-SQL-SERVER=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-SERVER" \
+              "AZURE-SQL-USERNAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-USERNAME" \
+              "DEBUG-MODE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/DEBUG-MODE" \
+              "ENVIRONMENT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/ENVIRONMENT" \
+              "FROM-EMAIL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/FROM-EMAIL" \
+              "LEGISCAN-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/LEGISCAN-API-KEY" \
+              "MANAGED-IDENTITY-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/MANAGED-IDENTITY-CLIENT-ID" \
+              "SENDGRID-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SENDGRID-API-KEY" \
+              "SQL-ECHO=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SQL-ECHO" \
+              "VITE-API-URL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL" \
+              "VITE-API-URL-PROD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL-PROD" \
+              "VITE-AZURE-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-CLIENT-ID" \
+              "VITE-AZURE-TENANT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-TENANT-ID"
