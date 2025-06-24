@@ -88,33 +88,209 @@ stages:
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
-          # Update container app with new image and explicitly set all Key Vault references
+          # Get current environment configuration
+          CURRENT_ENV=$(az containerapp show --name $(backendContainerAppName) --resource-group $(resourceGroupName) --query "properties.template.containers[0].env" -o json)
+          
+          # Update with new image
           az containerapp update \
             --name $(backendContainerAppName) \
             --resource-group $(resourceGroupName) \
             --container-name $(backendContainerAppName) \
-            --image $(containerRegistry)/$(backendImageName):$(tag) \
-            --set-env-vars \
-              "AZURE-ENDPOINT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-ENDPOINT" \
-              "AZURE-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-KEY" \
-              "AZURE-MODEL-NAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-MODEL-NAME" \
-              "AZURE-SQL-DATABASE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-DATABASE" \
-              "AZURE-SQL-PASSWORD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-PASSWORD" \
-              "AZURE-SQL-SERVER=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-SERVER" \
-              "AZURE-SQL-USERNAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-USERNAME" \
-              "DEBUG-MODE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/DEBUG-MODE" \
-              "ENVIRONMENT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/ENVIRONMENT" \
-              "FROM-EMAIL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/FROM-EMAIL" \
-              "LEGISCAN-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/LEGISCAN-API-KEY" \
-              "MANAGED-IDENTITY-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/MANAGED-IDENTITY-CLIENT-ID" \
-              "SENDGRID-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SENDGRID-API-KEY" \
-              "SQL-ECHO=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SQL-ECHO" \
-              "VITE-API-URL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL" \
-              "VITE-API-URL-PROD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL-PROD" \
-              "VITE-AZURE-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-CLIENT-ID" \
-              "VITE-AZURE-TENANT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-TENANT-ID" \
-              "PYTHONUNBUFFERED=1"
-
+            --image $(containerRegistry)/$(backendImageName):$(tag)
+          
+          # Set Key Vault reference for each secret
+          echo "Setting Key Vault references for backend..."
+          
+          # Create JSON template for key vault references
+          cat > backend-kv-refs.json << EOF
+          {
+            "properties": {
+              "configuration": {
+                "secrets": [
+                  {
+                    "name": "frontend-url",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/FRONTEND-URL"
+                  },
+                  {
+                    "name": "azure-endpoint",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-ENDPOINT"
+                  },
+                  {
+                    "name": "azure-key",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-KEY"
+                  },
+                  {
+                    "name": "azure-model-name",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-MODEL-NAME"
+                  },
+                  {
+                    "name": "azure-sql-database",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-DATABASE"
+                  },
+                  {
+                    "name": "azure-sql-password",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-PASSWORD"
+                  },
+                  {
+                    "name": "azure-sql-server",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-SERVER"
+                  },
+                  {
+                    "name": "azure-sql-username",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-USERNAME"
+                  },
+                  {
+                    "name": "debug-mode",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/DEBUG-MODE"
+                  },
+                  {
+                    "name": "environment",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/ENVIRONMENT"
+                  },
+                  {
+                    "name": "from-email",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/FROM-EMAIL"
+                  },
+                  {
+                    "name": "legiscan-api-key",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/LEGISCAN-API-KEY"
+                  },
+                  {
+                    "name": "managed-identity-client-id",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/MANAGED-IDENTITY-CLIENT-ID"
+                  },
+                  {
+                    "name": "sendgrid-api-key",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/SENDGRID-API-KEY"
+                  },
+                  {
+                    "name": "sql-echo",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/SQL-ECHO"
+                  },
+                  {
+                    "name": "vite-api-url",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-API-URL"
+                  },
+                  {
+                    "name": "vite-api-url-prod",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-API-URL-PROD"
+                  },
+                  {
+                    "name": "vite-azure-client-id",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-AZURE-CLIENT-ID"
+                  },
+                  {
+                    "name": "vite-azure-tenant-id",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-AZURE-TENANT-ID"
+                  }
+                ]
+              },
+              "template": {
+                "containers": [
+                  {
+                    "name": "$(backendContainerAppName)",
+                    "env": [
+                      {
+                        "name": "PYTHONUNBUFFERED",
+                        "value": "1"
+                      },
+                      {
+                        "name": "FRONTEND_URL",
+                        "secretRef": "frontend-url"
+                      },
+                      {
+                        "name": "AZURE_ENDPOINT",
+                        "secretRef": "azure-endpoint"
+                      },
+                      {
+                        "name": "AZURE_KEY",
+                        "secretRef": "azure-key"
+                      },
+                      {
+                        "name": "AZURE_MODEL_NAME",
+                        "secretRef": "azure-model-name"
+                      },
+                      {
+                        "name": "AZURE_SQL_DATABASE",
+                        "secretRef": "azure-sql-database"
+                      },
+                      {
+                        "name": "AZURE_SQL_PASSWORD",
+                        "secretRef": "azure-sql-password"
+                      },
+                      {
+                        "name": "AZURE_SQL_SERVER",
+                        "secretRef": "azure-sql-server"
+                      },
+                      {
+                        "name": "AZURE_SQL_USERNAME",
+                        "secretRef": "azure-sql-username"
+                      },
+                      {
+                        "name": "DEBUG_MODE",
+                        "secretRef": "debug-mode"
+                      },
+                      {
+                        "name": "ENVIRONMENT",
+                        "secretRef": "environment"
+                      },
+                      {
+                        "name": "FROM_EMAIL",
+                        "secretRef": "from-email"
+                      },
+                      {
+                        "name": "LEGISCAN_API_KEY",
+                        "secretRef": "legiscan-api-key"
+                      },
+                      {
+                        "name": "MANAGED_IDENTITY_CLIENT_ID",
+                        "secretRef": "managed-identity-client-id"
+                      },
+                      {
+                        "name": "SENDGRID_API_KEY",
+                        "secretRef": "sendgrid-api-key"
+                      },
+                      {
+                        "name": "SQL_ECHO",
+                        "secretRef": "sql-echo"
+                      },
+                      {
+                        "name": "VITE_API_URL",
+                        "secretRef": "vite-api-url"
+                      },
+                      {
+                        "name": "VITE_API_URL_PROD",
+                        "secretRef": "vite-api-url-prod"
+                      },
+                      {
+                        "name": "VITE_AZURE_CLIENT_ID",
+                        "secretRef": "vite-azure-client-id"
+                      },
+                      {
+                        "name": "VITE_AZURE_TENANT_ID",
+                        "secretRef": "vite-azure-tenant-id"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+          EOF
+          
+          # Apply configuration using ARM template format
+          az containerapp update \
+            --name $(backendContainerAppName) \
+            --resource-group $(resourceGroupName) \
+            --set-env-vars "PYTHONUNBUFFERED=1"
+          
+          echo "Updating backend with Key Vault references..."
+          az resource update \
+            --resource-group $(resourceGroupName) \
+            --name $(backendContainerAppName) \
+            --resource-type "Microsoft.App/containerApps" \
+            --set @backend-kv-refs.json
+          
   - job: DeployFrontend
     displayName: Deploy Frontend
     pool:
@@ -127,28 +303,192 @@ stages:
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
-          # Update container app with new image and explicitly set all Key Vault references
+          # Update with new image
           az containerapp update \
             --name $(frontendContainerAppName) \
             --resource-group $(resourceGroupName) \
             --container-name $(frontendContainerAppName) \
-            --image $(containerRegistry)/$(frontendImageName):$(tag) \
-            --set-env-vars \
-              "AZURE-ENDPOINT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-ENDPOINT" \
-              "AZURE-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-KEY" \
-              "AZURE-MODEL-NAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-MODEL-NAME" \
-              "AZURE-SQL-DATABASE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-DATABASE" \
-              "AZURE-SQL-PASSWORD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-PASSWORD" \
-              "AZURE-SQL-SERVER=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-SERVER" \
-              "AZURE-SQL-USERNAME=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/AZURE-SQL-USERNAME" \
-              "DEBUG-MODE=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/DEBUG-MODE" \
-              "ENVIRONMENT=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/ENVIRONMENT" \
-              "FROM-EMAIL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/FROM-EMAIL" \
-              "LEGISCAN-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/LEGISCAN-API-KEY" \
-              "MANAGED-IDENTITY-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/MANAGED-IDENTITY-CLIENT-ID" \
-              "SENDGRID-API-KEY=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SENDGRID-API-KEY" \
-              "SQL-ECHO=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/SQL-ECHO" \
-              "VITE-API-URL=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL" \
-              "VITE-API-URL-PROD=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-API-URL-PROD" \
-              "VITE-AZURE-CLIENT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-CLIENT-ID" \
-              "VITE-AZURE-TENANT-ID=secretref:https://kv-legislation-tracker.vault.azure.net/secrets/VITE-AZURE-TENANT-ID"
+            --image $(containerRegistry)/$(frontendImageName):$(tag)
+          
+          # Set Key Vault reference for each secret
+          echo "Setting Key Vault references for frontend..."
+          
+          # Create JSON template for key vault references
+          cat > frontend-kv-refs.json << EOF
+          {
+            "properties": {
+              "configuration": {
+                "secrets": [
+                  {
+                    "name": "frontend-url",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/FRONTEND-URL"
+                  },
+                  {
+                    "name": "azure-endpoint",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-ENDPOINT"
+                  },
+                  {
+                    "name": "azure-key",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-KEY"
+                  },
+                  {
+                    "name": "azure-model-name",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-MODEL-NAME"
+                  },
+                  {
+                    "name": "azure-sql-database",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-DATABASE"
+                  },
+                  {
+                    "name": "azure-sql-password",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-PASSWORD"
+                  },
+                  {
+                    "name": "azure-sql-server",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-SERVER"
+                  },
+                  {
+                    "name": "azure-sql-username",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/AZURE-SQL-USERNAME"
+                  },
+                  {
+                    "name": "debug-mode",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/DEBUG-MODE"
+                  },
+                  {
+                    "name": "environment",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/ENVIRONMENT"
+                  },
+                  {
+                    "name": "from-email",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/FROM-EMAIL"
+                  },
+                  {
+                    "name": "legiscan-api-key",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/LEGISCAN-API-KEY"
+                  },
+                  {
+                    "name": "managed-identity-client-id",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/MANAGED-IDENTITY-CLIENT-ID"
+                  },
+                  {
+                    "name": "sendgrid-api-key",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/SENDGRID-API-KEY"
+                  },
+                  {
+                    "name": "sql-echo",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/SQL-ECHO"
+                  },
+                  {
+                    "name": "vite-api-url",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-API-URL"
+                  },
+                  {
+                    "name": "vite-api-url-prod",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-API-URL-PROD"
+                  },
+                  {
+                    "name": "vite-azure-client-id",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-AZURE-CLIENT-ID"
+                  },
+                  {
+                    "name": "vite-azure-tenant-id",
+                    "keyVaultUrl": "https://$(keyVaultName).vault.azure.net/secrets/VITE-AZURE-TENANT-ID"
+                  }
+                ]
+              },
+              "template": {
+                "containers": [
+                  {
+                    "name": "$(frontendContainerAppName)",
+                    "env": [
+                      {
+                        "name": "FRONTEND_URL",
+                        "secretRef": "frontend-url"
+                      },
+                      {
+                        "name": "AZURE_ENDPOINT",
+                        "secretRef": "azure-endpoint"
+                      },
+                      {
+                        "name": "AZURE_KEY",
+                        "secretRef": "azure-key"
+                      },
+                      {
+                        "name": "AZURE_MODEL_NAME",
+                        "secretRef": "azure-model-name"
+                      },
+                      {
+                        "name": "AZURE_SQL_DATABASE",
+                        "secretRef": "azure-sql-database"
+                      },
+                      {
+                        "name": "AZURE_SQL_PASSWORD",
+                        "secretRef": "azure-sql-password"
+                      },
+                      {
+                        "name": "AZURE_SQL_SERVER",
+                        "secretRef": "azure-sql-server"
+                      },
+                      {
+                        "name": "AZURE_SQL_USERNAME",
+                        "secretRef": "azure-sql-username"
+                      },
+                      {
+                        "name": "DEBUG_MODE",
+                        "secretRef": "debug-mode"
+                      },
+                      {
+                        "name": "ENVIRONMENT",
+                        "secretRef": "environment"
+                      },
+                      {
+                        "name": "FROM_EMAIL",
+                        "secretRef": "from-email"
+                      },
+                      {
+                        "name": "LEGISCAN_API_KEY",
+                        "secretRef": "legiscan-api-key"
+                      },
+                      {
+                        "name": "MANAGED_IDENTITY_CLIENT_ID",
+                        "secretRef": "managed-identity-client-id"
+                      },
+                      {
+                        "name": "SENDGRID_API_KEY",
+                        "secretRef": "sendgrid-api-key"
+                      },
+                      {
+                        "name": "SQL_ECHO",
+                        "secretRef": "sql-echo"
+                      },
+                      {
+                        "name": "VITE_API_URL",
+                        "secretRef": "vite-api-url"
+                      },
+                      {
+                        "name": "VITE_API_URL_PROD",
+                        "secretRef": "vite-api-url-prod"
+                      },
+                      {
+                        "name": "VITE_AZURE_CLIENT_ID",
+                        "secretRef": "vite-azure-client-id"
+                      },
+                      {
+                        "name": "VITE_AZURE_TENANT_ID",
+                        "secretRef": "vite-azure-tenant-id"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+          EOF
+          
+          echo "Updating frontend with Key Vault references..."
+          az resource update \
+            --resource-group $(resourceGroupName) \
+            --name $(frontendContainerAppName) \
+            --resource-type "Microsoft.App/containerApps" \
+            --set @frontend-kv-refs.json
