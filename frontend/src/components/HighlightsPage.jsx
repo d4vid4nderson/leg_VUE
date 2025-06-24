@@ -23,12 +23,14 @@ import {
   Database,
   Eye,
   XCircle,
-  CheckCircle
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp
 } from 'lucide-react';
 
 import API_URL from '../config/api';
 
-// ADDED: Debug Panel Component - Integrated directly into this file
 const HighlightsDebugPanel = ({ apiUrl }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
@@ -475,6 +477,168 @@ const HighlightsDebugPanel = ({ apiUrl }) => {
   );
 };
 
+// =====================================
+// SCROLL TO TOP COMPONENT
+// =====================================
+const ScrollToTopButton = () => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      // Show button when user scrolls down 300px (when header typically disappears)
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      setIsVisible(scrollTop > 300);
+    };
+
+    // Add scroll event listener
+    window.addEventListener('scroll', handleScroll);
+    
+    // Cleanup
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <button
+      onClick={scrollToTop}
+      className={`fixed right-6 bottom-6 z-50 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
+      }`}
+      title="Scroll to top"
+      aria-label="Scroll to top"
+    >
+      <ArrowUp size={20} />
+    </button>
+  );
+};
+
+// =====================================
+// PAGINATION COMPONENT (MATCHING EXECUTIVE ORDERS & STATE PAGES)
+// =====================================
+const PaginationControls = ({ 
+  currentPage, 
+  totalPages, 
+  totalItems, 
+  itemsPerPage, 
+  onPageChange,
+  itemType = 'highlights'
+}) => {
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  // Calculate page range to show
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 7;
+    
+    if (totalPages <= maxVisiblePages) {
+      // Show all pages if total is small
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show pages around current page
+      const startPage = Math.max(1, currentPage - 3);
+      const endPage = Math.min(totalPages, currentPage + 3);
+      
+      if (startPage > 1) {
+        pages.push(1);
+        if (startPage > 2) pages.push('...');
+      }
+      
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+      }
+      
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  // Always show pagination info, even for single page
+  // if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-gray-200">
+      {/* Results info */}
+      <div className="text-sm text-gray-700">
+        Showing <span className="font-medium">{startItem}</span> to{' '}
+        <span className="font-medium">{endItem}</span> of{' '}
+        <span className="font-medium">{totalItems}</span> {itemType}
+      </div>
+
+      {/* Pagination controls */}
+      <div className="flex items-center gap-2">
+        {/* Previous button */}
+        {totalPages > 1 && (
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentPage === 1
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ChevronLeft size={16} />
+          </button>
+        )}
+
+        {/* Page numbers */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            {getPageNumbers().map((page, index) => (
+              <button
+                key={index}
+                onClick={() => typeof page === 'number' && onPageChange(page)}
+                disabled={page === '...'}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
+                  page === currentPage
+                    ? 'bg-blue-600 text-white'
+                    : page === '...'
+                    ? 'text-gray-400 cursor-default'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Next button */}
+        {totalPages > 1 && (
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentPage === totalPages
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ChevronRight size={16} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Backend API URL - Same as ExecutiveOrdersPage
+//const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
 
 // Import the same helper functions from ExecutiveOrdersPage
 const getExecutiveOrderNumber = (order) => {
@@ -702,6 +866,33 @@ const OrderTypeTag = ({ orderType }) => {
     <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 text-xs font-medium rounded-full">
       <FileText size={12} />
       Unknown Type
+    </span>
+  );
+};
+
+// State Tag Component - NEW
+const StateTag = ({ state }) => {
+  if (!state || state === 'Unknown') return null;
+  
+  // Convert state name to abbreviation if it's a full name
+  const stateAbbreviations = {
+    'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+    'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+    'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+    'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+    'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+    'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+    'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+    'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+    'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+    'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
+  };
+  
+  const stateAbbr = stateAbbreviations[state] || state.toUpperCase();
+  
+  return (
+    <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+      {stateAbbr}
     </span>
   );
 };
@@ -1347,7 +1538,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const [selectedFilters, setSelectedFilters] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   
-  // Pagination state
+  // Pagination state - MATCHING EXECUTIVE ORDERS & STATE PAGES
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(25);
   
@@ -1495,14 +1686,12 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     return filtered;
   }, [highlights, searchTerm, selectedFilters]);
 
-  // Pagination logic
-  const paginatedHighlights = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredHighlights.slice(startIndex, endIndex);
-  }, [filteredHighlights, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(filteredHighlights.length / itemsPerPage);
+  // Pagination logic - MATCHING EXECUTIVE ORDERS & STATE PAGES
+  const totalItems = filteredHighlights.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedHighlights = filteredHighlights.slice(startIndex, endIndex);
 
   // Updated filter counts - removed review status counts
   const filterCounts = useMemo(() => {
@@ -1586,6 +1775,15 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       setIsRefreshing(false);
     }
   };
+
+  // Handle page change - MATCHING EXECUTIVE ORDERS & STATE PAGES
+  const handlePageChange = useCallback((newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      // Scroll to top of results when changing pages
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [totalPages]);
 
   // UPDATED: Enhanced highlighting function - SUPPORTS BOTH TYPES
   const handleOrderHighlight = useCallback(async (order) => {
@@ -1760,12 +1958,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  // Page change handler
-  const handlePageChange = useCallback((newPage) => {
-    console.log(`🔄 Changing to page ${newPage}`);
-    setCurrentPage(newPage);
-  }, []);
-
   // Helper function to get highlight source info
   const getHighlightSourceInfo = (highlight) => {
     if (highlight.order_type === 'executive_order' || highlight.executive_order_number) {
@@ -1816,7 +2008,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         </div>
         <div className="flex items-center justify-center py-12">
           <Loader className="animate-spin h-8 w-8 text-blue-600" />
-          <span className="ml-2 text-gray-600">Loading your highlights...</span>
+          <span className="ml-2 text-gray-600">Please be patient, our AI is working hard to load your highlights...</span>
         </div>
       </div>
     );
@@ -1824,6 +2016,9 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
 
   return (
     <div className="pt-6">
+      {/* Scroll to Top Button */}
+      <ScrollToTopButton />
+      
       {/* Header with Refresh Button */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
@@ -1856,10 +2051,10 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         )}
       </div>
 
-      {/* Updated Search Bar and Filter - Removed review status filters */}
+      {/* Search Bar and Filter - MATCHING EXECUTIVE ORDERS & STATE PAGES */}
       <div className="mb-8">
         <div className="flex gap-4 items-center">
-          {/* Filter Dropdown - Updated to remove review filters */}
+          {/* Filter Dropdown */}
           <div className="relative" ref={filterDropdownRef}>
             <button
               type="button"
@@ -1912,11 +2107,12 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                   {FILTERS.map(filter => {
                     const IconComponent = filter.icon;
                     const isActive = isFilterActive(filter.key);
+                    const count = filterCounts[filter.key] || 0;
                     return (
                       <button
                         key={filter.key}
                         onClick={() => toggleFilter(filter.key)}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center ${
+                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                           isActive
                             ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
                               filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
@@ -1939,6 +2135,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                           />
                           <span>{filter.label}</span>
                         </div>
+                        <span className="text-xs text-gray-500">({count})</span>
                       </button>
                     );
                   })}
@@ -2015,7 +2212,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         </div>
       </div>
 
-      {/* Enhanced Highlights Display - Updated to remove review status and add order type tags */}
+      {/* Enhanced Highlights Display */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6">
           {paginatedHighlights.length === 0 ? (
@@ -2071,148 +2268,149 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
             </div>
           ) : (
             <div className="space-y-4">
+              {paginatedHighlights.map((highlight, index) => {
+                // Add index to highlight for unique ID generation
+                const globalIndex = (currentPage - 1) * itemsPerPage + index;
+                const highlightWithIndex = { ...highlight, index: globalIndex };
+                const orderId = getUniversalOrderId(highlightWithIndex);
+                const isExpanded = expandedOrders.has(orderId);
+                
+                return (
+                  <div key={`highlight-${orderId}-${globalIndex}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
+                    <div className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div 
+                          className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
+                          onClick={() => {
+                            setExpandedOrders(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(orderId)) {
+                                newSet.delete(orderId);
+                              } else {
+                                newSet.add(orderId);
+                              }
+                              return newSet;
+                            });
+                          }}
+                        >
+                          <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                            {globalIndex + 1}. {cleanOrderTitle(highlight.title)}
+                          </h3>
+                          
+                          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
+                            <span className="font-medium">
+                              {highlight.order_type === 'executive_order' 
+                                ? `Executive Order #: ${getExecutiveOrderNumber(highlight)}`
+                                : `Bill #: ${highlight.bill_number || 'Unknown'}`
+                              }
+                            </span>
+                            <span>-</span>
+                            <span className="font-medium">
+                              {highlight.order_type === 'executive_order' 
+                                ? `Signed Date: ${highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}`
+                                : `Date: ${highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}`
+                              }
+                            </span>
+                            <span>-</span>
+                            <CategoryTag category={highlight.category} />
+                            <span>-</span>
+                            {/* Single Order Type Tag - Clean pill style */}
+                            <OrderTypeTag orderType={highlight.order_type} />
+                            {/* State Tag for State Legislation */}
+                            {highlight.order_type === 'state_legislation' && highlight.state && (
+                              <>
+                                <span>-</span>
+                                <StateTag state={highlight.state} />
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 ml-4">
+                          {/* Enhanced Highlight button with loading state */}
+                          <button
+                            type="button"
+                            className={`p-2 rounded-md transition-all duration-300 ${
+                              isOrderHighlighted(highlightWithIndex)
+                                ? 'text-yellow-500 bg-yellow-100 hover:bg-yellow-200'
+                                : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500'
+                            } ${isOrderHighlightLoading(highlightWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (!isOrderHighlightLoading(highlightWithIndex)) {
+                                await handleOrderHighlight(highlightWithIndex);
+                              }
+                            }}
+                            disabled={isOrderHighlightLoading(highlightWithIndex)}
+                            title={
+                              isOrderHighlightLoading(highlightWithIndex) 
+                                ? "Processing..." 
+                                : isOrderHighlighted(highlightWithIndex) 
+                                  ? "Remove from highlights" 
+                                  : "Add to highlights"
+                            }
+                          >
+                            {isOrderHighlightLoading(highlightWithIndex) ? (
+                              <RotateCw size={16} className="animate-spin" />
+                            ) : (
+                              <Star 
+                                size={16} 
+                                className={isOrderHighlighted(highlightWithIndex) ? "fill-current" : ""} 
+                              />
+                            )}
+                          </button>
+                          
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setExpandedOrders(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(orderId)) {
+                                  newSet.delete(orderId);
+                                } else {
+                                  newSet.add(orderId);
+                                }
+                                return newSet;
+                              });
+                            }}
+                            className="p-2 hover:bg-gray-100 rounded-md transition-all duration-300"
+                            title={isExpanded ? "Collapse details" : "Expand details"}
+                          >
+                            <ChevronDown 
+                              size={20} 
+                              className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                            />
+                          </button>
+                        </div>
+                      </div>
 
-{paginatedHighlights.map((highlight, index) => {
-  // Add index to highlight for unique ID generation
-  const globalIndex = (currentPage - 1) * itemsPerPage + index;
-  const highlightWithIndex = { ...highlight, index: globalIndex };
-  const orderId = getUniversalOrderId(highlightWithIndex);
-  const isExpanded = expandedOrders.has(orderId);
-  
-  return (
-    <div key={`highlight-${orderId}-${globalIndex}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
-      <div className="p-4">
-        <div className="flex items-start justify-between">
-          <div 
-            className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
-            onClick={() => {
-              setExpandedOrders(prev => {
-                const newSet = new Set(prev);
-                if (newSet.has(orderId)) {
-                  newSet.delete(orderId);
-                } else {
-                  newSet.add(orderId);
-                }
-                return newSet;
-              });
-            }}
-          >
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">
-              {globalIndex + 1}. {cleanOrderTitle(highlight.title)}
-            </h3>
-            
-            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
-              <span className="font-medium">
-                {highlight.order_type === 'executive_order' 
-                  ? `Executive Order #: ${getExecutiveOrderNumber(highlight)}`
-                  : `Bill #: ${highlight.bill_number || 'Unknown'}`
-                }
-              </span>
-              <span>-</span>
-              <span className="font-medium">
-                {highlight.order_type === 'executive_order' 
-                  ? `Signed Date: ${highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}`
-                  : `Date: ${highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}`
-                }
-              </span>
-              <span>-</span>
-              <CategoryTag category={highlight.category} />
-              <span>-</span>
-              {/* Single Order Type Tag - Clean pill style */}
-              <OrderTypeTag orderType={highlight.order_type} />
-              {/* Status for State Legislation only - but cleaner */}
-              {highlight.order_type === 'state_legislation' && highlight.status && highlight.status !== 'Unknown' && (
-                <>
-                </>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2 ml-4">
-            {/* Enhanced Highlight button with loading state */}
-            <button
-              type="button"
-              className={`p-2 rounded-md transition-all duration-300 ${
-                isOrderHighlighted(highlightWithIndex)
-                  ? 'text-yellow-500 bg-yellow-100 hover:bg-yellow-200'
-                  : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500'
-              } ${isOrderHighlightLoading(highlightWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!isOrderHighlightLoading(highlightWithIndex)) {
-                  await handleOrderHighlight(highlightWithIndex);
-                }
-              }}
-              disabled={isOrderHighlightLoading(highlightWithIndex)}
-              title={
-                isOrderHighlightLoading(highlightWithIndex) 
-                  ? "Processing..." 
-                  : isOrderHighlighted(highlightWithIndex) 
-                    ? "Remove from highlights" 
-                    : "Add to highlights"
-              }
-            >
-              {isOrderHighlightLoading(highlightWithIndex) ? (
-                <RotateCw size={16} className="animate-spin" />
-              ) : (
-                <Star 
-                  size={16} 
-                  className={isOrderHighlighted(highlightWithIndex) ? "fill-current" : ""} 
-                />
-              )}
-            </button>
-            
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setExpandedOrders(prev => {
-                  const newSet = new Set(prev);
-                  if (newSet.has(orderId)) {
-                    newSet.delete(orderId);
-                  } else {
-                    newSet.add(orderId);
-                  }
-                  return newSet;
-                });
-              }}
-              className="p-2 hover:bg-gray-100 rounded-md transition-all duration-300"
-              title={isExpanded ? "Collapse details" : "Expand details"}
-            >
-              <ChevronDown 
-                size={20} 
-                className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Azure AI Summary (always visible if available) */}
-        {highlight.ai_processed && highlight.ai_summary && (
-          <div className="mb-4 mt-4">
-            <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
-              <div className="flex items-center gap-2 mb-2">
-                <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
-                <span className="text-purple-800">-</span>
-                <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
-                  ✦ AI Generated
-                </span>
-              </div>
-              <div className="text-sm text-violet-800 leading-relaxed">
-                <div className="universal-text-content" style={{
-                  fontSize: '14px',
-                  lineHeight: '1.6',
-                  wordWrap: 'break-word',
-                  overflowWrap: 'break-word',
-                  whiteSpace: 'normal'
-                }}>
-                  {stripHtmlTags(highlight.ai_summary)}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+                      {/* Azure AI Summary (always visible if available) */}
+                      {highlight.ai_processed && highlight.ai_summary && (
+                        <div className="mb-4 mt-4">
+                          <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
+                              <span className="text-purple-800">-</span>
+                              <span className="inline-flex items-center justify-center px-2 py-1 bg-gradient-to-r from-violet-500 to-blue-500 text-white text-[11px] rounded-full leading-tight">
+                                ✦ AI Generated
+                              </span>
+                            </div>
+                            <div className="text-sm text-violet-800 leading-relaxed">
+                              <div className="universal-text-content" style={{
+                                fontSize: '14px',
+                                lineHeight: '1.6',
+                                wordWrap: 'break-word',
+                                overflowWrap: 'break-word',
+                                whiteSpace: 'normal'
+                              }}>
+                                {stripHtmlTags(highlight.ai_summary)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Expanded Content */}
                       {isExpanded && (
@@ -2357,106 +2555,21 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
             </div>
           )}
         </div>
+        
+        {/* UPDATED: Pagination Controls - Always show, even for single page */}
+        {!loading && paginatedHighlights.length > 0 && (
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={itemsPerPage}
+            onPageChange={handlePageChange}
+            itemType="highlights"
+          />
+        )}
       </div>
 
-      {/* Pagination - same as before */}
-      {!loading && paginatedHighlights.length > 0 && totalPages > 1 && (
-        <div className="mt-6 flex justify-center">
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage <= 1}
-              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            
-            <div className="flex items-center space-x-1">
-              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                const pageNum = i + 1;
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => handlePageChange(pageNum)}
-                    className={`px-3 py-2 text-sm font-medium rounded-md ${
-                      currentPage === pageNum
-                        ? 'text-blue-600 bg-blue-50 border border-blue-300'
-                        : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-              
-              {/* Show more pages info if there are many pages */}
-              {totalPages > 5 && (
-                <>
-                  <span className="px-2 text-gray-500">...</span>
-                  <button
-                    onClick={() => handlePageChange(totalPages)}
-                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                  >
-                    {totalPages}
-                  </button>
-                </>
-              )}
-            </div>
-            
-            <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage >= totalPages}
-              className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-            
-            {/* Page info */}
-            <div className="ml-4 text-sm text-gray-600">
-              {selectedFilters.length > 0 || searchTerm ? (
-                <>
-                  Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredHighlights.length)}-{Math.min(currentPage * itemsPerPage, filteredHighlights.length)} of {filteredHighlights.length} filtered highlights
-                  {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
-                </>
-              ) : (
-                <>
-                  Page {currentPage} of {totalPages} ({filteredHighlights.length} total highlights)
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Results Summary */}
-      {filteredHighlights.length > 0 && (
-        <div className="mt-4 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
-            <span>
-              {selectedFilters.length > 0 || searchTerm ? (
-                <>
-                  {filteredHighlights.length === 0 ? 'No results' : `${filteredHighlights.length} total results`} for: 
-                  {selectedFilters.length > 0 && (
-                    <span className="font-medium ml-1">
-                      {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
-                    </span>
-                  )}
-                  {searchTerm && (
-                    <span className="font-medium ml-1">"{searchTerm}"</span>
-                  )}
-                </>
-              ) : (
-                <>Total Highlights: {filteredHighlights.length}</>
-              )}
-            </span>
-            {filteredHighlights.length > itemsPerPage && (
-              <span className="text-xs bg-blue-100 px-2 py-1 rounded">
-                {totalPages} pages
-              </span>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Results Summary - Removed as requested */}
 
       {/* Universal CSS Styles - Same as ExecutiveOrdersPage */}
       <style>{`
@@ -2699,10 +2812,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         }
       `}</style>
 
-      {/* ADDED: Debug Panel - Only show in development mode */}
-      {process.env.NODE_ENV === 'development' && (
-        <HighlightsDebugPanel apiUrl={API_URL} />
-      )}
+
     </div>
   );
 };

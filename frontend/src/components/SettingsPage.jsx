@@ -195,48 +195,71 @@ const SettingsPage = ({
           fetch(`${API_URL}/api/debug/database-msi`)
         ]);
         
-        // Process status data
-        if (statusResponse.status === 'fulfilled' && statusResponse.value.ok) {
-          const data = await statusResponse.value.json();
-          
-          const newStatus = {
-            database: {
-              status: data.database?.status === 'connected' ? 'healthy' : 'error',
-              message: data.database?.status === 'connected' ? 'Database connected' : 'Database connection failed',
-              responseTime: null
-            },
-            legiscan: {
-              status: data.integrations?.legiscan === 'connected' ? 'healthy' : 'error',
-              message: data.integrations?.legiscan === 'connected' ? 'LegiScan API connected' : 'LegiScan API not configured',
-              responseTime: null
-            },
-            azureAI: {
-              status: data.integrations?.ai_analysis === 'connected' ? 'healthy' : 'error',
-              message: data.integrations?.ai_analysis === 'connected' ? 'Azure AI connected' : 'Azure AI not configured',
-              responseTime: null
-            },
-            federalRegister: {
-              status: 'healthy',
-              message: 'Federal Register API operational',
-              responseTime: null
-            }
-          };
-          
-          setIntegrationStatus(newStatus);
-          setLastHealthCheck(new Date());
-        } else {
-          const errorStatus = {
-            database: { status: 'error', message: 'Health check failed', responseTime: null },
-            legiscan: { status: 'error', message: 'Health check failed', responseTime: null },
-            azureAI: { status: 'error', message: 'Health check failed', responseTime: null },
-            federalRegister: { 
-              status: 'healthy', 
-              message: 'Federal Register API operational', 
-              responseTime: null 
-            }
-          };
-          setIntegrationStatus(errorStatus);
-        }
+//        // Process status data
+//        if (statusResponse.status === 'fulfilled' && statusResponse.value.ok) {
+//          const data = await statusResponse.value.json();
+//          
+//          const newStatus = {
+//            database: {
+//              status: data.database?.status === 'connected' ? 'healthy' : 'error',
+//              message: data.database?.status === 'connected' ? 'Database connected' : 'Database connection failed',
+//              responseTime: null
+//            },
+//            legiscan: {
+//              status: data.integrations?.legiscan === 'connected' ? 'healthy' : 'error',
+//              message: data.integrations?.legiscan === 'connected' ? 'LegiScan API connected' : 'LegiScan API not configured',
+//              responseTime: null
+//            },
+//            azureAI: {
+//              status: data.integrations?.ai_analysis === 'connected' ? 'healthy' : 'error',
+//              message: data.integrations?.ai_analysis === 'connected' ? 'Azure AI connected' : 'Azure AI not configured',
+//              responseTime: null
+//            },
+//            federalRegister: {
+//              status: 'healthy',
+//              message: 'Federal Register API operational',
+//              responseTime: null
+//            }
+//          };
+//          
+//          setIntegrationStatus(newStatus);
+//          setLastHealthCheck(new Date());
+//        } else {
+//          const errorStatus = {
+//            database: { status: 'error', message: 'Health check failed', responseTime: null },
+//            legiscan: { status: 'error', message: 'Health check failed', responseTime: null },
+//            azureAI: { status: 'error', message: 'Health check failed', responseTime: null },
+//            federalRegister: { 
+//              status: 'healthy', 
+//              message: 'Federal Register API operational', 
+//              responseTime: null 
+//            }
+//          };
+//          setIntegrationStatus(errorStatus);
+//        }
+
+        const newStatus = {
+          database: {
+            status: data.database?.status === 'connected' ? 'healthy' : 'error',
+            message: data.database?.status === 'connected' ? 'Database connected' : 'Database connection failed',
+            responseTime: null
+          },
+          legiscan: {
+            status: data.integrations?.legiscan === 'connected' ? 'healthy' : 'error',
+            message: data.integrations?.legiscan === 'connected' ? 'LegiScan API connected' : 'LegiScan API not configured',
+            responseTime: null
+          },
+          azureAI: {
+            status: data.integrations?.enhanced_ai_analysis === 'connected' ? 'healthy' : 'error',
+            message: data.integrations?.ai_analysis === 'connected' ? 'Azure AI connected' : 'Azure AI not configured',
+            responseTime: null
+          },
+          federalRegister: {
+            status: 'healthy',
+            message: 'Federal Register API operational',
+            responseTime: null
+          }
+        };
         
         // Process database debug data
         if (dbDebugResponse.status === 'fulfilled' && dbDebugResponse.value.ok) {

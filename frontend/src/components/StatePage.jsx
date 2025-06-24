@@ -1,4 +1,4 @@
-// Complete StatePage.jsx with database-driven review status functionality and pagination
+// Complete StatePage.jsx with all original functionality plus pagination and reverse chronological ordering
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -17,7 +17,10 @@ import {
   Wrench,
   Check,
   AlertTriangle,
-  RotateCw as RefreshIcon
+  RotateCw as RefreshIcon,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp
 } from 'lucide-react';
 
 import { FILTERS, SUPPORTED_STATES } from '../utils/constants';
@@ -27,6 +30,51 @@ import {
 } from '../utils/helpers';
 
 import API_URL from '../config/api';
+// Pagination configuration
+const ITEMS_PER_PAGE = 25;
+
+// =====================================
+// SCROLL TO TOP COMPONENT
+// =====================================
+const ScrollToTopButton = () => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      // Show button when user scrolls down 300px (when header typically disappears)
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      setIsVisible(scrollTop > 300);
+    };
+
+    // Add scroll event listener
+    window.addEventListener('scroll', handleScroll);
+    
+    // Cleanup
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <button
+      onClick={scrollToTop}
+      className={`fixed right-6 bottom-6 z-50 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
+      }`}
+      title="Scroll to top"
+      aria-label="Scroll to top"
+    >
+      <ArrowUp size={20} />
+    </button>
+  );
+};
 
 // Create a custom CategoryTag component that handles not-applicable and uses FILTER icons
 const CustomCategoryTag = ({ category }) => {
@@ -245,105 +293,111 @@ const EXTENDED_FILTERS = [
   }
 ];
 
-// NEW: Review Status API Service
-class ReviewStatusAPI {
-  static async updateStateLegislationReviewStatus(billId, isReviewed) {
-    try {
-      console.log('📝 Updating state legislation review status:', billId, isReviewed);
+// Pagination component
+const PaginationControls = ({ 
+  currentPage, 
+  totalPages, 
+  totalItems, 
+  itemsPerPage, 
+  onPageChange 
+}) => {
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  // Calculate page range to show
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 7;
+    
+    if (totalPages <= maxVisiblePages) {
+      // Show all pages if total is small
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show pages around current page
+      const startPage = Math.max(1, currentPage - 3);
+      const endPage = Math.min(totalPages, currentPage + 3);
       
-      const response = await fetch(`${API_URL}/api/state-legislation/${billId}/review`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reviewed: isReviewed
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to update review status: ${response.status}`);
+      if (startPage > 1) {
+        pages.push(1);
+        if (startPage > 2) pages.push('...');
       }
       
-      console.log('✅ State legislation review status updated');
-      return true;
-    } catch (error) {
-      console.error('❌ Error updating state legislation review status:', error);
-      throw error;
-    }
-  }
-}
-
-// NEW: Enhanced hook for managing review status using database
-const useReviewStatus = (items, itemType) => {
-  const [reviewLoading, setReviewLoading] = useState(new Set());
-
-  // Get item ID based on type
-  const getItemId = useCallback((item) => {
-    if (itemType === 'state_legislation') {
-      // For state legislation, use the database ID or bill_id
-      return item.id || item.bill_id;
-    }
-    return null;
-  }, [itemType]);
-
-  // Toggle review status
-  const toggleReviewStatus = async (item) => {
-    const itemId = getItemId(item);
-    
-    if (!itemId) {
-      console.error('❌ No valid item ID for review status');
-      return;
-    }
-
-    const isCurrentlyReviewed = item.reviewed === true || item.reviewed === 1;
-    const newReviewStatus = !isCurrentlyReviewed;
-    
-    // Add to loading state
-    setReviewLoading(prev => new Set([...prev, itemId]));
-
-    try {
-      await ReviewStatusAPI.updateStateLegislationReviewStatus(itemId, newReviewStatus);
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+      }
       
-      console.log('✅ Review status toggled successfully');
-      return newReviewStatus; // Return the new status so parent can update state
-    } catch (error) {
-      console.error('❌ Failed to toggle review status:', error);
-      throw error;
-    } finally {
-      // Remove from loading state
-      setReviewLoading(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(itemId);
-        return newSet;
-      });
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) pages.push('...');
+        pages.push(totalPages);
+      }
     }
-  };
-
-  // Check if item is reviewed (reads directly from item data)
-  const isItemReviewed = useCallback((item) => {
-    return item.reviewed === true || item.reviewed === 1;
-  }, []);
-
-  // Check if item is currently being processed
-  const isItemReviewLoading = useCallback((item) => {
-    const itemId = getItemId(item);
-    return itemId ? reviewLoading.has(itemId) : false;
-  }, [reviewLoading, getItemId]);
-
-  // Calculate review counts
-  const reviewCounts = useMemo(() => {
-    const total = items.length || 0;
-    const reviewed = items.filter(item => isItemReviewed(item)).length;
-    const notReviewed = total - reviewed;
     
-    return { total, reviewed, notReviewed };
-  }, [items, isItemReviewed]);
-
-  return {
-    toggleReviewStatus,
-    isItemReviewed,
-    isItemReviewLoading,
-    reviewCounts
+    return pages;
   };
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-gray-200">
+      {/* Results info */}
+      <div className="text-sm text-gray-700">
+        Showing <span className="font-medium">{startItem}</span> to{' '}
+        <span className="font-medium">{endItem}</span> of{' '}
+        <span className="font-medium">{totalItems}</span> bills
+      </div>
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center gap-2">
+          {/* Previous button */}
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentPage === 1
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          {/* Page numbers */}
+          <div className="flex items-center gap-1">
+            {getPageNumbers().map((page, index) => (
+              <button
+                key={index}
+                onClick={() => typeof page === 'number' && onPageChange(page)}
+                disabled={page === '...'}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
+                  page === currentPage
+                    ? 'bg-blue-600 text-white'
+                    : page === '...'
+                    ? 'text-gray-400 cursor-default'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+
+          {/* Next button */}
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentPage === totalPages
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) => {
@@ -356,6 +410,9 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
   // Filter state
   const [selectedFilters, setSelectedFilters] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
   
   // ✅ NEW: PAGINATION STATE (copied from ExecutiveOrdersPage)
   const [pagination, setPagination] = useState({
@@ -441,6 +498,21 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     }
     
     return cleaned || 'Untitled Bill';
+  };
+
+  // Helper function to parse date strings and handle various formats
+  const parseDate = (dateString) => {
+    if (!dateString) return new Date(0); // Very old date for null values
+    
+    // Try parsing the date string
+    const date = new Date(dateString);
+    
+    // If parsing failed, return a very old date
+    if (isNaN(date.getTime())) {
+      return new Date(0);
+    }
+    
+    return date;
   };
 
   // FIXED: Improved bill ID generation for consistency with highlights
@@ -709,12 +781,13 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     console.log('🔄 Clearing all filters');
     setSelectedFilters([]);
     setStateSearchTerm('');
-    
-    // Fetch all data without filters
-    setTimeout(() => {
-      fetchFromDatabase(1);
-    }, 100);
+    setCurrentPage(1); // Reset to first page when clearing filters
   };
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFilters, stateSearchTerm]);
 
   // ✅ FIXED: Fetch from database with proper pagination AND date sorting
   const fetchFromDatabase = useCallback(async (pageNum = 1) => {
@@ -1828,13 +1901,107 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // ✅ ULTRA-SIMPLE: Just number items sequentially on each page
-  const getSequentialNumber = useCallback((index, pageInfo) => {
-    // Don't try to be clever - just number items 1, 2, 3... on each page
-    // Or if we want continuous numbering, use a simple calculation
-    const itemsPerPage = 25; // Fixed assumption
-    return (pageInfo.page - 1) * itemsPerPage + index + 1;
-  }, []);
+  // Fetch existing data on component mount
+  useEffect(() => {
+    if (stateName && SUPPORTED_STATES[stateName]) {
+      fetchExistingData();
+    }
+  }, [stateName]);
+
+  const fetchExistingData = async () => {
+    setStateLoading(true);
+    setStateError(null);
+    
+    try {
+      const stateAbbr = SUPPORTED_STATES[stateName];
+      console.log('🔍 Fetching data for state:', stateName, 'Abbreviation:', stateAbbr);
+      
+      const urls = [
+        `${API_URL}/api/state-legislation?state=${stateAbbr}`,
+        `${API_URL}/api/state-legislation?state=${stateName}`
+      ];
+      
+      let response;
+      let data;
+      
+      for (const url of urls) {
+        console.log('🔍 Trying URL:', url);
+        response = await fetch(url);
+        
+        if (response.ok) {
+          data = await response.json();
+          console.log('🔍 Response data:', data);
+          
+          if (data.results && data.results.length > 0) {
+            console.log('✅ Found data with URL:', url);
+            break;
+          }
+        }
+      }
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const results = data?.results || [];
+      
+      // Transform bills with enhanced compatibility and CLEANED META VALUES
+      const transformedBills = results.map((bill, index) => {
+        const uniqueId = getStateBillId(bill) || `fallback-${index}`;
+        
+        return {
+          // Core identification
+          id: uniqueId,
+          bill_id: uniqueId,
+          
+          // Standard bill fields with CLEANED VALUES
+          title: bill?.title || 'Untitled Bill',
+          status: cleanStatus(bill?.status), // ✅ CLEANED STATUS
+          category: cleanCategory(bill?.category), // ✅ CLEANED CATEGORY
+          description: bill?.description || bill?.ai_summary || 'No description available',
+          tags: [cleanCategory(bill?.category)].filter(Boolean), // ✅ CLEANED TAGS
+          summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
+          bill_number: bill?.bill_number,
+          state: bill?.state || stateName,
+          legiscan_url: bill?.legiscan_url,
+          ai_talking_points: bill?.ai_talking_points,
+          ai_business_impact: bill?.ai_business_impact,
+          ai_potential_impact: bill?.ai_potential_impact,
+          introduced_date: bill?.introduced_date,
+          last_action_date: bill?.last_action_date,
+          
+          // Highlights page compatibility
+          executive_order_number: bill?.bill_number || uniqueId,
+          signing_date: bill?.introduced_date,
+          ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
+          
+          // Backend compatibility
+          order_type: 'state_legislation',
+          source_page: 'state-legislation'
+        };
+      });
+      
+      // Sort bills by date (newest first) for reverse chronological order
+      transformedBills.sort((a, b) => {
+        const dateA = parseDate(a.introduced_date || a.last_action_date);
+        const dateB = parseDate(b.introduced_date || b.last_action_date);
+        return dateB.getTime() - dateA.getTime(); // Newest first
+      });
+      
+      console.log('🔍 Transformed bills:', transformedBills.length, 'bills');
+      setStateOrders(transformedBills);
+      setHasData(transformedBills.length > 0);
+    } catch (error) {
+      console.error('❌ Error fetching existing state legislation:', error);
+      setStateError(error.message);
+      setHasData(false);
+      setStateOrders([]);
+    } finally {
+      setStateLoading(false);
+    }
+  };
+
+  // Enhanced topic-based fetch function with category tracking
   const handleQuickFetchByTopic = async (topic, description) => {
     if (fetchingData) return;
     
@@ -1882,7 +2049,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     }
   };
 
-  // UPDATED: Filter the orders with database-driven review status
+  // Filter the orders with multiple filter support and sort by date (newest first)
   const filteredStateOrders = useMemo(() => {
     if (!Array.isArray(stateOrders)) {
       return [];
@@ -1924,8 +2091,23 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
       });
     }
     
+    // Ensure the data is sorted newest first (this should already be done in fetchExistingData)
+    filtered.sort((a, b) => {
+      const dateA = parseDate(a.introduced_date || a.last_action_date);
+      const dateB = parseDate(b.introduced_date || b.last_action_date);
+      return dateB.getTime() - dateA.getTime(); // Newest first
+    });
+    
     return filtered;
-  }, [stateOrders, selectedFilters, stateSearchTerm, isItemReviewed]);
+  }, [stateOrders, selectedFilters, reviewedBills, stateSearchTerm, getStateBillId]);
+
+  // Pagination calculations
+  const totalItems = filteredStateOrders.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const currentPageItems = filteredStateOrders.slice(startIndex, endIndex);
+
 
   // Get dynamic styles for fetch status bar
   const fetchStatusStyles = getCategoryStyles(lastFetchedCategory);
@@ -1955,6 +2137,9 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
   return (
     <div className="pt-6">
+      {/* Scroll to Top Button */}
+      <ScrollToTopButton />
+      
       {/* Page Header */}
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-2">{stateName} Legislation</h2>
@@ -2286,19 +2471,11 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             ) : stateError ? (
               <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md">
                 <p className="font-semibold mb-2">Error loading {stateName} legislation:</p>
-                <p className="text-sm mb-4">{stateError}</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => fetchFromDatabase(pagination.page)}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all duration-300"
-                  >
-                    Try Again
-                  </button>
-                </div>
+                <p className="text-sm">{stateError}</p>
               </div>
-            ) : stateOrders.length > 0 ? (
+            ) : currentPageItems.length > 0 ? (
               <div className="space-y-6">
-                {stateOrders.map((bill, index) => {
+                {currentPageItems.map((bill, index) => {
                   if (!bill || typeof bill !== 'object') {
                     console.warn('Invalid bill data at index', index, bill);
                     return null;
@@ -2308,28 +2485,20 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                   const isReviewed = isItemReviewed(bill);
                   const isExpanded = isBillExpanded(bill);
                   
-                  // 🔢 ULTRA-SIMPLE: Basic sequential numbering
-                  const actualBillNumber = getSequentialNumber(index, pagination);
-                  
-                  // Debug logging for troubleshooting
-                  if (index < 3) { // Only log first 3 items to avoid spam
-                    console.log(`🔢 Bill ${index}: "${bill.title?.substring(0, 30)}..." = #${actualBillNumber}`);
-                    console.log(`📊 Backend pagination: ${pagination.count} total, ${pagination.total_pages} pages`);
-                    console.log(`📊 Actual data: ${stateOrders.length} items in memory`);
-                  }
+                  // Calculate the overall position for reverse numbering (highest to lowest)
+                  const overallIndex = startIndex + index;
+                  const reverseNumber = totalItems - overallIndex;
 
                   return (
-                    <div key={bill.id || index} className={`bg-white rounded-lg shadow-sm border overflow-hidden transition-all duration-300 ${
-                      isReviewed ? 'border-green-200 bg-green-50' : 'border-gray-200'
-                    }`}>
+                    <div key={bill.id || index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
                       {/* Bill Header */}
                       <div className="flex items-start justify-between px-6 pt-6 pb-2">
                         <div 
                           className="flex-1 pr-4 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2"
                           onClick={() => toggleBillExpansion(bill)}
                         >
-                          <h3 className="text-base font-semibold text-gray-900 mb-2">
-                            {actualBillNumber}. {cleanBillTitle(bill.title)}
+                          <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                            {reverseNumber}. {cleanBillTitle(bill.title)}
                           </h3>
                           
                           {/* Bill Number and Dates */}
@@ -2446,6 +2615,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
                       {/* AI Summary - Always show if available */}
                       {bill.summary && bill.summary !== 'No AI summary available' && (
+                        <div className="mb-4 mt-2 mx-6">
                         <div className="mb-4 mx-6">
                           <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
                             <div className="flex items-center gap-2 mb-2">
@@ -2468,6 +2638,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                             </div>
                           </div>
                         </div>
+                      </div>
                       )}
 
                       {/* Expanded Content Section */}
@@ -2595,6 +2766,17 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
               </div>
             )}
           </div>
+          
+          {/* Pagination Controls */}
+          {totalItems > 0 && (
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              itemsPerPage={ITEMS_PER_PAGE}
+              onPageChange={handlePageChange}
+            />
+          )}
         </div>
       </div>
 

@@ -2040,7 +2040,6 @@ async def test_patch(id: str):
 # EXECUTIVE ORDERS DATABASE FUNCTIONS
 # ===============================
 
-# NOTE: check alchemy here
 def get_executive_orders_from_db(limit=1000, offset=0, filters=None):
     """Get executive orders using EXACT column names from your table"""
     try:
@@ -3027,7 +3026,6 @@ async def debug_database_count():
     """Debug endpoint to check database counts"""
     try:
         from database_connection import get_db_connection
-        # NOTE: check Alchemy to Pyodbc here 
         conn = get_db_connection()
         cursor = conn.cursor()
         
