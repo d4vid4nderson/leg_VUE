@@ -54,7 +54,7 @@ const ProcessLoader = ({ loadStartTime }) => {
         ></div>
       </div>
       
-      {/* Skeleton cards */}
+      {/* Main content area with just the process indicator */}
       <div className="grid grid-cols-1 gap-6 mt-6">
         {/* Process state indicator */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden py-8 text-center">
@@ -85,35 +85,7 @@ const ProcessLoader = ({ loadStartTime }) => {
           </div>
         </div>
         
-        {/* Skeleton cards */}
-        {[1, 2].map(i => (
-          <div key={i} className="bg-white border rounded-md shadow-sm overflow-hidden animate-pulse">
-            <div className="p-4 flex justify-between items-center">
-              {/* Title skeleton */}
-              <div className="w-3/4 h-6 bg-gray-200 rounded"></div>
-              {/* Button skeleton */}
-              <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
-            </div>
-            <div className="px-4 pb-4">
-              {/* Category pill skeleton */}
-              <div className="flex items-center gap-2">
-                <div className="w-24 h-7 bg-gray-200 rounded-md"></div>
-                <div className="w-16 h-5 bg-gray-200 rounded-md"></div>
-              </div>
-              
-              {/* Date skeleton */}
-              <div className="mt-2 w-48 h-4 bg-gray-200 rounded"></div>
-              
-              {/* AI Summary skeleton */}
-              <div className="mt-2 bg-gray-100 py-4 px-6 rounded">
-                <div className="w-40 h-5 bg-gray-200 rounded mb-2"></div>
-                <div className="w-full h-4 bg-gray-200 rounded mb-2"></div>
-                <div className="w-full h-4 bg-gray-200 rounded mb-2"></div>
-                <div className="w-3/4 h-4 bg-gray-200 rounded"></div>
-              </div>
-            </div>
-          </div>
-        ))}
+        {/* Removed skeleton cards - they were creating shimmer bars that don't match actual page layout */}
       </div>
     </>
   );

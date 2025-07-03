@@ -30,7 +30,17 @@ import {
   ArrowUp
 } from 'lucide-react';
 
+import { 
+  FILTERS, 
+  getFilterActiveClass, 
+  getFilterIconClass,
+  getCategoryTagClass 
+} from '../utils/constants';
+import { calculateAllCounts } from '../utils/filterUtils';
+import FilterDropdown from '../components/FilterDropdown';
 import API_URL from '../config/api';
+import ShimmerLoader from '../components/ShimmerLoader';
+
 // =====================================
 // FUZZY SEARCH IMPLEMENTATION
 // =====================================
@@ -181,13 +191,6 @@ const fuzzySearch = new FuzzySearch();
 // CONFIGURATION AND CONSTANTS
 // =====================================
 //const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
-
-const FILTERS = [
-  { key: 'civic', label: 'Civic', icon: Building },
-  { key: 'education', label: 'Education', icon: GraduationCap },
-  { key: 'engineering', label: 'Engineering', icon: Wrench },
-  { key: 'healthcare', label: 'Healthcare', icon: Stethoscope }
-];
 
 const EXTENDED_FILTERS = [
   ...FILTERS,
@@ -565,7 +568,17 @@ const CategoryTag = ({ category }) => {
 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${tagInfo.color}`}>
-      <IconComponent size={12} />
+      <IconComponent
+          size={16}
+          className={
+              category === 'civic' ? 'text-blue-600' :
+              category === 'education' ? 'text-orange-600' :
+              category === 'engineering' ? 'text-green-600' :
+              category === 'healthcare' ? 'text-red-600' :
+              category === 'not-applicable' ? 'text-gray-600' :
+              'text-gray-600'
+          }
+      />
       {tagInfo.label}
     </span>
   );
@@ -994,11 +1007,7 @@ const checkForNewOrders = useCallback(async (showLoading = false) => {
     await checkForNewOrders(true); // Show loading for manual check
   }, [checkForNewOrders]);
 
-  // Enhanced fetch button component with notification
 const FetchButtonWithNotification = () => {
-  // FIXED: Only show notification when there are actually new orders
-  const hasNewOrders = countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0;
-  
   return (
     <div className="relative h-full">
       <button
@@ -1007,42 +1016,19 @@ const FetchButtonWithNotification = () => {
         className={`w-full h-full p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 relative flex flex-col justify-center ${
           fetchingData || loading
             ? 'opacity-50 cursor-not-allowed' 
-            : 'hover:shadow-lg hover:border-purple-300 hover:bg-purple-50 border-gray-200 bg-white'
+            : 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50 border-gray-200 bg-white'
         }`}
       >
-        {/* FIXED: Only show notification badge when there are NEW orders */}
-        {hasNewOrders && (
-          <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-lg z-10">
-            <Bell size={10} />
-            {countCheckStatus.newOrdersAvailable}
-          </div>
-        )}
-        
-        <div className={`font-medium mb-2 flex items-center justify-center gap-2 ${
-          hasNewOrders ? 'text-purple-600' : 'text-purple-600'
-        }`}>
-          <Sparkles size={16} />
+        <div className="font-medium mb-2 flex items-center justify-center gap-2 text-blue-600">
+          <ScrollText size={16} />
           <span className="text-center leading-tight">
-            {hasNewOrders ? 'New Orders Available!' : 'Fetch New Executive Orders'}
+            Fetch New Executive Orders
           </span>
         </div>
         
         <div className="text-xs text-gray-500 text-center leading-tight">
-          {hasNewOrders 
-            ? `${countCheckStatus.newOrdersAvailable} new orders from Federal Register`
-            : 'Get latest from Federal Register with AI analysis'
-          }
+          Get latest from Federal Register with AI analysis
         </div>
-        
-        {/* Status indicator - only show if there's space and no new orders */}
-        {countCheckStatus.lastChecked && !hasNewOrders && (
-          <div className="text-xs mt-1 flex items-center justify-center gap-1 text-gray-400">
-            <Clock size={10} />
-            <span className="text-center leading-tight">
-              Last: {countCheckStatus.lastChecked.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-            </span>
-          </div>
-        )}
       </button>
     </div>
   );
@@ -1354,31 +1340,13 @@ const FetchButtonWithNotification = () => {
     return () => clearTimeout(timeoutId);
   }, []);
 
-  // =====================================
-  // FILTER COUNT MANAGEMENT
-  // =====================================
-  const updateFilterCounts = useCallback(() => {
-    const categoryCounts = {};
-    FILTERS.forEach(filter => {
-      categoryCounts[filter.key] = allOrders.filter(order => order?.category === filter.key).length;
-    });
-
-    const reviewedCount = allOrders.filter(order => isOrderReviewed(order)).length;
-    const totalCount = allOrders.length;
-
-    setAllFilterCounts({
-      ...categoryCounts,
-      reviewed: reviewedCount,
-      not_reviewed: Math.max(0, totalCount - reviewedCount),
-      total: totalCount
-    });
-  }, [allOrders, isOrderReviewed]);
-
-  useEffect(() => {
-    if (allOrders.length > 0) {
-      updateFilterCounts();
-    }
-  }, [allOrders, reviewedOrders, updateFilterCounts]);
+const filterCounts = useMemo(() => {
+  return calculateAllCounts(allOrders, {
+    getCategoryFn: (order) => order?.category,
+    reviewStatusFn: (order) => isOrderReviewed(order),
+    includeOrderTypes: false
+  });
+}, [allOrders, isOrderReviewed]);
 
   // =====================================
   // API FUNCTIONS
@@ -2046,10 +2014,13 @@ const FetchButtonWithNotification = () => {
       {/* HEADER SECTION */}
       {/* ===================================== */}
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-800 mb-2">Federal Executive Orders</h2>
+        <div className="flex items-center gap-3 mb-2">
+          <ScrollText/>
+          <h2 className="text-2xl font-bold text-gray-800">Executive Orders</h2>
+        </div>
         <p className="text-gray-600">
-          Retrieving executive orders from official federal sources, leveraging state-of-the-art AI models to extract summaries, strategic talking points, and potential business implications.
-        </p>
+          Access the latest federal executive orders with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of presidential directives. Direct links to the Federal Register and official documents are included for detailed review.
+        </p> 
       </div>
 
       {/* ===================================== */}
@@ -2057,130 +2028,36 @@ const FetchButtonWithNotification = () => {
       {/* ===================================== */}
       <div className="mb-8">
         <div className="flex gap-4 items-center">
-          {/* Filter Dropdown */}
-          <div className="relative" ref={filterDropdownRef}>
-            <button
-              type="button"
-              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-              className="flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-48"
-            >
-              <div className="flex items-center gap-2">
-                <span className="truncate">
-                  {selectedFilters.length === 0 
-                    ? 'Filters'
-                    : selectedFilters.length === 1
-                    ? EXTENDED_FILTERS.find(f => f.key === selectedFilters[0])?.label || 'Filter'
-                    : `${selectedFilters.length} Filters`
+          <FilterDropdown
+            ref={filterDropdownRef}
+            selectedFilters={selectedFilters}
+            showFilterDropdown={showFilterDropdown}
+            onToggleDropdown={() => setShowFilterDropdown(!showFilterDropdown)}
+            onToggleFilter={toggleFilter}
+            onClearAllFilters={clearAllFilters}
+            counts={filterCounts}
+            additionalFilters={[
+              {
+                title: "Review Status",
+                filters: [
+                  {
+                    key: 'reviewed',
+                    label: 'Reviewed',
+                    icon: Check,
+                    activeClass: 'bg-green-100 text-green-700 font-medium',
+                    iconClass: 'text-green-600'
+                  },
+                  {
+                    key: 'not_reviewed',
+                    label: 'Not Reviewed',
+                    icon: AlertTriangle,
+                    activeClass: 'bg-red-100 text-red-700 font-medium',
+                    iconClass: 'text-red-600'
                   }
-                </span>
-                {selectedFilters.length > 0 && (
-                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
-                    {selectedFilters.length}
-                  </span>
-                )}
-              </div>
-              <ChevronDown 
-                size={16} 
-                className={`transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
-              />
-            </button>
-
-            {showFilterDropdown && (
-              <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 max-h-96 overflow-y-auto">
-                {/* Clear All Button */}
-                {selectedFilters.length > 0 && (
-                  <div className="px-4 py-2 border-b border-gray-200">
-                    <button
-                      onClick={() => {
-                        clearAllFilters();
-                        setShowFilterDropdown(false);
-                      }}
-                      className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
-                    >
-                      Clear All Filters ({selectedFilters.length})
-                    </button>
-                  </div>
-                )}
-                
-                {/* Category Filters */}
-                <div className="border-b border-gray-200 pb-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    Categories
-                  </div>
-                  {FILTERS.map(filter => {
-                    const IconComponent = filter.icon;
-                    const isActive = isFilterActive(filter.key);
-                    const count = categoryCounts[filter.key] || 0;
-                    return (
-                      <button
-                        key={filter.key}
-                        onClick={() => toggleFilter(filter.key)}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                          isActive
-                            ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
-                              filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
-                              filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
-                              filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
-                              'bg-blue-100 text-blue-700 font-medium'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <IconComponent 
-                            size={16} 
-                            className={
-                              filter.key === 'civic' ? 'text-blue-600' :
-                              filter.key === 'education' ? 'text-orange-600' :
-                              filter.key === 'engineering' ? 'text-green-600' :
-                              filter.key === 'healthcare' ? 'text-red-600' :
-                              'text-gray-600'
-                            }
-                          />
-                          <span>{filter.label}</span>
-                        </div>
-                        <span className="text-xs text-gray-500">({count})</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Review Status Filters */}
-                <div className="pt-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    Review Status
-                  </div>
-                  <button
-                    onClick={() => toggleFilter('reviewed')}
-                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                      isFilterActive('reviewed')
-                        ? 'bg-green-100 text-green-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Check size={16} className="text-green-600" />
-                      <span>Reviewed</span>
-                    </div>
-                    <span className="text-xs text-gray-500">({reviewCounts.reviewed})</span>
-                  </button>
-                  <button
-                    onClick={() => toggleFilter('not_reviewed')}
-                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                      isFilterActive('not_reviewed')
-                        ? 'bg-red-100 text-red-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle size={16} className="text-red-600" />
-                      <span>Not Reviewed</span>
-                    </div>
-                    <span className="text-xs text-gray-500">({reviewCounts.notReviewed})</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+                ]
+              }
+            ]}
+          />
 
           {/* Search Bar */}
           <div className="flex-1 relative">
@@ -2214,6 +2091,11 @@ const FetchButtonWithNotification = () => {
           )}
         </div>
       </div>
+
+      {/* ===================================== */}
+      {/* COUNT CHECK STATUS NOTIFICATION */}
+      {/* ===================================== */}
+      <CountStatusComponent />
 
       {/* ===================================== */}
       {/* FETCH EXECUTIVE ORDERS SECTION */}
@@ -2271,12 +2153,6 @@ const FetchButtonWithNotification = () => {
                   </div>
                 </div>
               )}
-
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
-                  <ScrollText size={16} className="text-purple-600" />
-                  Executive Orders Management
-                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Enhanced Fetch Button with Notification */}
                   <FetchButtonWithNotification />
@@ -2288,11 +2164,11 @@ const FetchButtonWithNotification = () => {
                     className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 ${
                       fetchingData || loading
                         ? 'opacity-50 cursor-not-allowed' 
-                        : 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50'
+                        : 'hover:shadow-lg hover:border-gray-300 hover:bg-gray-100'
                     } border-gray-200 bg-white text-gray-700`}
                   >
-                    <div className="font-medium mb-2 text-blue-600 flex items-center justify-center gap-2">
-                      <Database size={16} />
+                    <div className="font-medium mb-2 text-gray-600 flex items-center justify-center gap-2">
+                      <Database size={18} />
                       Load from Database
                     </div>
                     <div className="text-xs text-gray-500">
@@ -2307,7 +2183,6 @@ const FetchButtonWithNotification = () => {
                     )}
                   </button>
                 </div>
-              </div>
             </div>
           )}
         </div>
@@ -2318,15 +2193,13 @@ const FetchButtonWithNotification = () => {
       {/* ===================================== */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6">
-          {loading ? (
-            <div className="py-12 text-center">
-              <div className="w-16 h-16 mx-auto bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center animate-pulse mb-4">
-                <Database size={32} className="text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-800 mb-2">Loading from Database</h3>
-              <p className="text-gray-600">Fetching processed executive orders...</p>
-            </div>
-          ) : error ? (
+            {loading ? (
+              <ShimmerLoader 
+                count={4}
+                variant="executive-order"
+                className="space-y-4"
+              />
+            ) : error ? (
             <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md">
               <p className="font-semibold mb-2">Error loading executive orders:</p>
               <p className="text-sm mb-4">{error}</p>
@@ -2368,7 +2241,7 @@ const FetchButtonWithNotification = () => {
                   <button
                     onClick={fetchExecutiveOrders}
                     disabled={fetchingData}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-all duration-300 flex items-center gap-2"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300 flex items-center gap-2"
                   >
                     <Sparkles size={16} />
                     Fetch Executive Orders

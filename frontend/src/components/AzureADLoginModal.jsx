@@ -14,7 +14,7 @@ import {
 import { PublicClientApplication } from "@azure/msal-browser";
 import { useAuth } from "../context/AuthContext";
 
-import yourLogo from "/src/favicon.png";
+import yourLogo from "/favicon.png";
 
 const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
   // ✅ ADDED onLoginSuccess prop

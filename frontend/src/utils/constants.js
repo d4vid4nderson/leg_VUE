@@ -1,24 +1,66 @@
-// utils/constants.js - Application constants and configuration
+// utils/constants.js - Fixed imports
 
 import {
   Building,
   GraduationCap,
-  Stethoscope,
+  HeartPulse,      
   Wrench,
   ScrollText,
-  FileText
+  FileText,
+  LayoutGrid      
 } from 'lucide-react';
 
 // Filter configuration
 export const FILTERS = [
+  { key: 'all-practice-areas', icon: LayoutGrid, label: 'All Practice Areas' },
   { key: 'civic', icon: Building, label: 'Civic' },
   { key: 'education', icon: GraduationCap, label: 'Education' },
   { key: 'engineering', icon: Wrench, label: 'Engineering' },
-  { key: 'healthcare', icon: Stethoscope, label: 'Healthcare' },
+  { key: 'healthcare', icon: HeartPulse, label: 'Healthcare' },
   { key: 'not-applicable', icon: ScrollText, label: 'Not Applicable' },
 ];
 
+// Centralized filter styling - ACTIVE STATES (when filter is selected)
+export const getFilterActiveClass = (filterKey) => {
+  const styles = {
+    'all-practice-areas': 'bg-teal-100 text-teal-700 font-medium',
+    'civic': 'bg-blue-100 text-blue-700 font-medium',
+    'education': 'bg-orange-100 text-orange-700 font-medium',
+    'engineering': 'bg-green-100 text-green-700 font-medium',
+    'healthcare': 'bg-red-100 text-red-700 font-medium',
+    'not-applicable': 'bg-gray-100 text-gray-700 font-medium',
+  };
+  return styles[filterKey] || 'bg-gray-100 text-gray-700 font-medium';
+};
+
+// Centralized icon styling - ICON COLORS
+export const getFilterIconClass = (filterKey) => {
+  const styles = {
+    'all-practice-areas': 'text-teal-600',
+    'civic': 'text-blue-600',
+    'education': 'text-orange-600',
+    'engineering': 'text-green-600',
+    'healthcare': 'text-red-600',
+    'not-applicable': 'text-gray-600',
+  };
+  return styles[filterKey] || 'text-gray-600';
+};
+
+// Category tag styling (for pills/badges)
+export const getCategoryTagClass = (filterKey) => {
+  const styles = {
+    'all-practice-areas': 'bg-teal-100 text-teal-800',
+    'civic': 'bg-blue-100 text-blue-800',
+    'education': 'bg-orange-100 text-orange-800',
+    'engineering': 'bg-green-100 text-green-800',
+    'healthcare': 'bg-red-100 text-red-800',
+    'not-applicable': 'bg-gray-100 text-gray-800',
+  };
+  return styles[filterKey] || 'bg-gray-100 text-gray-800';
+};
+
 export const filterStyles = {
+  'all-practice-areas': 'text-teal-700',
   civic: 'text-blue-700',
   education: 'text-orange-700',
   engineering: 'text-green-700',
@@ -38,15 +80,17 @@ export const SUPPORTED_STATES = {
 
 // Highlights filter configuration
 export const HIGHLIGHTS_FILTERS = [
+  { key: 'all-practice-areas', icon: LayoutGrid, label: 'All Practice Areas' },
   { key: 'civic', icon: Building, label: 'Civic' },
   { key: 'education', icon: GraduationCap, label: 'Education' },
   { key: 'engineering', icon: Wrench, label: 'Engineering' },
-  { key: 'healthcare', icon: Stethoscope, label: 'Healthcare' },
+  { key: 'healthcare', icon: HeartPulse, label: 'Healthcare' },
   { key: 'executive-orders', icon: ScrollText, label: 'Executive Orders' },
   { key: 'state-legislation', icon: FileText, label: 'State Legislation' },
 ];
 
 export const highlightsFilterStyles = {
+  'all-practice-areas': 'text-teal-600',
   civic: 'text-blue-600',
   education: 'text-orange-600',
   engineering: 'text-green-600',
@@ -91,4 +135,4 @@ export const PAGINATION_DEFAULTS = {
 };
 
 // Additional exports that might be needed
-export { ScrollText, FileText } from 'lucide-react';
+export { ScrollText, FileText, LayoutGrid } from 'lucide-react';

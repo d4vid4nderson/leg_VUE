@@ -741,3 +741,61 @@ ol li {
   margin: 0;
 }
 
+/* =====================================
+   SHIMMER ANIMATION CSS STYLES
+   Add this to your index.css or App.css file
+   ===================================== */
+
+/* Shimmer animation keyframes */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Shimmer animation class */
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+  background-size: 200% 100%;
+}
+
+/* Background size utility for shimmer */
+.bg-size-200 {
+  background-size: 200% 100%;
+}
+
+/* Alternative shimmer styles for different effects */
+.shimmer-fast {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.shimmer-slow {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Shimmer variants with different colors */
+.shimmer-blue {
+  background: linear-gradient(90deg, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%);
+}
+
+.shimmer-purple {
+  background: linear-gradient(90deg, #f3e8ff 25%, #e9d5ff 50%, #f3e8ff 75%);
+}
+
+/* Enhanced shimmer with more realistic effect */
+.shimmer-enhanced {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #f1f5f9 40%,
+    #e2e8f0 50%,
+    #f1f5f9 60%,
+    #f1f5f9 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+

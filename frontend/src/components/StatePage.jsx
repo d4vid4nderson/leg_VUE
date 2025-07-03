@@ -1,4 +1,4 @@
-// Complete StatePage.jsx with all original functionality plus pagination and reverse chronological ordering
+// Complete StatePage.jsx with all original functionality plus FilterDropdown component matching ExecutiveOrdersPage
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -30,10 +30,29 @@ import {
 } from '../utils/helpers';
 
 import useReviewStatus from '../hooks/useReviewStatus';
-
+import FilterDropdown from '../components/FilterDropdown';
+import ShimmerLoader from '../components/ShimmerLoader';
 import API_URL from '../config/api';
+
 // Pagination configuration
 const ITEMS_PER_PAGE = 25;
+
+// Extended FILTERS array with review status options (matching ExecutiveOrdersPage)
+const EXTENDED_FILTERS = [
+    ...FILTERS,
+    {
+        key: 'reviewed',
+        label: 'Reviewed',
+        icon: Check,
+        type: 'review_status'
+    },
+    {
+        key: 'not_reviewed',
+        label: 'Not Reviewed',
+        icon: AlertTriangle,
+        type: 'review_status'
+    }
+];
 
 // =====================================
 // SCROLL TO TOP COMPONENT
@@ -277,23 +296,6 @@ const ReviewStatusTag = ({ isReviewed }) => {
     );
 };
 
-// Extended FILTERS array with review status options only
-const EXTENDED_FILTERS = [
-    ...FILTERS,
-    {
-        key: 'reviewed',
-        label: 'Reviewed',
-        icon: Check,
-        type: 'review_status'
-    },
-    {
-        key: 'not_reviewed',
-        label: 'Not Reviewed',
-        icon: AlertTriangle,
-        type: 'review_status'
-    }
-];
-
 // Pagination component
 const PaginationControls = ({
     currentPage,
@@ -405,7 +407,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     const [stateError, setStateError] = useState(null);
     const [stateSearchTerm, setStateSearchTerm] = useState('');
 
-    // Filter state
+    // Filter state (matching ExecutiveOrdersPage pattern)
     const [selectedFilters, setSelectedFilters] = useState([]);
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
@@ -751,7 +753,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         }}>{textContent}</div>;
     };
 
-    // Filter helper functions
+    // Filter helper functions (matching ExecutiveOrdersPage pattern)
     const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
 
     const toggleFilter = (filterKey) => {
@@ -762,14 +764,8 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             console.log('🔄 Filter toggled:', filterKey, 'New filters:', newFilters);
 
-            // After updating filters, fetch filtered data from database
-            setTimeout(() => {
-                if (newFilters.length > 0 || stateSearchTerm) {
-                    fetchFilteredData(newFilters, stateSearchTerm, 1);
-                } else {
-                    fetchFromDatabase(1);
-                }
-            }, 100);
+            // Reset to page 1 when filters change
+            setPagination(prev => ({ ...prev, page: 1 }));
 
             return newFilters;
         });
@@ -779,7 +775,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         console.log('🔄 Clearing all filters');
         setSelectedFilters([]);
         setStateSearchTerm('');
-        setCurrentPage(1); // Reset to first page when clearing filters
+        setPagination(prev => ({ ...prev, page: 1 }));
     };
 
     // Reset to page 1 when filters change
@@ -1871,6 +1867,19 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     }, [highlightLoading, getStateBillId]);
 
     // ✅ NEW: Count functions for filter display (copied from ExecutiveOrdersPage)
+    const filterCounts = useMemo(() => {
+        return {
+            civic: allFilterCounts.civic || 0,
+            education: allFilterCounts.education || 0,
+            engineering: allFilterCounts.engineering || 0,
+            healthcare: allFilterCounts.healthcare || 0,
+            all_practice_areas: allFilterCounts.total || 0, // All practice areas shows total count
+            reviewed: allFilterCounts.reviewed || 0,
+            not_reviewed: allFilterCounts.not_reviewed || 0,
+            total: allFilterCounts.total || 0
+        };
+    }, [allFilterCounts]);
+
     const reviewCountsFromFilter = useMemo(() => {
         return {
             total: allFilterCounts.total || 0,
@@ -2055,8 +2064,13 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         let filtered = stateOrders;
 
         // Apply category filters
-        const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
-        if (categoryFilters.length > 0) {
+        const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed', 'all_practice_areas'].includes(f));
+        
+        // Handle "All Practice Areas" filter - if selected, show all categories (no category filtering)
+        if (selectedFilters.includes('all_practice_areas')) {
+            // Don't apply any category filtering - show all categories
+        } else if (categoryFilters.length > 0) {
+            // Apply specific category filters
             filtered = filtered.filter(bill => categoryFilters.includes(cleanCategory(bill?.category)));
         }
 
@@ -2140,151 +2154,58 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             {/* Page Header */}
             <div className="mb-8">
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">{stateName} Legislation</h2>
-                <p className="text-gray-600">Explore and fetch legislation for {stateName} with AI analysis and review tracking.</p>
+                <div className="flex items-center gap-3 mb-2">
+                <FileText/>
+                <h2 className="text-2xl font-bold text-gray-800">{stateName} Legislation</h2>
+                </div>
+                <p className="text-gray-600">
+                Access the latest legislation and bills from {stateName} with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of new legislation. Direct links to official source documents are included for detailed review.
+                </p> 
             </div>
-
-            {/* Search Bar and Filter */}
+            
+            {/* ===================================== */}
+            {/* SEARCH AND FILTER SECTION (Updated to match ExecutiveOrdersPage) */}
+            {/* ===================================== */}
             <div className="mb-8">
                 <div className="flex gap-4 items-center">
-                    {/* Filter Dropdown */}
-                    <div className="relative" ref={filterDropdownRef}>
-                        <button
-                            type="button"
-                            onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                            className="flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-48"
-                        >
-                            <div className="flex items-center gap-2">
-                                <span className="truncate">
-                                    {selectedFilters.length === 0
-                                        ? 'Filters'
-                                        : selectedFilters.length === 1
-                                            ? EXTENDED_FILTERS.find(f => f.key === selectedFilters[0])?.label || 'Filter'
-                                            : `${selectedFilters.length} Filters`
+                    {/* FilterDropdown Component - Matching ExecutiveOrdersPage */}
+                    <FilterDropdown
+                        ref={filterDropdownRef}
+                        selectedFilters={selectedFilters}
+                        showFilterDropdown={showFilterDropdown}
+                        onToggleDropdown={() => setShowFilterDropdown(!showFilterDropdown)}
+                        onToggleFilter={toggleFilter}
+                        onClearAllFilters={clearAllFilters}
+                        counts={filterCounts}
+                        additionalFilters={[
+                            {
+                                title: "Review Status",
+                                filters: [
+                                    {
+                                        key: 'reviewed',
+                                        label: 'Reviewed',
+                                        icon: Check,
+                                        activeClass: 'bg-green-100 text-green-700 font-medium',
+                                        iconClass: 'text-green-600'
+                                    },
+                                    {
+                                        key: 'not_reviewed',
+                                        label: 'Not Reviewed',
+                                        icon: AlertTriangle,
+                                        activeClass: 'bg-red-100 text-red-700 font-medium',
+                                        iconClass: 'text-red-600'
                                     }
-                                </span>
-                                {selectedFilters.length > 0 && (
-                                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
-                                        {selectedFilters.length}
-                                    </span>
-                                )}
-                            </div>
-                            <ChevronDown
-                                size={16}
-                                className={`transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
-                            />
-                        </button>
-
-                        {showFilterDropdown && (
-                            <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 max-h-96 overflow-y-auto">
-                                {/* Clear All Button */}
-                                {selectedFilters.length > 0 && (
-                                    <div className="px-4 py-2 border-b border-gray-200">
-                                        <button
-                                            onClick={() => {
-                                                clearAllFilters();
-                                                setShowFilterDropdown(false);
-                                            }}
-                                            className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
-                                        >
-                                            Clear All Filters ({selectedFilters.length})
-                                        </button>
-                                    </div>
-                                )}
-
-                                {/* Category Filters */}
-                                <div className="border-b border-gray-200 pb-2">
-                                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                        Categories
-                                    </div>
-                                    {FILTERS.map(filter => {
-                                        const IconComponent = filter.icon;
-                                        const isActive = isFilterActive(filter.key);
-                                        return (
-                                            <button
-                                                key={filter.key}
-                                                onClick={() => toggleFilter(filter.key)}
-                                                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center ${isActive
-                                                        ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
-                                                            filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
-                                                                filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
-                                                                    filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
-                                                                        filter.key === 'not-applicable' ? 'bg-gray-100 text-gray-700 font-medium' :
-                                                                            'bg-blue-100 text-blue-700 font-medium'
-                                                        : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <IconComponent
-                                                        size={16}
-                                                        className={
-                                                            filter.key === 'civic' ? 'text-blue-600' :
-                                                                filter.key === 'education' ? 'text-orange-600' :
-                                                                    filter.key === 'engineering' ? 'text-green-600' :
-                                                                        filter.key === 'healthcare' ? 'text-red-600' :
-                                                                            filter.key === 'not-applicable' ? 'text-gray-600' :
-                                                                                'text-gray-600'
-                                                        }
-                                                    />
-                                                    <span>{filter.label}</span>
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Review Status Filters */}
-                                <div className="pt-2">
-                                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                        Review Status
-                                    </div>
-                                    <button
-                                        onClick={() => toggleFilter('reviewed')}
-                                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${isFilterActive('reviewed')
-                                                ? 'bg-green-100 text-green-700 font-medium'
-                                                : 'text-gray-700 hover:bg-gray-100'
-                                            }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <Check size={16} className="text-green-600" />
-                                            <span>Reviewed</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-gray-500">({reviewCountsFromFilter.reviewed})</span>
-                                            {isFilterActive('reviewed') && (
-                                                <Check size={14} className="text-green-600" />
-                                            )}
-                                        </div>
-                                    </button>
-                                    <button
-                                        onClick={() => toggleFilter('not_reviewed')}
-                                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${isFilterActive('not_reviewed')
-                                                ? 'bg-red-100 text-red-700 font-medium'
-                                                : 'text-gray-700 hover:bg-gray-100'
-                                            }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <AlertTriangle size={16} className="text-red-600" />
-                                            <span>Not Reviewed</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-gray-500">({reviewCountsFromFilter.notReviewed})</span>
-                                            {isFilterActive('not_reviewed') && (
-                                                <Check size={14} className="text-red-600" />
-                                            )}
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                                ]
+                            }
+                        ]}
+                    />
 
                     {/* Search Bar */}
                     <div className="flex-1 relative">
                         <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                             type="text"
-                            placeholder={`Search ${stateName} legislation...`}
+                            placeholder={`Search ${stateName} legislation titles, bill numbers, summaries...`}
                             value={stateSearchTerm}
                             onChange={(e) => setStateSearchTerm(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -2447,18 +2368,11 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                     <div className="p-6">
                         {stateLoading ? (
-                            <div className="py-12 text-center">
-                                <div className="mb-6 relative">
-                                    <div className="w-16 h-16 mx-auto bg-gradient-to-r from-violet-600 to-blue-600 rounded-full flex items-center justify-center animate-pulse">
-                                        <FileText size={32} className="text-white" />
-                                    </div>
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="w-16 h-16 border-4 border-blue-400 rounded-full animate-ping opacity-30"></div>
-                                    </div>
-                                </div>
-                                <h3 className="text-lg font-bold text-gray-800 mb-2">Loading {stateName} Legislation</h3>
-                                <p className="text-gray-600">Please wait while we fetch the data...</p>
-                            </div>
+                            <ShimmerLoader 
+                                count={4}
+                                variant="state-legislation"
+                                className="space-y-4"
+                            />
                         ) : stateError ? (
                             <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md">
                                 <p className="font-semibold mb-2">Error loading {stateName} legislation:</p>
@@ -2768,356 +2682,280 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 </div>
             </div>
 
-            {/* ✅ NEW: PAGINATION SECTION (copied from ExecutiveOrdersPage) */}
-            {!stateLoading && !stateError && (
-                <>
-                    {/* Show pagination if there are multiple pages */}
-                    {stateOrders.length > 0 && pagination.total_pages > 1 && (
-                        <div className="mt-6 flex justify-center">
-                            <div className="flex items-center space-x-2">
-                                <button
-                                    onClick={() => handlePageChange(pagination.page - 1)}
-                                    disabled={pagination.page <= 1}
-                                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    Previous
-                                </button>
-
-                                <div className="flex items-center space-x-1">
-                                    {Array.from({ length: Math.min(pagination.total_pages, 5) }, (_, i) => {
-                                        const pageNum = i + 1;
-                                        return (
-                                            <button
-                                                key={pageNum}
-                                                onClick={() => handlePageChange(pageNum)}
-                                                className={`px-3 py-2 text-sm font-medium rounded-md ${pagination.page === pageNum
-                                                        ? 'text-blue-600 bg-blue-50 border border-blue-300'
-                                                        : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
-                                                    }`}
-                                            >
-                                                {pageNum}
-                                            </button>
-                                        );
-                                    })}
-
-                                    {/* Show more pages info if there are many pages */}
-                                    {pagination.total_pages > 5 && (
-                                        <>
-                                            <span className="px-2 text-gray-500">...</span>
-                                            <button
-                                                onClick={() => handlePageChange(pagination.total_pages)}
-                                                className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                                            >
-                                                {pagination.total_pages}
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-
-                                <button
-                                    onClick={() => handlePageChange(pagination.page + 1)}
-                                    disabled={pagination.page >= pagination.total_pages}
-                                    className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    Next
-                                </button>
-
-                                {/* Page info */}
-                                <div className="ml-4 text-sm text-gray-600">
-                                    {selectedFilters.length > 0 || stateSearchTerm ? (
-                                        <>
-                                            Showing {Math.min((pagination.page - 1) * pagination.per_page + 1, pagination.count)}-{Math.min(pagination.page * pagination.per_page, pagination.count)} of {pagination.count} filtered results
-                                            {pagination.total_pages > 1 && ` (Page ${pagination.page} of ${pagination.total_pages})`}
-                                        </>
-                                    ) : (
-                                        <>
-                                            Page {pagination.page} of {pagination.total_pages} ({pagination.count} total bills)
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Show filter summary when filtering */}
-                    {(selectedFilters.length > 0 || stateSearchTerm) && (
-                        <div className="mt-4 text-center">
-                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
-                                <span>
-                                    {stateOrders.length === 0 ? 'No results' : `${pagination.count} total results`} for:
-                                    {selectedFilters.length > 0 && (
-                                        <span className="font-medium ml-1">
-                                            {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
-                                        </span>
-                                    )}
-                                    {stateSearchTerm && (
-                                        <span className="font-medium ml-1">"{stateSearchTerm}"</span>
-                                    )}
+            {/* Search/Filter Results Summary (matching ExecutiveOrdersPage) */}
+            {!stateLoading && !stateError && (selectedFilters.length > 0 || stateSearchTerm) && (
+                <div className="mt-4 text-center">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                        <span>
+                            {stateOrders.length === 0 ? 'No results' : `${pagination.count} total results`} for:
+                            {selectedFilters.length > 0 && (
+                                <span className="font-medium ml-1">
+                                    {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
                                 </span>
-                                {pagination.count > 25 && (
-                                    <span className="text-xs bg-blue-100 px-2 py-1 rounded">
-                                        {pagination.total_pages} pages
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                </>
+                            )}
+                            {stateSearchTerm && (
+                                <span className="font-medium ml-1">"{stateSearchTerm}"</span>
+                            )}
+                        </span>
+                        {pagination.count > 25 && (
+                            <span className="text-xs bg-blue-100 px-2 py-1 rounded">
+                                {pagination.total_pages} pages
+                            </span>
+                        )}
+                    </div>
+                </div>
             )}
 
             {/* Universal CSS Styles - Same as ExecutiveOrdersPage */}
             <style>{`
+                .bg-purple-50 .text-violet-800,
+                .bg-blue-50 .text-blue-800, 
+                .bg-green-50 .text-green-800 {
+                    word-break: normal;
+                    overflow-wrap: anywhere;
+                    white-space: pre-wrap;
+                    text-align: justify;
+                }
 
-          .bg-purple-50 .text-violet-800,
-          .bg-blue-50 .text-blue-800, 
-          .bg-green-50 .text-green-800 {
-            word-break: normal;
-            overflow-wrap: anywhere;
-            white-space: pre-wrap;
-            text-align: justify;
-          }
+                .numbered-item {
+                    page-break-inside: avoid;
+                    break-inside: avoid;
+                }
 
-          /* Ensure numbered items don't break awkwardly */
-          .numbered-item {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
+                .numbered-text {
+                    word-break: normal;
+                    overflow-wrap: anywhere;
+                }
 
-          .numbered-text {
-            word-break: normal;
-            overflow-wrap: anywhere;
-          }
+                .universal-ai-content,
+                .universal-structured-content,
+                .universal-text-content {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: inherit;
+                }
 
-        .universal-ai-content,
-        .universal-structured-content,
-        .universal-text-content {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
+                .universal-numbered-content {
+                    margin: 8px 0;
+                }
 
-        .universal-numbered-content {
-          margin: 8px 0;
-        }
+                .numbered-item {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 8px;
+                    margin-bottom: 6px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
 
-        .numbered-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          margin-bottom: 6px;
-          font-size: 14px;
-          line-height: 1.5;
-        }
+                .numbered-item:last-child {
+                    margin-bottom: 0;
+                }
 
-        .numbered-item:last-child {
-          margin-bottom: 0;
-        }
+                .number-bullet {
+                    font-weight: 600;
+                    font-size: 14px;
+                    color: currentColor;
+                    min-width: 20px;
+                    flex-shrink: 0;
+                }
 
-        .number-bullet {
-          font-weight: 600;
-          font-size: 14px;
-          color: currentColor;
-          min-width: 20px;
-          flex-shrink: 0;
-        }
+                .numbered-text {
+                    flex: 1;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: inherit;
+                }
 
-        .numbered-text {
-          flex: 1;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
+                .universal-bullet-content {
+                    margin: 8px 0;
+                }
 
-        .universal-bullet-content {
-          margin: 8px 0;
-        }
+                .bullet-item {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 8px;
+                    margin-bottom: 6px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
 
-        .bullet-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          margin-bottom: 6px;
-          font-size: 14px;
-          line-height: 1.5;
-        }
+                .bullet-item:last-child {
+                    margin-bottom: 0;
+                }
 
-        .bullet-item:last-child {
-          margin-bottom: 0;
-        }
+                .bullet-point {
+                    font-weight: 600;
+                    font-size: 16px;
+                    color: currentColor;
+                    min-width: 12px;
+                    flex-shrink: 0;
+                    margin-top: 1px;
+                }
 
-        .bullet-point {
-          font-weight: 600;
-          font-size: 16px;
-          color: currentColor;
-          min-width: 12px;
-          flex-shrink: 0;
-          margin-top: 1px;
-        }
+                .bullet-text {
+                    flex: 1;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: inherit;
+                }
 
-        .bullet-text {
-          flex: 1;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
+                .numbered-list-content ol {
+                    margin: 8px 0;
+                    padding-left: 0;
+                    list-style: none;
+                    counter-reset: talking-points;
+                }
 
-        .numbered-list-content ol {
-          margin: 8px 0;
-          padding-left: 0;
-          list-style: none;
-          counter-reset: talking-points;
-        }
+                .numbered-list-content li {
+                    position: relative;
+                    padding-left: 24px;
+                    margin-bottom: 6px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: inherit;
+                    counter-increment: talking-points;
+                }
 
-        .numbered-list-content li {
-          position: relative;
-          padding-left: 24px;
-          margin-bottom: 6px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-          counter-increment: talking-points;
-        }
+                .numbered-list-content li:before {
+                    content: counter(talking-points) ".";
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    font-weight: 600;
+                    font-size: 14px;
+                    color: currentColor;
+                    min-width: 20px;
+                }
 
-        .numbered-list-content li:before {
-          content: counter(talking-points) ".";
-          position: absolute;
-          left: 0;
-          top: 0;
-          font-weight: 600;
-          font-size: 14px;
-          color: currentColor;
-          min-width: 20px;
-        }
+                .numbered-list-content li:last-child {
+                    margin-bottom: 0;
+                }
 
-        .numbered-list-content li:last-child {
-          margin-bottom: 0;
-        }
+                .universal-ai-content p {
+                    margin: 0 0 8px 0;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
 
-        .universal-ai-content p {
-          margin: 0 0 8px 0;
-          font-size: 14px;
-          line-height: 1.5;
-        }
+                .universal-ai-content p:last-child {
+                    margin-bottom: 0;
+                }
 
-        .universal-ai-content p:last-child {
-          margin-bottom: 0;
-        }
+                .universal-ai-content ol,
+                .universal-ai-content ul {
+                    margin: 8px 0;
+                    padding-left: 20px;
+                    font-size: 14px;
+                }
 
-        .universal-ai-content ol,
-        .universal-ai-content ul {
-          margin: 8px 0;
-          padding-left: 20px;
-          font-size: 14px;
-        }
+                .universal-ai-content li {
+                    margin-bottom: 4px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: inherit;
+                }
 
-        .universal-ai-content li {
-          margin-bottom: 4px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
+                .universal-ai-content li:last-child {
+                    margin-bottom: 0;
+                }
 
-        .universal-ai-content li:last-child {
-          margin-bottom: 0;
-        }
+                .universal-ai-content strong {
+                    font-weight: 600;
+                    font-size: 14px;
+                }
 
-        .universal-ai-content strong {
-          font-weight: 600;
-          font-size: 14px;
-        }
+                .business-impact-sections {
+                    margin: 8px 0;
+                }
 
-        .business-impact-sections {
-          margin: 8px 0;
-        }
+                .business-impact-section {
+                    margin-bottom: 12px;
+                }
 
-        .business-impact-section {
-          margin-bottom: 12px;
-        }
+                .business-impact-section:last-child {
+                    margin-bottom: 0;
+                }
 
-        .business-impact-section:last-child {
-          margin-bottom: 0;
-        }
+                .section-header {
+                    margin-bottom: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: inherit;
+                }
 
-        .section-header {
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          color: inherit;
-        }
+                .section-items {
+                    margin: 0;
+                    padding: 0;
+                    list-style: none;
+                }
 
-        .section-items {
-          margin: 0;
-          padding: 0;
-          list-style: none;
-        }
+                .section-item {
+                    margin-bottom: 4px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: inherit;
+                }
 
-        .section-item {
-          margin-bottom: 4px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
+                .section-item:last-child {
+                    margin-bottom: 0;
+                }
 
-        .section-item:last-child {
-          margin-bottom: 0;
-        }
+                .text-purple-800 .universal-ai-content,
+                .text-purple-800 .universal-structured-content,
+                .text-purple-800 .universal-text-content,
+                .text-purple-800 .number-bullet,
+                .text-purple-800 .numbered-text,
+                .text-purple-800 .bullet-point,
+                .text-purple-800 .bullet-text {
+                    color: #5b21b6;
+                }
 
-        .text-purple-800 .universal-ai-content,
-        .text-purple-800 .universal-structured-content,
-        .text-purple-800 .universal-text-content,
-        .text-purple-800 .number-bullet,
-        .text-purple-800 .numbered-text,
-        .text-purple-800 .bullet-point,
-        .text-purple-800 .bullet-text {
-          color: #5b21b6;
-        }
+                .text-blue-800 .universal-ai-content,
+                .text-blue-800 .universal-structured-content,
+                .text-blue-800 .universal-text-content,
+                .text-blue-800 .number-bullet,
+                .text-blue-800 .numbered-text,
+                .text-blue-800 .bullet-point,
+                .text-blue-800 .bullet-text {
+                    color: #1e40af;
+                }
 
-        .text-blue-800 .universal-ai-content,
-        .text-blue-800 .universal-structured-content,
-        .text-blue-800 .universal-text-content,
-        .text-blue-800 .number-bullet,
-        .text-blue-800 .numbered-text,
-        .text-blue-800 .bullet-point,
-        .text-blue-800 .bullet-text {
-          color: #1e40af;
-        }
+                .text-green-800 .universal-ai-content,
+                .text-green-800 .universal-structured-content,
+                .text-green-800 .universal-text-content,
+                .text-green-800 .number-bullet,
+                .text-green-800 .numbered-text,
+                .text-green-800 .bullet-point,
+                .text-green-800 .bullet-text {
+                    color: #166534;
+                }
 
-        .text-green-800 .universal-ai-content,
-        .text-green-800 .universal-structured-content,
-        .text-green-800 .universal-text-content,
-        .text-green-800 .number-bullet,
-        .text-green-800 .numbered-text,
-        .text-green-800 .bullet-point,
-        .text-green-800 .bullet-text {
-          color: #166534;
-        }
+                .text-violet-800 .universal-ai-content,
+                .text-violet-800 .universal-structured-content,
+                .text-violet-800 .universal-text-content,
+                .text-violet-800 .number-bullet,
+                .text-violet-800 .numbered-text,
+                .text-violet-800 .bullet-point,
+                .text-violet-800 .bullet-text {
+                    color: #5b21b6;
+                }
 
-        .text-violet-800 .universal-ai-content,
-        .text-violet-800 .universal-structured-content,
-        .text-violet-800 .universal-text-content,
-        .text-violet-800 .number-bullet,
-        .text-violet-800 .numbered-text,
-        .text-violet-800 .bullet-point,
-        .text-violet-800 .bullet-text {
-          color: #5b21b6;
-        }
+                .section-header {
+                    margin-bottom: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: inherit;
+                }
 
-        .section-header {
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          color: inherit;
-        }
-
-        .section-item {
-          margin-bottom: 4px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
-      `}</style>
+                .section-item {
+                    margin-bottom: 4px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: inherit;
+                }
+            `}</style>
         </div>
     );
 };

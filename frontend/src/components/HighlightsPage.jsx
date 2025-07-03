@@ -29,618 +29,29 @@ import {
   ArrowUp
 } from 'lucide-react';
 
+import { FILTERS, getFilterActiveClass, getFilterIconClass } from '../utils/constants';
 import API_URL from '../config/api';
+import FilterDropdown from '../components/FilterDropdown';
+import ShimmerLoader from '../components/ShimmerLoader';
 
-const HighlightsDebugPanel = ({ apiUrl }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [diagnosticData, setDiagnosticData] = useState(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [lastRun, setLastRun] = useState(null);
-
-  // Run diagnostic analysis
-  const runDiagnostic = async () => {
-    setIsRunning(true);
-    try {
-      console.log('🚀 Running diagnostic analysis...');
-      
-      // Fetch data from both endpoints
-      const [executiveOrders, stateLegislation, highlights] = await Promise.all([
-        fetchData('/api/executive-orders'),
-        fetchData('/api/state-legislation'), 
-        fetchData('/api/highlights?user_id=1')
-      ]);
-
-      // Analyze duplicates
-      const duplicates = findDuplicates(executiveOrders, stateLegislation);
-      
-      // Analyze metadata issues
-      const metadataIssues = analyzeMetadata(executiveOrders, stateLegislation);
-      
-      // Analyze highlights consistency
-      const highlightIssues = analyzeHighlights(highlights, executiveOrders, stateLegislation);
-
-      const results = {
-        timestamp: new Date().toISOString(),
-        summary: {
-          totalExecutiveOrders: executiveOrders.length,
-          totalStateLegislation: stateLegislation.length,
-          totalHighlights: highlights.length,
-          duplicatesFound: duplicates.length,
-          metadataIssues: Object.values(metadataIssues).flat().length,
-          highlightIssues: highlightIssues.length
-        },
-        duplicates,
-        metadataIssues,
-        highlightIssues,
-        rawData: {
-          executiveOrders: executiveOrders.slice(0, 3), // Sample data
-          stateLegislation: stateLegislation.slice(0, 3),
-          highlights: highlights.slice(0, 3)
-        }
-      };
-
-      setDiagnosticData(results);
-      setLastRun(new Date());
-      console.log('✅ Diagnostic complete:', results);
-      
-    } catch (error) {
-      console.error('❌ Diagnostic failed:', error);
-      setDiagnosticData({ error: error.message });
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  // Helper functions
-  const fetchData = async (endpoint) => {
-    const response = await fetch(`${apiUrl}${endpoint}`);
-    if (!response.ok) throw new Error(`${endpoint}: ${response.status}`);
-    
-    const data = await response.json();
-    return Array.isArray(data) ? data : data.results || data.data || data.highlights || [];
-  };
-
-  const findDuplicates = (eos, states) => {
-    const duplicates = [];
-    const titleMap = new Map();
-    
-    // Check executive orders
-    eos.forEach((eo, index) => {
-      const title = eo.title?.toLowerCase().trim();
-      if (!title) return;
-      
-      if (titleMap.has(title)) {
-        duplicates.push({
-          title: eo.title,
-          type: 'duplicate_title',
-          issue: 'Same title in multiple executive orders',
-          items: [titleMap.get(title), { type: 'executive_order', index, id: eo.id }]
-        });
-      } else {
-        titleMap.set(title, { type: 'executive_order', index, id: eo.id });
-      }
-    });
-
-    // Check for cross-contamination
-    states.forEach((state, index) => {
-      const title = state.title?.toLowerCase().trim();
-      if (title && titleMap.has(title)) {
-        duplicates.push({
-          title: state.title,
-          type: 'cross_contamination',
-          issue: 'Same title appears in both Executive Orders and State Legislation',
-          items: [titleMap.get(title), { type: 'state_legislation', index, id: state.id }],
-          sqlFix: `DELETE FROM documents WHERE title LIKE '%${state.title}%' AND document_type = 'State Legislation';`
-        });
-      }
-    });
-
-    return duplicates;
-  };
-
-  const analyzeMetadata = (eos, states) => {
-    const issues = {
-      wrongSources: [],
-      malformedSources: [],
-      missingIds: [],
-      typeErrors: []
-    };
-
-    // Check executive orders
-    eos.forEach((eo, index) => {
-      if (eo.source && eo.source.includes('Legislature')) {
-        issues.wrongSources.push({
-          type: 'executive_order',
-          title: eo.title,
-          issue: 'Executive Order has Legislature source',
-          current: eo.source,
-          expected: 'Executive Branch',
-          sqlFix: `UPDATE executive_orders SET source = 'Executive Branch' WHERE title = '${eo.title?.replace(/'/g, "''")}';`
-        });
-      }
-    });
-
-    // Check state legislation
-    states.forEach((state, index) => {
-      // Check for malformed sources like "5 Legislature"
-      if (state.source && /^\d+/.test(state.source)) {
-        issues.malformedSources.push({
-          type: 'state_legislation',
-          title: state.title,
-          issue: 'Source starts with number',
-          current: state.source,
-          expected: state.state ? `${state.state} Legislature` : 'State Legislature',
-          sqlFix: `UPDATE state_legislation SET source = '${state.state ? state.state + ' Legislature' : 'State Legislature'}' WHERE title = '${state.title?.replace(/'/g, "''")}';`
-        });
-      }
-
-      // Check for missing IDs
-      if (!state.bill_id && !state.id && !state.bill_number) {
-        issues.missingIds.push({
-          type: 'state_legislation',
-          title: state.title,
-          issue: 'Missing all ID fields'
-        });
-      }
-    });
-
-    return issues;
-  };
-
-  const analyzeHighlights = (highlights, eos, states) => {
-    const issues = [];
-    const allOrders = [...eos, ...states];
-    
-    highlights.forEach(highlight => {
-      const orderId = highlight.order_id;
-      const orderType = highlight.order_type;
-      
-      // Find corresponding order
-      const matchingOrder = allOrders.find(order => {
-        if (orderType === 'executive_order') {
-          return order.executive_order_number === orderId || order.id === orderId;
-        } else {
-          return order.bill_id === orderId || order.id === orderId;
-        }
-      });
-
-      if (!matchingOrder) {
-        issues.push({
-          type: 'orphaned_highlight',
-          orderId,
-          orderType,
-          issue: 'Highlight points to non-existent order'
-        });
-      }
-    });
-
-    return issues;
-  };
-
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 bg-red-600 text-white p-3 rounded-full shadow-lg hover:bg-red-700 transition-colors z-50"
-        title="Open Debug Panel"
-      >
-        <Settings size={20} />
-      </button>
-    );
+// Extended filters including order types
+const EXTENDED_FILTERS = [
+  ...FILTERS,
+  {
+    key: 'executive_order',
+    label: 'Executive Orders',
+    icon: ScrollText,
+    type: 'order_type'
+  },
+  {
+    key: 'state_legislation',
+    label: 'State Legislation',
+    icon: FileText,
+    type: 'order_type'
   }
+];
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="bg-gray-800 text-white p-4 flex justify-between items-center">
-          <h2 className="text-xl font-bold">Highlights Data Quality Debugger</h2>
-          <div className="flex gap-2">
-            <button
-              onClick={runDiagnostic}
-              disabled={isRunning}
-              className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
-            >
-              <RefreshCw size={16} className={isRunning ? 'animate-spin' : ''} />
-              {isRunning ? 'Running...' : 'Run Diagnostic'}
-            </button>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200">
-          <div className="flex">
-            {[
-              { key: 'overview', label: 'Overview', icon: Eye },
-              { key: 'duplicates', label: 'Duplicates', icon: AlertTriangle },
-              { key: 'metadata', label: 'Metadata Issues', icon: Database },
-              { key: 'raw', label: 'Raw Data', icon: Settings }
-            ].map(tab => {
-              const IconComponent = tab.icon;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`px-4 py-3 font-medium text-sm flex items-center gap-2 ${
-                    activeTab === tab.key
-                      ? 'border-b-2 border-blue-500 text-blue-600'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <IconComponent size={16} />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[70vh]">
-          {!diagnosticData ? (
-            <div className="text-center py-12">
-              <Database size={48} className="mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold text-gray-600 mb-2">No Diagnostic Data</h3>
-              <p className="text-gray-500 mb-4">Click "Run Diagnostic" to analyze data quality issues.</p>
-            </div>
-          ) : diagnosticData.error ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 text-red-800">
-                <XCircle size={20} />
-                <span className="font-semibold">Diagnostic Failed</span>
-              </div>
-              <p className="text-red-700 mt-2">{diagnosticData.error}</p>
-            </div>
-          ) : (
-            <div>
-              {/* Overview Tab */}
-              {activeTab === 'overview' && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-blue-800">Executive Orders</h4>
-                      <p className="text-2xl font-bold text-blue-600">{diagnosticData.summary.totalExecutiveOrders}</p>
-                    </div>
-                    <div className="bg-green-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-green-800">State Legislation</h4>
-                      <p className="text-2xl font-bold text-green-600">{diagnosticData.summary.totalStateLegislation}</p>
-                    </div>
-                    <div className="bg-purple-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-purple-800">Highlights</h4>
-                      <p className="text-2xl font-bold text-purple-600">{diagnosticData.summary.totalHighlights}</p>
-                    </div>
-                    <div className="bg-red-50 p-4 rounded-lg">
-                      <h4 className="font-semibold text-red-800">Total Issues</h4>
-                      <p className="text-2xl font-bold text-red-600">
-                        {diagnosticData.summary.duplicatesFound + diagnosticData.summary.metadataIssues + diagnosticData.summary.highlightIssues}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="font-semibold text-gray-800 mb-2">Quick Summary</h4>
-                    <ul className="space-y-1 text-sm">
-                      <li className="flex items-center gap-2">
-                        {diagnosticData.summary.duplicatesFound > 0 ? (
-                          <XCircle size={16} className="text-red-500" />
-                        ) : (
-                          <CheckCircle size={16} className="text-green-500" />
-                        )}
-                        <span>{diagnosticData.summary.duplicatesFound} duplicate(s) found</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        {diagnosticData.summary.metadataIssues > 0 ? (
-                          <XCircle size={16} className="text-red-500" />
-                        ) : (
-                          <CheckCircle size={16} className="text-green-500" />
-                        )}
-                        <span>{diagnosticData.summary.metadataIssues} metadata issue(s) found</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        {diagnosticData.summary.highlightIssues > 0 ? (
-                          <XCircle size={16} className="text-red-500" />
-                        ) : (
-                          <CheckCircle size={16} className="text-green-500" />
-                        )}
-                        <span>{diagnosticData.summary.highlightIssues} highlight issue(s) found</span>
-                      </li>
-                    </ul>
-                  </div>
-
-                  {lastRun && (
-                    <p className="text-xs text-gray-500">Last run: {lastRun.toLocaleString()}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Duplicates Tab */}
-              {activeTab === 'duplicates' && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Duplicate Content Analysis</h3>
-                  
-                  {diagnosticData.duplicates.length === 0 ? (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <div className="flex items-center gap-2 text-green-800">
-                        <CheckCircle size={20} />
-                        <span className="font-semibold">No Duplicates Found</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {diagnosticData.duplicates.map((dup, index) => (
-                        <div key={index} className="bg-red-50 border border-red-200 rounded-lg p-4">
-                          <div className="flex items-start gap-2">
-                            <AlertTriangle size={20} className="text-red-500 mt-0.5" />
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-red-800">{dup.title}</h4>
-                              <p className="text-red-700 text-sm">{dup.issue}</p>
-                              <p className="text-red-600 text-xs mt-1">Type: {dup.type}</p>
-                              {dup.sqlFix && (
-                                <div className="mt-2 bg-white p-2 rounded border">
-                                  <p className="text-xs text-gray-600 mb-1">Suggested SQL Fix:</p>
-                                  <p className="text-xs font-mono text-gray-700 break-all">
-                                    {dup.sqlFix}
-                                  </p>
-                                  <button
-                                    onClick={() => navigator.clipboard?.writeText(dup.sqlFix)}
-                                    className="mt-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
-                                  >
-                                    Copy SQL
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Metadata Tab */}
-              {activeTab === 'metadata' && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Metadata Issues</h3>
-                  
-                  {Object.entries(diagnosticData.metadataIssues).map(([category, issues]) => (
-                    issues.length > 0 && (
-                      <div key={category} className="space-y-2">
-                        <h4 className="font-medium text-gray-800 capitalize">{category.replace(/([A-Z])/g, ' $1')}</h4>
-                        {issues.map((issue, index) => (
-                          <div key={index} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                            <h5 className="font-medium text-yellow-800">{issue.title}</h5>
-                            <p className="text-yellow-700 text-sm">{issue.issue}</p>
-                            {issue.current && (
-                              <div className="mt-2 text-xs">
-                                <span className="text-gray-600">Current: </span>
-                                <span className="font-mono bg-white px-1 rounded">{issue.current}</span>
-                                {issue.expected && (
-                                  <>
-                                    <span className="text-gray-600 ml-2">→ Expected: </span>
-                                    <span className="font-mono bg-white px-1 rounded">{issue.expected}</span>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                            {issue.sqlFix && (
-                              <div className="mt-2 bg-white p-2 rounded border">
-                                <p className="text-xs text-gray-600 mb-1">Suggested SQL Fix:</p>
-                                <p className="text-xs font-mono text-gray-700 break-all">
-                                  {issue.sqlFix}
-                                </p>
-                                <button
-                                  onClick={() => navigator.clipboard?.writeText(issue.sqlFix)}
-                                  className="mt-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
-                                >
-                                  Copy SQL
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  ))}
-                </div>
-              )}
-
-              {/* Raw Data Tab */}
-              {activeTab === 'raw' && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Raw Data Sample</h3>
-                  
-                  {Object.entries(diagnosticData.rawData).map(([key, data]) => (
-                    <div key={key} className="space-y-2">
-                      <h4 className="font-medium text-gray-800 capitalize">{key.replace(/([A-Z])/g, ' $1')}</h4>
-                      <div className="bg-gray-50 p-3 rounded-lg overflow-x-auto">
-                        <pre className="text-xs text-gray-700">
-                          {JSON.stringify(data, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// =====================================
-// SCROLL TO TOP COMPONENT
-// =====================================
-const ScrollToTopButton = () => {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      // Show button when user scrolls down 300px (when header typically disappears)
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      setIsVisible(scrollTop > 300);
-    };
-
-    // Add scroll event listener
-    window.addEventListener('scroll', handleScroll);
-    
-    // Cleanup
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth'
-    });
-  };
-
-  if (!isVisible) return null;
-
-  return (
-    <button
-      onClick={scrollToTop}
-      className={`fixed right-6 bottom-6 z-50 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
-      }`}
-      title="Scroll to top"
-      aria-label="Scroll to top"
-    >
-      <ArrowUp size={20} />
-    </button>
-  );
-};
-
-// =====================================
-// PAGINATION COMPONENT (MATCHING EXECUTIVE ORDERS & STATE PAGES)
-// =====================================
-const PaginationControls = ({ 
-  currentPage, 
-  totalPages, 
-  totalItems, 
-  itemsPerPage, 
-  onPageChange,
-  itemType = 'highlights'
-}) => {
-  const startItem = (currentPage - 1) * itemsPerPage + 1;
-  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
-
-  // Calculate page range to show
-  const getPageNumbers = () => {
-    const pages = [];
-    const maxVisiblePages = 7;
-    
-    if (totalPages <= maxVisiblePages) {
-      // Show all pages if total is small
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
-    } else {
-      // Show pages around current page
-      const startPage = Math.max(1, currentPage - 3);
-      const endPage = Math.min(totalPages, currentPage + 3);
-      
-      if (startPage > 1) {
-        pages.push(1);
-        if (startPage > 2) pages.push('...');
-      }
-      
-      for (let i = startPage; i <= endPage; i++) {
-        pages.push(i);
-      }
-      
-      if (endPage < totalPages) {
-        if (endPage < totalPages - 1) pages.push('...');
-        pages.push(totalPages);
-      }
-    }
-    
-    return pages;
-  };
-
-  // Always show pagination info, even for single page
-  // if (totalPages <= 1) return null;
-
-  return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-gray-200">
-      {/* Results info */}
-      <div className="text-sm text-gray-700">
-        Showing <span className="font-medium">{startItem}</span> to{' '}
-        <span className="font-medium">{endItem}</span> of{' '}
-        <span className="font-medium">{totalItems}</span> {itemType}
-      </div>
-
-      {/* Pagination controls */}
-      <div className="flex items-center gap-2">
-        {/* Previous button */}
-        {totalPages > 1 && (
-          <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
-              currentPage === 1
-                ? 'text-gray-400 cursor-not-allowed'
-                : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            <ChevronLeft size={16} />
-          </button>
-        )}
-
-        {/* Page numbers */}
-        {totalPages > 1 && (
-          <div className="flex items-center gap-1">
-            {getPageNumbers().map((page, index) => (
-              <button
-                key={index}
-                onClick={() => typeof page === 'number' && onPageChange(page)}
-                disabled={page === '...'}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
-                  page === currentPage
-                    ? 'bg-blue-600 text-white'
-                    : page === '...'
-                    ? 'text-gray-400 cursor-default'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                {page}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Next button */}
-        {totalPages > 1 && (
-          <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
-              currentPage === totalPages
-                ? 'text-gray-400 cursor-not-allowed'
-                : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            <ChevronRight size={16} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Backend API URL - Same as ExecutiveOrdersPage
-//const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
-
-// Import the same helper functions from ExecutiveOrdersPage
+// Helper functions
 const getExecutiveOrderNumber = (order) => {
   if (order.executive_order_number) return order.executive_order_number;
   if (order.document_number) return order.document_number;
@@ -700,15 +111,12 @@ const getOrderId = (order) => {
   return `eo-fallback-${Math.random().toString(36).substr(2, 9)}`;
 };
 
-// ADDED: State bill ID generation (matching StatePage logic)
 const getStateBillId = (bill) => {
   if (!bill) return null;
   
-  // Priority order for ID selection to ensure consistency with highlights
   if (bill.bill_id && typeof bill.bill_id === 'string') return bill.bill_id;
   if (bill.id && typeof bill.id === 'string') return bill.id;
   
-  // Create consistent ID format
   if (bill.bill_number && bill.state) {
     return `${bill.state}-${bill.bill_number}`;
   }
@@ -716,21 +124,17 @@ const getStateBillId = (bill) => {
     return `${bill.state || 'unknown'}-${bill.bill_number}`;
   }
   
-  // Fallback using title hash for consistency
   if (bill.title) {
     const titleHash = bill.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
     return `state-bill-${titleHash}`;
   }
   
-  // Last resort
   return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
 };
 
-// ADDED: Universal ID generation that handles both types
 const getUniversalOrderId = (order) => {
   if (!order) return null;
   
-  // Determine order type and use appropriate ID generation
   const isExecutiveOrder = !!(order.executive_order_number || order.document_number || order.eo_number);
   const isStateLegislation = !!(order.bill_number && !isExecutiveOrder);
   
@@ -739,7 +143,6 @@ const getUniversalOrderId = (order) => {
   } else if (isStateLegislation || order.order_type === 'state_legislation') {
     return getStateBillId(order);
   } else {
-    // Fallback to executive order logic
     return getOrderId(order);
   }
 };
@@ -786,32 +189,7 @@ const capitalizeFirstLetter = (text) => {
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 };
 
-// Category filters with icons (same as ExecutiveOrdersPage)
-const FILTERS = [
-  { key: 'civic', label: 'Civic', icon: Building },
-  { key: 'education', label: 'Education', icon: GraduationCap },
-  { key: 'engineering', label: 'Engineering', icon: Wrench },
-  { key: 'healthcare', label: 'Healthcare', icon: Stethoscope }
-];
-
-// Updated FILTERS array - removed review status options, added order type filters
-const EXTENDED_FILTERS = [
-  ...FILTERS,
-  {
-    key: 'executive_order',
-    label: 'Executive Orders',
-    icon: ScrollText,
-    type: 'order_type'
-  },
-  {
-    key: 'state_legislation',
-    label: 'State Legislation',
-    icon: FileText,
-    type: 'order_type'
-  }
-];
-
-// Category Tag Component with Icon (same as ExecutiveOrdersPage)
+// Category Tag Component
 const CategoryTag = ({ category }) => {
   const getTagInfo = (cat) => {
     const filter = FILTERS.find(f => f.key === cat);
@@ -842,7 +220,7 @@ const CategoryTag = ({ category }) => {
   );
 };
 
-// Order Type Tag Component - NEW
+// Order Type Tag Component
 const OrderTypeTag = ({ orderType }) => {
   if (orderType === 'executive_order') {
     return (
@@ -870,11 +248,10 @@ const OrderTypeTag = ({ orderType }) => {
   );
 };
 
-// State Tag Component - NEW
+// State Tag Component
 const StateTag = ({ state }) => {
   if (!state || state === 'Unknown') return null;
   
-  // Convert state name to abbreviation if it's a full name
   const stateAbbreviations = {
     'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
     'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
@@ -897,7 +274,7 @@ const StateTag = ({ state }) => {
   );
 };
 
-// Format talking points (same as ExecutiveOrdersPage)
+// Format talking points
 const formatTalkingPoints = (content) => {
   if (!content) return null;
 
@@ -940,7 +317,7 @@ const formatTalkingPoints = (content) => {
   return <div className="universal-text-content">{textContent}</div>;
 };
 
-// Format universal content (same as ExecutiveOrdersPage)
+// Format universal content
 const formatUniversalContent = (content) => {
   if (!content) return null;
 
@@ -1065,7 +442,7 @@ const formatUniversalContent = (content) => {
   }}>{textContent}</div>;
 };
 
-// UPDATED: Enhanced API service for highlights - NOW SUPPORTS BOTH TYPES
+// API service for highlights
 class HighlightsAPI {
   static async getHighlights(userId = 1) {
     try {
@@ -1124,12 +501,10 @@ class HighlightsAPI {
     }
   }
 
-  // Fetch ALL executive orders from database - FIXED API PARAMETERS
   static async getAllExecutiveOrders() {
     try {
       console.log('🔍 Fetching ALL executive orders from database...');
       
-      // FIX: Use smaller page size that backend can handle
       const response = await fetch(`${API_URL}/api/executive-orders?per_page=50`, {
         method: 'GET',
         headers: {
@@ -1141,8 +516,6 @@ class HighlightsAPI {
       if (!response.ok) {
         console.error(`❌ Executive orders API failed: ${response.status}`);
         
-        // FIX: Try even smaller page size as fallback
-        console.log('🔄 Trying smaller page size as fallback...');
         const fallbackResponse = await fetch(`${API_URL}/api/executive-orders?per_page=25`, {
           method: 'GET',
           headers: {
@@ -1154,8 +527,6 @@ class HighlightsAPI {
         if (!fallbackResponse.ok) {
           console.error(`❌ Fallback also failed: ${fallbackResponse.status}`);
           
-          // FIX: Try basic endpoint without parameters
-          console.log('🔄 Trying basic endpoint without parameters...');
           const basicResponse = await fetch(`${API_URL}/api/executive-orders`, {
             method: 'GET',
             headers: {
@@ -1171,7 +542,6 @@ class HighlightsAPI {
           const basicData = await basicResponse.json();
           console.log('🔍 Basic API Response:', basicData);
           
-          // Extract orders from basic response
           let ordersArray = [];
           if (Array.isArray(basicData)) {
             ordersArray = basicData;
@@ -1187,7 +557,6 @@ class HighlightsAPI {
           return ordersArray;
         }
         
-        // Process fallback response
         const fallbackData = await fallbackResponse.json();
         console.log('🔍 Fallback API Response:', fallbackData);
         
@@ -1206,11 +575,9 @@ class HighlightsAPI {
         return ordersArray;
       }
 
-      // Process main response
       const data = await response.json();
       console.log('🔍 Main API Response:', data);
 
-      // Extract orders using same logic as ExecutiveOrdersPage
       let ordersArray = [];
       
       if (Array.isArray(data)) {
@@ -1227,14 +594,11 @@ class HighlightsAPI {
       return ordersArray;
     } catch (error) {
       console.error('❌ Error fetching executive orders:', error);
-      
-      // FIX: Return empty array instead of undefined to prevent further errors
       console.log('🔄 Returning empty array to prevent loading loop');
       return [];
     }
   }
 
-  // NEW: Fetch all state legislation
   static async getAllStateLegislation() {
     try {
       console.log('🔍 Fetching ALL state legislation from database...');
@@ -1250,7 +614,6 @@ class HighlightsAPI {
       if (!response.ok) {
         console.error(`❌ State legislation API failed: ${response.status}`);
         
-        // Try basic endpoint
         const basicResponse = await fetch(`${API_URL}/api/state-legislation`, {
           method: 'GET',
           headers: {
@@ -1300,20 +663,16 @@ class HighlightsAPI {
     }
   }
 
-  // NEW: Fetch ALL orders (executive orders + state legislation)
   static async getAllOrders() {
     try {
       console.log('🔍 Fetching ALL orders (executive orders + state legislation)...');
       
-      // Fetch executive orders
       const executiveOrders = await this.getAllExecutiveOrders();
       console.log(`📊 Got ${executiveOrders.length} executive orders`);
       
-      // Fetch state legislation
       const stateLegislation = await this.getAllStateLegislation();
       console.log(`📊 Got ${stateLegislation.length} state bills`);
       
-      // Combine both types
       const allOrders = [...executiveOrders, ...stateLegislation];
       console.log(`📊 Total combined orders: ${allOrders.length}`);
       
@@ -1325,7 +684,7 @@ class HighlightsAPI {
   }
 }
 
-// UPDATED: Enhanced hook for managing highlights - NOW SUPPORTS BOTH TYPES
+// Enhanced hook for managing highlights
 const useHighlights = (userId = 1) => {
   const [highlights, setHighlights] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1377,7 +736,7 @@ const useHighlights = (userId = 1) => {
         if (orderType === 'executive_order') {
           uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `eo-${index}`;
         } else {
-          // State legislation ID generation (matching StatePage logic)
+          // State legislation ID generation
           if (order.bill_id && typeof order.bill_id === 'string') {
             uniqueId = order.bill_id;
           } else if (order.id && typeof order.id === 'string') {
@@ -1460,7 +819,6 @@ const useHighlights = (userId = 1) => {
       const matchedOrders = [];
       
       allTransformedOrders.forEach((order) => {
-        // Use the universal ID generation function
         const orderId = getUniversalOrderId(order);
         
         if (highlightedOrderIds.has(orderId)) {
@@ -1529,20 +887,167 @@ const useHighlights = (userId = 1) => {
   };
 };
 
+// Scroll to Top Button Component
+const ScrollToTopButton = () => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      setIsVisible(scrollTop > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <button
+      onClick={scrollToTop}
+      className={`fixed right-6 bottom-6 z-50 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+        isVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
+      }`}
+      title="Scroll to top"
+      aria-label="Scroll to top"
+    >
+      <ArrowUp size={20} />
+    </button>
+  );
+};
+
+// Pagination Controls Component
+const PaginationControls = ({ 
+  currentPage, 
+  totalPages, 
+  totalItems, 
+  itemsPerPage, 
+  onPageChange,
+  itemType = 'highlights'
+}) => {
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 7;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      const startPage = Math.max(1, currentPage - 3);
+      const endPage = Math.min(totalPages, currentPage + 3);
+      
+      if (startPage > 1) {
+        pages.push(1);
+        if (startPage > 2) pages.push('...');
+      }
+      
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+      }
+      
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-gray-200">
+      {/* Results info */}
+      <div className="text-sm text-gray-700">
+        Showing <span className="font-medium">{startItem}</span> to{' '}
+        <span className="font-medium">{endItem}</span> of{' '}
+        <span className="font-medium">{totalItems}</span> {itemType}
+      </div>
+
+      {/* Pagination controls */}
+      <div className="flex items-center gap-2">
+        {/* Previous button */}
+        {totalPages > 1 && (
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentPage === 1
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ChevronLeft size={16} />
+          </button>
+        )}
+
+        {/* Page numbers */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            {getPageNumbers().map((page, index) => (
+              <button
+                key={index}
+                onClick={() => typeof page === 'number' && onPageChange(page)}
+                disabled={page === '...'}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
+                  page === currentPage
+                    ? 'bg-blue-600 text-white'
+                    : page === '...'
+                    ? 'text-gray-400 cursor-default'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Next button */}
+        {totalPages > 1 && (
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+              currentPage === totalPages
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <ChevronRight size={16} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Main HighlightsPage Component
 const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   
-  // Filter state - removed review-related states
+  // Filter state
   const [selectedFilters, setSelectedFilters] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   
-  // Pagination state - MATCHING EXECUTIVE ORDERS & STATE PAGES
+  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(25);
   
-  // UPDATED: Use the same highlight management as ExecutiveOrdersPage/StatePage
+  // Highlight management
   const [localHighlights, setLocalHighlights] = useState(new Set());
   const [highlightLoading, setHighlightLoading] = useState(new Set());
   
@@ -1558,7 +1063,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     lastRefresh
   } = useHighlights(1);
 
-  // UPDATED: Load existing highlights on component mount - SUPPORT BOTH TYPES
+  // Load existing highlights on component mount
   useEffect(() => {
     const loadExistingHighlights = async () => {
       try {
@@ -1584,13 +1089,11 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           
           const orderIds = new Set();
           
-          // UPDATED: Process BOTH executive orders AND state legislation
           if (highlightsArray.length > 0) {
             for (let i = 0; i < highlightsArray.length; i++) {
               const highlight = highlightsArray[i];
               console.log(`🔍 HighlightsPage: Processing highlight ${i + 1}:`, highlight);
               
-              // Include both order types
               if (highlight && highlight.order_id && 
                   (highlight.order_type === 'executive_order' || highlight.order_type === 'state_legislation')) {
                 orderIds.add(highlight.order_id);
@@ -1612,7 +1115,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     loadExistingHighlights();
   }, []);
 
-  // Filter functions - updated to remove review status logic
+  // Filter functions
   const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
 
   const toggleFilter = (filterKey) => {
@@ -1634,19 +1137,35 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     setCurrentPage(1);
   };
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
-        setShowFilterDropdown(false);
-      }
+  // Fixed filter counts calculation - using highlights instead of undefined allOrders
+  const filterCounts = useMemo(() => {
+    const counts = {
+      civic: 0,
+      healthcare: 0,
+      education: 0,
+      engineering: 0,
+      executive_order: 0,
+      state_legislation: 0
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    highlights.forEach(highlight => {
+      // Count categories
+      if (highlight.category && counts.hasOwnProperty(highlight.category)) {
+        counts[highlight.category]++;
+      }
+      
+      // Count order types
+      if (highlight.order_type === 'executive_order') {
+        counts.executive_order++;
+      } else if (highlight.order_type === 'state_legislation') {
+        counts.state_legislation++;
+      }
+    });
 
-  // Updated comprehensive filtering logic - removed review status filters
+    return counts;
+  }, [highlights]);
+
+  // Comprehensive filtering logic
   const filteredHighlights = useMemo(() => {
     let filtered = [...highlights];
 
@@ -1686,43 +1205,14 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     return filtered;
   }, [highlights, searchTerm, selectedFilters]);
 
-  // Pagination logic - MATCHING EXECUTIVE ORDERS & STATE PAGES
+  // Pagination logic
   const totalItems = filteredHighlights.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedHighlights = filteredHighlights.slice(startIndex, endIndex);
 
-  // Updated filter counts - removed review status counts
-  const filterCounts = useMemo(() => {
-    const counts = {
-      civic: 0,
-      education: 0,
-      engineering: 0,
-      healthcare: 0,
-      executive_order: 0,
-      state_legislation: 0,
-      total: highlights.length
-    };
-
-    highlights.forEach(highlight => {
-      // Count categories
-      if (highlight.category && counts.hasOwnProperty(highlight.category)) {
-        counts[highlight.category]++;
-      }
-      
-      // Count order types
-      if (highlight.order_type === 'executive_order') {
-        counts.executive_order++;
-      } else if (highlight.order_type === 'state_legislation') {
-        counts.state_legislation++;
-      }
-    });
-
-    return counts;
-  }, [highlights]);
-
-  // Manual refresh handler - UPDATED TO SUPPORT BOTH TYPES
+  // Manual refresh handler
   const handleManualRefresh = async () => {
     if (isRefreshing) return;
     
@@ -1730,16 +1220,13 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     try {
       console.log('🔄 Starting manual refresh...');
       
-      // First refresh the highlights list
       await refreshHighlights();
       
-      // Then sync the local highlights state
       const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
       if (response.ok) {
         const data = await response.json();
         console.log('🔄 Manual refresh - highlights from API:', data);
         
-        // Extract highlights array safely
         let highlightsArray = [];
         if (Array.isArray(data)) {
           highlightsArray = data;
@@ -1751,12 +1238,10 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         
         const orderIds = new Set();
         
-        // UPDATED: Process highlights safely with for loop - BOTH TYPES
         for (let i = 0; i < highlightsArray.length; i++) {
           const highlight = highlightsArray[i];
           console.log(`🔄 Processing highlight ${i + 1}:`, highlight);
           
-          // Include both order types
           if (highlight && highlight.order_id && 
               (highlight.order_type === 'executive_order' || highlight.order_type === 'state_legislation')) {
             orderIds.add(highlight.order_id);
@@ -1776,20 +1261,18 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   };
 
-  // Handle page change - MATCHING EXECUTIVE ORDERS & STATE PAGES
+  // Handle page change
   const handlePageChange = useCallback((newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
-      // Scroll to top of results when changing pages
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [totalPages]);
 
-  // UPDATED: Enhanced highlighting function - SUPPORTS BOTH TYPES
+  // Enhanced highlighting function
   const handleOrderHighlight = useCallback(async (order) => {
     console.log('🌟 HighlightsPage highlight handler called for:', order.title);
     
-    // Use universal ID generation
     const orderId = getUniversalOrderId(order);
     if (!orderId) {
       console.error('❌ No valid order ID found for highlighting');
@@ -1844,7 +1327,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         const requestBody = {
           user_id: 1,
           order_id: orderId,
-          order_type: order.order_type, // Use the actual order type
+          order_type: order.order_type,
           notes: null,
           priority_level: 1,
           tags: null,
@@ -1926,7 +1409,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   };
 
-  // UPDATED: Check if order is highlighted - SUPPORTS BOTH TYPES
+  // Check if order is highlighted
   const isOrderHighlighted = useCallback((order) => {
     const orderId = getUniversalOrderId(order);
     if (!orderId) return false;
@@ -1958,28 +1441,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  // Helper function to get highlight source info
-  const getHighlightSourceInfo = (highlight) => {
-    if (highlight.order_type === 'executive_order' || highlight.executive_order_number) {
-      return {
-        icon: ScrollText,
-        label: 'Executive Orders',
-        color: 'text-blue-600'
-      };
-    } else if (highlight.order_type === 'state_legislation' || highlight.bill_number) {
-      return {
-        icon: FileText,
-        label: highlight.state ? `${highlight.state} Legislature` : 'State Legislature',
-        color: 'text-green-600'
-      };
-    }
-    return {
-      icon: FileText,
-      label: 'Unknown',
-      color: 'text-gray-600'
-    };
-  };
-
   // Format last refresh time
   const formatLastRefresh = (timestamp) => {
     const now = Date.now();
@@ -1998,22 +1459,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
 
   const hasHighlights = highlights && highlights.length > 0;
 
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="pt-6">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">Highlights</h2>
-          <p className="text-gray-600">Your saved executive orders and legislation with AI analysis.</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <Loader className="animate-spin h-8 w-8 text-blue-600" />
-          <span className="ml-2 text-gray-600">Please be patient, our AI is working hard to load your highlights...</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="pt-6">
       {/* Scroll to Top Button */}
@@ -2021,18 +1466,21 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       
       {/* Header with Refresh Button */}
       <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-2">Highlights</h2>
-            <p className="text-gray-600">Your saved executive orders and legislation with AI analysis.</p>
-          </div>
-          
-          {/* Manual Refresh Button */}
+        <div className="flex items-center gap-3 mb-2">
+          <Star />
+          <h2 className="text-2xl font-bold text-gray-800">Highlights</h2>
+        </div>
+        <p className="text-gray-600">
+          Manage a collection of important legislation and executive orders. View, organize, and analyze your highlighted items with comprehensive AI insights including executive summaries, key talking points, and business impact assessments. Filter by practice area or jurisdiction, and keep track of the legislative developments most relevant to your interests and responsibilities.
+        </p>
+        
+        {/* Manual Refresh Button */}
+        <div className="mt-4">
           <button
             onClick={handleManualRefresh}
-            disabled={isRefreshing || loading}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-              isRefreshing || loading
+            disabled={isRefreshing}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+              isRefreshing
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
             }`}
@@ -2051,133 +1499,19 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         )}
       </div>
 
-      {/* Search Bar and Filter - MATCHING EXECUTIVE ORDERS & STATE PAGES */}
+      {/* Search Bar and Filter */}
       <div className="mb-8">
         <div className="flex gap-4 items-center">
-          {/* Filter Dropdown */}
-          <div className="relative" ref={filterDropdownRef}>
-            <button
-              type="button"
-              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-              className="flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-48"
-            >
-              <div className="flex items-center gap-2">
-                <span className="truncate">
-                  {selectedFilters.length === 0 
-                    ? 'Filters'
-                    : selectedFilters.length === 1
-                    ? EXTENDED_FILTERS.find(f => f.key === selectedFilters[0])?.label || 'Filter'
-                    : `${selectedFilters.length} Filters`
-                  }
-                </span>
-                {selectedFilters.length > 0 && (
-                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
-                    {selectedFilters.length}
-                  </span>
-                )}
-              </div>
-              <ChevronDown 
-                size={16} 
-                className={`transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
-              />
-            </button>
-
-            {showFilterDropdown && (
-              <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50 max-h-96 overflow-y-auto">
-                {/* Clear All Button */}
-                {selectedFilters.length > 0 && (
-                  <div className="px-4 py-2 border-b border-gray-200">
-                    <button
-                      onClick={() => {
-                        clearAllFilters();
-                        setShowFilterDropdown(false);
-                      }}
-                      className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
-                    >
-                      Clear All Filters ({selectedFilters.length})
-                    </button>
-                  </div>
-                )}
-                
-                {/* Category Filters */}
-                <div className="border-b border-gray-200 pb-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    Categories
-                  </div>
-                  {FILTERS.map(filter => {
-                    const IconComponent = filter.icon;
-                    const isActive = isFilterActive(filter.key);
-                    const count = filterCounts[filter.key] || 0;
-                    return (
-                      <button
-                        key={filter.key}
-                        onClick={() => toggleFilter(filter.key)}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                          isActive
-                            ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
-                              filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
-                              filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
-                              filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
-                              'bg-blue-100 text-blue-700 font-medium'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <IconComponent 
-                            size={16} 
-                            className={
-                              filter.key === 'civic' ? 'text-blue-600' :
-                              filter.key === 'education' ? 'text-orange-600' :
-                              filter.key === 'engineering' ? 'text-green-600' :
-                              filter.key === 'healthcare' ? 'text-red-600' :
-                              'text-gray-600'
-                            }
-                          />
-                          <span>{filter.label}</span>
-                        </div>
-                        <span className="text-xs text-gray-500">({count})</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Order Type Filters - NEW SECTION */}
-                <div className="pt-2">
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    Document Type
-                  </div>
-                  <button
-                    onClick={() => toggleFilter('executive_order')}
-                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                      isFilterActive('executive_order')
-                        ? 'bg-blue-100 text-blue-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <ScrollText size={16} className="text-blue-600" />
-                      <span>Executive Orders</span>
-                    </div>
-                    <span className="text-xs text-gray-500">({filterCounts.executive_order})</span>
-                  </button>
-                  <button
-                    onClick={() => toggleFilter('state_legislation')}
-                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                      isFilterActive('state_legislation')
-                        ? 'bg-green-100 text-green-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileText size={16} className="text-green-600" />
-                      <span>State Legislation</span>
-                    </div>
-                    <span className="text-xs text-gray-500">({filterCounts.state_legislation})</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <FilterDropdown
+            selectedFilters={selectedFilters}
+            showFilterDropdown={showFilterDropdown}
+            onToggleDropdown={() => setShowFilterDropdown(!showFilterDropdown)}
+            onToggleFilter={toggleFilter}
+            onClearAllFilters={clearAllFilters}
+            counts={filterCounts}
+            ref={filterDropdownRef}
+            showContentTypes={true}
+          />
 
           {/* Search Bar */}
           <div className="flex-1 relative">
@@ -2215,7 +1549,13 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       {/* Enhanced Highlights Display */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6">
-          {paginatedHighlights.length === 0 ? (
+          {loading ? (
+            <ShimmerLoader 
+              variant="highlights" 
+              count={5} 
+              showHeader={false} 
+            />
+          ) : paginatedHighlights.length === 0 ? (
             <div className="text-center py-12">
               <Star size={48} className="mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold text-gray-800 mb-2">
@@ -2314,7 +1654,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                             <span>-</span>
                             <CategoryTag category={highlight.category} />
                             <span>-</span>
-                            {/* Single Order Type Tag - Clean pill style */}
                             <OrderTypeTag orderType={highlight.order_type} />
                             {/* State Tag for State Legislation */}
                             {highlight.order_type === 'state_legislation' && highlight.state && (
@@ -2556,8 +1895,8 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           )}
         </div>
         
-        {/* UPDATED: Pagination Controls - Always show, even for single page */}
-        {!loading && paginatedHighlights.length > 0 && (
+        {/* Pagination Controls */}
+        {paginatedHighlights.length > 0 && (
           <PaginationControls
             currentPage={currentPage}
             totalPages={totalPages}
@@ -2569,9 +1908,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         )}
       </div>
 
-      {/* Results Summary - Removed as requested */}
-
-      {/* Universal CSS Styles - Same as ExecutiveOrdersPage */}
+      {/* Universal CSS Styles */}
       <style>{`
         .bg-purple-50 .text-violet-800,
         .bg-blue-50 .text-blue-800, 
@@ -2811,8 +2148,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           color: inherit;
         }
       `}</style>
-
-
     </div>
   );
 };
