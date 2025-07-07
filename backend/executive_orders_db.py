@@ -87,8 +87,9 @@ def check_executive_orders_table():
         logger.error(f"❌ Error checking executive_orders table: {e}")
         return False, []
 
-def get_executive_orders_from_db(limit=100, offset=0, filters=None):
-    """Get executive orders from database with filters and pagination"""
+
+def get_executive_orders_from_db(limit=None, offset=0, filters=None):
+    """Get executive orders from database with filters and pagination - FIXED to handle unlimited queries"""
     try:
         logger.info(f"🔍 Getting executive orders: limit={limit}, offset={offset}, filters={filters}")
         
@@ -131,9 +132,14 @@ def get_executive_orders_from_db(limit=100, offset=0, filters=None):
             count_query += " WHERE " + " AND ".join(where_conditions)
             
         total_count = execute_query(count_query, params, fetch_one=True)[0]
+        logger.info(f"📊 Total matching records: {total_count}")
         
-        # Add pagination
-        base_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+        # FIXED: Only add pagination if limit is specified
+        if limit is not None and limit > 0:
+            logger.info(f"📄 Applying pagination: OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY")
+            base_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+        else:
+            logger.info(f"🔓 No limit specified - fetching ALL {total_count} records")
         
         # Execute the query
         with get_db_cursor() as cursor:
@@ -169,24 +175,43 @@ def get_executive_orders_from_db(limit=100, offset=0, filters=None):
         
         logger.info(f"✅ Retrieved {len(results)} executive orders from database")
         
+        # Calculate pagination info
+        if limit is not None and limit > 0:
+            total_pages = max(1, (total_count + limit - 1) // limit)  # Ceiling division
+            current_page = (offset // limit) + 1 if limit > 0 else 1
+            has_more = len(results) == limit
+        else:
+            total_pages = 1
+            current_page = 1 
+            has_more = False
+        
         return {
             'success': True,
             'results': results,
             'count': len(results),
-            'total': total_count
+            'total': total_count,
+            'total_count': total_count,  # Add this for consistency
+            'total_pages': total_pages,
+            'current_page': current_page,
+            'has_more': has_more
         }
         
     except Exception as e:
         logger.error(f"❌ Error getting executive orders: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             'success': False,
             'message': str(e),
             'results': [],
-            'count': 0
+            'count': 0,
+            'total': 0
         }
 
+# Fixed save_executive_orders_to_db function - resolves duplicate column issue
+
 def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
-    """Save executive orders to database with improved error handling"""
+    """Save executive orders to database with fixed column duplication issue"""
     if not orders:
         return {"total_processed": 0, "inserted": 0, "updated": 0, "errors": 0, "error_details": []}
     
@@ -231,7 +256,7 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                         update_fields = []
                         params = []
                         
-                        # Build dynamic update
+                        # Build dynamic update - FIXED: Handle last_updated properly
                         for key, value in order.items():
                             # Skip these fields for update
                             if key in ['id', 'document_number', 'created_at']:
@@ -242,9 +267,10 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                                 update_fields.append(f"{key} = ?")
                                 params.append(value)
                         
-                        # Add timestamp
-                        update_fields.append("last_updated = ?")
-                        params.append(datetime.now())
+                        # FIXED: Only add last_updated if it wasn't already in the data
+                        if 'last_updated' not in order:
+                            update_fields.append("last_updated = ?")
+                            params.append(datetime.now())
                         
                         # Add WHERE clause parameter
                         params.append(document_number)
@@ -256,7 +282,7 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                         results["updated"] += 1
                         logger.info(f"🔄 Updated EO {eo_number}")
                     else:
-                        # INSERT new order
+                        # INSERT new order - FIXED: Handle timestamps properly
                         insert_fields = ['document_number']
                         params = [document_number]
                         
@@ -271,13 +297,16 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                                 insert_fields.append(key)
                                 params.append(value)
                         
-                        # Add timestamps if not already present
-                        if 'created_at' not in insert_fields:
+                        # FIXED: Only add timestamps if they weren't already in the data
+                        current_time = datetime.now()
+                        
+                        if 'created_at' not in order and 'created_at' not in insert_fields:
                             insert_fields.append('created_at')
-                            params.append(datetime.now())
-                        if 'last_updated' not in insert_fields:
+                            params.append(current_time)
+                            
+                        if 'last_updated' not in order and 'last_updated' not in insert_fields:
                             insert_fields.append('last_updated')
-                            params.append(datetime.now())
+                            params.append(current_time)
                         
                         # Execute insert
                         placeholders = ', '.join(['?'] * len(insert_fields))
@@ -341,6 +370,52 @@ def get_executive_order_by_number(eo_number: str) -> Optional[Dict]:
     except Exception as e:
         logger.error(f"❌ Error getting executive order by number {eo_number}: {e}")
         return None
+    
+def update_executive_order_category_in_db(eo_number: str, category: str) -> Dict:
+    """Update the category for a specific executive order"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Update the category
+            update_query = """
+                UPDATE dbo.executive_orders 
+                SET category = ?, last_updated = ? 
+                WHERE eo_number = ? OR document_number = ?
+            """
+            
+            cursor.execute(update_query, [
+                category, 
+                datetime.now(), 
+                eo_number, 
+                eo_number
+            ])
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            
+            if rows_affected > 0:
+                logger.info(f"✅ Updated category for EO {eo_number} to {category}")
+                return {
+                    "success": True,
+                    "message": f"Category updated to {category}",
+                    "rows_affected": rows_affected
+                }
+            else:
+                logger.warning(f"⚠️ No rows updated for EO {eo_number}")
+                return {
+                    "success": False,
+                    "message": f"Executive order {eo_number} not found",
+                    "rows_affected": 0
+                }
+                
+    except Exception as e:
+        logger.error(f"❌ Error updating category for EO {eo_number}: {e}")
+        return {
+            "success": False,
+            "message": f"Database error: {str(e)}",
+            "rows_affected": 0
+        }
 
 def create_highlights_table():
     """Create the user highlights table if it doesn't exist"""
@@ -482,6 +557,72 @@ def remove_highlight_direct(user_id: str, order_id: str, order_type: str = None)
     except Exception as e:
         logger.error(f"❌ Error removing highlight: {e}")
         return False
+    
+# Add this function to your executive_orders_db.py file
+
+def update_executive_order_category_in_db(eo_number: str, category: str) -> bool:
+    """Update the category for a specific executive order"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Update the category
+            update_query = """
+                UPDATE dbo.executive_orders 
+                SET category = ?, last_updated = ? 
+                WHERE eo_number = ? OR document_number = ?
+            """
+            
+            cursor.execute(update_query, [
+                category, 
+                datetime.now(), 
+                eo_number, 
+                eo_number
+            ])
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            
+            if rows_affected > 0:
+                logger.info(f"✅ Updated category for EO {eo_number} to {category}")
+                return True
+            else:
+                logger.warning(f"⚠️ No rows updated for EO {eo_number}")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Error updating category for EO {eo_number}: {e}")
+        return False
+
+# Fix for the database count function - replace your existing get_database_count function
+def get_database_count():
+    """Get the count of executive orders in the database"""
+    try:
+        with get_db_connection() as conn:  # Use 'with' statement
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+            count = cursor.fetchone()[0]
+            return count
+    except Exception as e:
+        logger.error(f"❌ Error getting database count: {e}")
+        return 0
+
+# Alternative fix if you're using a different connection pattern:
+def get_database_count_alternative():
+    """Alternative version if using direct connection"""
+    try:
+        conn = get_db_connection()  # Get connection directly
+        if conn is None:
+            return 0
+            
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+        count = cursor.fetchone()[0]
+        conn.close()  # Don't forget to close
+        return count
+    except Exception as e:
+        logger.error(f"❌ Error getting database count: {e}")
+        return 0
 
 def get_user_highlights_direct(user_id: str) -> List[Dict]:
     """Get all highlights for a user"""

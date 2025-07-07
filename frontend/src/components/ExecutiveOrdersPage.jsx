@@ -27,7 +27,9 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
-  ArrowUp
+  ArrowUp,
+  Eye,
+  Globe
 } from 'lucide-react';
 
 import { 
@@ -190,8 +192,6 @@ const fuzzySearch = new FuzzySearch();
 // =====================================
 // CONFIGURATION AND CONSTANTS
 // =====================================
-//const API_URL = process.env.REACT_APP_API_URL || process.env.VITE_API_URL || 'http://localhost:8000';
-
 const EXTENDED_FILTERS = [
   ...FILTERS,
   {
@@ -544,43 +544,134 @@ const formatUniversalContent = (content) => {
 // =====================================
 // COMPONENT DEFINITIONS
 // =====================================
-const CategoryTag = ({ category }) => {
-  const getTagInfo = (cat) => {
-    const filter = FILTERS.find(f => f.key === cat);
-    if (!filter) return { color: 'bg-gray-100 text-gray-800', icon: FileText, label: cat };
-    
-    const colors = {
-      civic: 'bg-blue-100 text-blue-800',
-      healthcare: 'bg-red-100 text-red-800',
-      education: 'bg-orange-100 text-orange-800',
-      engineering: 'bg-green-100 text-green-800'
-    };
-    
-    return {
-      color: colors[cat] || 'bg-gray-100 text-gray-800',
-      icon: filter.icon,
-      label: filter.label
-    };
+const EditableCategoryTag = ({ 
+  category, 
+  orderId, 
+  onCategoryChange, 
+  disabled = false,
+  isUpdating = false 
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Available categories - matches your FILTERS configuration
+  const availableCategories = [
+    { key: 'civic', label: 'Civic', color: 'bg-blue-100 text-blue-800', icon: Building },
+    { key: 'healthcare', label: 'Healthcare', color: 'bg-red-100 text-red-800', icon: Stethoscope },
+    { key: 'education', label: 'Education', color: 'bg-orange-100 text-orange-800', icon: GraduationCap },
+    { key: 'engineering', label: 'Engineering', color: 'bg-green-100 text-green-800', icon: Wrench },
+    { key: 'not_applicable', label: 'Not Applicable', color: 'bg-gray-100 text-gray-800', icon: FileText }
+  ];
+
+  const getCurrentCategory = () => {
+    return availableCategories.find(cat => cat.key === category) || availableCategories[0];
   };
 
-  const tagInfo = getTagInfo(category);
-  const IconComponent = tagInfo.icon;
+  const handleCategorySelect = async (newCategory) => {
+    if (newCategory === category || disabled || isLoading) return;
+    
+    setIsLoading(true);
+    
+    try {
+      if (onCategoryChange) {
+        await onCategoryChange(orderId, newCategory);
+      }
+      console.log(`✅ Category updated from ${category} to ${newCategory}`);
+    } catch (error) {
+      console.error('❌ Failed to update category:', error);
+    } finally {
+      setIsLoading(false);
+      setIsEditing(false);
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsEditing(false);
+      }
+    };
+
+    if (isEditing) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isEditing]);
+
+  const currentCategory = getCurrentCategory();
+  const IconComponent = currentCategory.icon;
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${tagInfo.color}`}>
-      <IconComponent
-          size={16}
+    <div className="relative inline-block" ref={dropdownRef}>
+      <span 
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium cursor-pointer transition-all duration-200 ${
+          currentCategory.color
+        } ${
+          disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm hover:ring-1 hover:ring-gray-300'
+        } ${
+          isUpdating || isLoading ? 'animate-pulse' : ''
+        }`}
+        onClick={() => !disabled && !isLoading && setIsEditing(!isEditing)}
+        title={disabled ? 'Category editing disabled' : 'Click to change category'}
+      >
+        <IconComponent
+          size={12}
           className={
-              category === 'civic' ? 'text-blue-600' :
-              category === 'education' ? 'text-orange-600' :
-              category === 'engineering' ? 'text-green-600' :
-              category === 'healthcare' ? 'text-red-600' :
-              category === 'not-applicable' ? 'text-gray-600' :
-              'text-gray-600'
+            category === 'civic' ? 'text-blue-600' :
+            category === 'education' ? 'text-orange-600' :
+            category === 'engineering' ? 'text-green-600' :
+            category === 'healthcare' ? 'text-red-600' :
+            'text-gray-600'
           }
-      />
-      {tagInfo.label}
-    </span>
+        />
+        <span>{currentCategory.label}</span>
+        {!disabled && !isLoading && (
+          <ChevronDown 
+            size={10} 
+            className={`transition-transform duration-200 ml-1 ${isEditing ? 'rotate-180' : ''}`}
+          />
+        )}
+        {(isUpdating || isLoading) && (
+          <RotateCw size={10} className="animate-spin ml-1" />
+        )}
+      </span>
+
+      {/* Dropdown Menu */}
+      {isEditing && !disabled && (
+        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[160px] max-h-48 overflow-y-auto">
+          <div className="py-1">
+            <div className="px-3 py-1 text-xs font-medium text-gray-500 border-b border-gray-100">
+              Select Category
+            </div>
+            {availableCategories.map((cat) => {
+              const CatIcon = cat.icon;
+              const isSelected = cat.key === category;
+              
+              return (
+                <button
+                  key={cat.key}
+                  onClick={() => handleCategorySelect(cat.key)}
+                  disabled={isSelected || isLoading}
+                  className={`w-full px-3 py-2 text-left text-xs transition-colors duration-150 flex items-center gap-2 ${
+                    isSelected 
+                      ? 'bg-blue-50 text-blue-700 cursor-not-allowed' 
+                      : 'hover:bg-gray-50 cursor-pointer text-gray-700'
+                  } ${isLoading ? 'opacity-50' : ''}`}
+                >
+                  <CatIcon size={12} className="flex-shrink-0" />
+                  <span className="truncate flex-1">{cat.label}</span>
+                  {isSelected && (
+                    <Check size={10} className="text-blue-600 flex-shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -858,7 +949,7 @@ const useExecutiveOrderReviewStatus = () => {
 // =====================================
 // MAIN COMPONENT
 // =====================================
-  const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
+const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   // =====================================
   // STATE MANAGEMENT
   // =====================================
@@ -888,6 +979,9 @@ const useExecutiveOrderReviewStatus = () => {
   const [fetchStatus, setFetchStatus] = useState(null);
   const [hasData, setHasData] = useState(false);
   
+  // ADD THIS LINE HERE:
+  const [copiedOrders, setCopiedOrders] = useState(new Set());
+  
   const [pagination, setPagination] = useState({
     page: 1,
     per_page: 25,
@@ -905,7 +999,7 @@ const useExecutiveOrderReviewStatus = () => {
     total: 0
   });
 
-  // NEW: Count check state - MOVED TO THE CORRECT LOCATION
+  // Count check state for update banner
   const [countCheckStatus, setCountCheckStatus] = useState({
     checking: false,
     needsFetch: false,
@@ -918,201 +1012,407 @@ const useExecutiveOrderReviewStatus = () => {
 
   const filterDropdownRef = useRef(null);
 
-  // NEW: Function to check for new orders
-const checkForNewOrders = useCallback(async (showLoading = false) => {
-  try {
-    if (showLoading) {
+  // =====================================
+  // FETCH FUNCTIONS
+  // =====================================
+  
+  // Function 1: Check for new orders (for update banner only)
+  const checkForNewExecutiveOrders = useCallback(async () => {
+    try {
       setCountCheckStatus(prev => ({ ...prev, checking: true, error: null }));
-    }
+      console.log('🔍 Checking for new executive orders...');
 
-    console.log('🔍 Checking for new executive orders...');
-    
-    const response = await fetch(`${API_URL}/api/executive-orders/check-count`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
+      const response = await fetch(`${API_URL}/api/executive-orders/check-count`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+
+      const data = await response.json();
+      console.log('📊 Count check result:', data);
+
+      if (data.success) {
+        const hasNewOrders = data.new_orders_available > 0;
+        
+        setCountCheckStatus({
+          checking: false,
+          needsFetch: hasNewOrders,
+          newOrdersAvailable: data.new_orders_available,
+          federalRegisterCount: data.federal_register_count,
+          databaseCount: data.database_count,
+          lastChecked: new Date(data.last_checked),
+          error: null
+        });
+
+      } else {
+        throw new Error(data.error || 'Count check failed');
+      }
+
+    } catch (error) {
+      console.error('❌ Error checking for new orders:', error);
+      setCountCheckStatus(prev => ({
+        ...prev,
+        checking: false,
+        error: error.message,
+        needsFetch: false,
+        newOrdersAvailable: 0
+      }));
+    }
+  }, []);
+
+  // Function 2: Fetch Executive Orders
+  const fetchExecutiveOrders = useCallback(async () => {
+    try {
+      setFetchingData(true);
+      console.log('🔄 Starting Executive Orders fetch from Federal Register...');
+
+      const requestBody = {
+        start_date: "2025-01-20",
+        end_date: null,
+        with_ai: true,
+        save_to_db: true,
+        force_fetch: true,
+        fetch_only_new: false,
+        max_concurrent: 3
+      };
+
+      setFetchStatus('🔄 Fetching executive orders from Federal Register with AI analysis...');
+
+      const response = await fetch(`${API_URL}/api/executive-orders/run-pipeline`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('📥 Fetch Result:', result);
+
+      if (result.success !== false) {
+        const totalOrdersProcessed = result.orders_saved || result.orders_fetched || result.total_processed || 0;
+        const totalOrdersFetched = result.orders_fetched || result.total_orders || 0;
+        
+        setFetchStatus(
+          `✅ Successfully fetched ${totalOrdersFetched} orders from Federal Register, processed ${totalOrdersProcessed} with AI analysis!`
+        );
+        
+        // Update count status to reflect all orders are now in database
+        setCountCheckStatus(prev => ({
+          ...prev,
+          databaseCount: totalOrdersProcessed,
+          federalRegisterCount: totalOrdersFetched,
+          needsFetch: false,
+          newOrdersAvailable: 0
+        }));
+
+        // Refresh the display with new data
+        setTimeout(async () => {
+          await fetchFromDatabase();
+          setFetchStatus(null);
+        }, 2000);
+        
+      } else {
+        throw new Error(result.message || result.error || 'Fetch failed');
+      }
+
+    } catch (err) {
+      console.error('❌ Fetch failed:', err);
+      setFetchStatus(`❌ Fetch failed: ${err.message}`);
+      setTimeout(() => setFetchStatus(null), 8000);
+    } finally {
+      setFetchingData(false);
+    }
+  }, []);
+
+  // Function 3: Load from Database
+  const fetchFromDatabase = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setFetchStatus('📊 Loading executive orders from database...');
+
+      let allOrdersArray = [];
+      let currentPage = 1;
+      const perPage = 1000;
+
+      // Loop through all pages to get ALL orders
+      while (true) {
+        const url = `${API_URL}/api/executive-orders?page=${currentPage}&per_page=${perPage}`;
+        console.log(`🔍 Database fetch page ${currentPage} from URL:`, url);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log(`🔍 Database API Response page ${currentPage}:`, data);
+
+        let pageOrders = [];
+        let totalCount = 0;
+        
+        if (Array.isArray(data)) {
+          pageOrders = data;
+          totalCount = data.length;
+        } else if (data.results && Array.isArray(data.results)) {
+          pageOrders = data.results;
+          totalCount = data.total || data.count || 0;
+        }
+
+        console.log(`📊 Page ${currentPage}: Got ${pageOrders.length} orders, total available: ${totalCount}`);
+
+        // Add to our collection
+        allOrdersArray = [...allOrdersArray, ...pageOrders];
+
+        // Check if we need more pages
+        if (pageOrders.length < perPage || allOrdersArray.length >= totalCount) {
+          console.log(`✅ Database load complete: ${allOrdersArray.length} total orders collected`);
+          break;
+        }
+
+        currentPage++;
+      }
+
+      // Transform all collected orders
+      const transformedOrders = allOrdersArray.map((order, index) => {
+        const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-db-${index}`;
+        
+        return {
+          id: uniqueId,
+          bill_id: uniqueId,
+          // FIXED: Proper field mapping - use eo_number first, then executive_order_number
+          eo_number: order.eo_number || order.executive_order_number || 'Unknown',
+          executive_order_number: order.eo_number || order.executive_order_number || 'Unknown',
+          document_number: order.document_number || '',
+          title: order.title || order.bill_title || 'Untitled Executive Order',
+          summary: order.description || order.summary || '',
+          signing_date: order.signing_date || order.introduced_date || '',
+          publication_date: order.publication_date || order.last_action_date || '',
+          html_url: order.html_url || order.legiscan_url || '',
+          pdf_url: order.pdf_url || '',
+          category: order.category || 'civic',
+          formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
+          formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
+          ai_summary: order.ai_summary || order.ai_executive_summary || '',
+          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
+          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
+          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
+          president: order.president || 'Donald Trump',
+          source: 'Database (Federal Register + Azure AI)',
+          is_highlighted: false,
+          index: index
+        };
+      });
+
+      console.log(`✅ FINAL Database load: Loaded ${transformedOrders.length} total executive orders`);
+      
+      setAllOrders(transformedOrders);
+      setFetchStatus(`✅ Loaded ${transformedOrders.length} orders from database`);
+      setHasData(transformedOrders.length > 0);
+      
+      // Reset to page 1 when loading new data
+      setPagination(prev => ({ ...prev, page: 1 }));
+      
+      setTimeout(() => setFetchStatus(null), 4000);
+
+    } catch (err) {
+      console.error('❌ Database load failed:', err);
+      setError(`Failed to load executive orders: ${err.message}`);
+      setFetchStatus(`❌ Error: ${err.message}`);
+      setTimeout(() => setFetchStatus(null), 5000);
+      setAllOrders([]);
+      setHasData(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+const handleCategoryUpdate = useCallback(async (orderId, newCategory) => {
+  try {
+    console.log(`🔄 Updating category for order ${orderId} to ${newCategory}`);
+    
+    // Update the local state immediately for responsive UI
+    setAllOrders(prevOrders => 
+      prevOrders.map(order => {
+        const currentOrderId = getOrderId(order);
+        if (currentOrderId === orderId) {
+          console.log(`🔄 Updating order ${currentOrderId} category: ${order.category} → ${newCategory}`);
+          return { ...order, category: newCategory };
+        }
+        return order;
+      })
+    );
+
+    // ALSO update the currently displayed orders for immediate UI response
+    setOrders(prevOrders => 
+      prevOrders.map(order => {
+        const currentOrderId = getOrderId(order);
+        if (currentOrderId === orderId) {
+          console.log(`🔄 Updating displayed order ${currentOrderId} category: ${order.category} → ${newCategory}`);
+          return { ...order, category: newCategory };
+        }
+        return order;
+      })
+    );
+
+    // Make API call to update the database
+    const response = await fetch(`${API_URL}/api/executive-orders/${orderId}/category`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        category: newCategory
+      })
     });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    console.log('📊 Count check result:', data);
-
-    if (data.success) {
-      // FIXED: Only set needsFetch to true if there are actually NEW orders
-      const hasNewOrders = data.new_orders_available > 0;
-      
-      setCountCheckStatus({
-        checking: false,
-        needsFetch: hasNewOrders,  // Only true if new orders exist
-        newOrdersAvailable: data.new_orders_available,
-        federalRegisterCount: data.federal_register_count,
-        databaseCount: data.database_count,
-        lastChecked: new Date(data.last_checked),
-        error: null
-      });
-
-      // Enhanced logging for debugging
-      console.log(`📊 Count comparison:`);
-      console.log(`   Federal Register: ${data.federal_register_count}`);
-      console.log(`   Database: ${data.database_count}`);
-      console.log(`   New orders: ${data.new_orders_available}`);
-      console.log(`   Show notification: ${hasNewOrders}`);
-
-      if (hasNewOrders && showLoading) {
-        console.log(`🔔 ${data.new_orders_available} new orders available for fetch!`);
-      } else if (!hasNewOrders) {
-        console.log(`✅ Database is up to date - no new orders`);
-      }
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log(`✅ Category successfully updated in database`);
+      setFetchStatus(`✅ Category updated to ${newCategory}`);
+      setTimeout(() => setFetchStatus(null), 3000);
     } else {
-      throw new Error(data.error || 'Count check failed');
+      throw new Error(result.message || 'Update failed');
     }
 
   } catch (error) {
-    console.error('❌ Error checking for new orders:', error);
-    setCountCheckStatus(prev => ({
-      ...prev,
-      checking: false,
-      error: error.message,
-      needsFetch: false,  // Don't show notification on error
-      newOrdersAvailable: 0
-    }));
-  }
-}, []);
-
-  // NEW: Auto-check for new orders on page load
-  useEffect(() => {
-    // Check immediately when component mounts
-    const initialCheck = async () => {
-      // Wait a bit for the component to settle
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      await checkForNewOrders(false); // Silent check
-    };
-
-    initialCheck();
-
-    // Set up periodic checking every 5 minutes
-    const interval = setInterval(() => {
-      checkForNewOrders(false); // Silent periodic check
-    }, 5 * 60 * 1000); // 5 minutes
-
-    return () => clearInterval(interval);
-  }, [checkForNewOrders]);
-
-  // NEW: Manual refresh button for count check
-  const handleManualCountCheck = useCallback(async () => {
-    await checkForNewOrders(true); // Show loading for manual check
-  }, [checkForNewOrders]);
-
-const FetchButtonWithNotification = () => {
-  return (
-    <div className="relative h-full">
-      <button
-        onClick={fetchExecutiveOrders}
-        disabled={fetchingData || loading}
-        className={`w-full h-full p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 relative flex flex-col justify-center ${
-          fetchingData || loading
-            ? 'opacity-50 cursor-not-allowed' 
-            : 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50 border-gray-200 bg-white'
-        }`}
-      >
-        <div className="font-medium mb-2 flex items-center justify-center gap-2 text-blue-600">
-          <ScrollText size={16} />
-          <span className="text-center leading-tight">
-            Fetch New Executive Orders
-          </span>
-        </div>
-        
-        <div className="text-xs text-gray-500 text-center leading-tight">
-          Get latest from Federal Register with AI analysis
-        </div>
-      </button>
-    </div>
-  );
-};
-
-  // Count status component
- const CountStatusComponent = () => {
-  if (countCheckStatus.checking) {
-    return (
-      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex items-center gap-2">
-          <RotateCw size={16} className="animate-spin text-blue-600" />
-          <span className="text-sm text-blue-700 font-medium">
-            Checking for new executive orders...
-          </span>
-        </div>
-      </div>
+    console.error('❌ Failed to update category:', error);
+    
+    // FIXED: Revert BOTH state arrays on error
+    const originalCategory = orders.find(o => getOrderId(o) === orderId)?.category || 'civic';
+    
+    setAllOrders(prevOrders => 
+      prevOrders.map(order => {
+        const currentOrderId = getOrderId(order);
+        if (currentOrderId === orderId) {
+          console.log(`🔄 Reverting order ${currentOrderId} category back to: ${originalCategory}`);
+          return { ...order, category: originalCategory };
+        }
+        return order;
+      })
     );
-  }
 
-  if (countCheckStatus.error) {
-    return (
-      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <div className="flex items-center justify-between">
+    setOrders(prevOrders => 
+      prevOrders.map(order => {
+        const currentOrderId = getOrderId(order);
+        if (currentOrderId === orderId) {
+          console.log(`🔄 Reverting displayed order ${currentOrderId} category back to: ${originalCategory}`);
+          return { ...order, category: originalCategory };
+        }
+        return order;
+      })
+    );
+    
+    // Show error message to user
+    setFetchStatus(`❌ Failed to update category: ${error.message}`);
+    setTimeout(() => setFetchStatus(null), 5000);
+    
+    throw error;
+  }
+}, [orders]); // Add orders to dependency array
+
+  // =====================================
+  // COUNT STATUS COMPONENT
+  // =====================================
+  const CountStatusComponent = () => {
+    if (countCheckStatus.checking) {
+      return (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-center gap-2">
-            <AlertCircle size={16} className="text-yellow-600" />
-            <span className="text-sm text-yellow-700">
-              Unable to check for updates: {countCheckStatus.error}
+            <RotateCw size={16} className="animate-spin text-blue-600" />
+            <span className="text-sm text-blue-700 font-medium">
+              Checking for new executive orders...
             </span>
           </div>
-          <button
-            onClick={handleManualCountCheck}
-            className="text-yellow-700 hover:text-yellow-800 text-sm font-medium"
-          >
-            Retry
-          </button>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // FIXED: Only show this notification when there are actually NEW orders
-  if (countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0) {
-    return (
-      <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bell size={16} className="text-orange-600" />
-            <span className="text-sm text-orange-700 font-medium">
-              {countCheckStatus.newOrdersAvailable} new executive orders available!
-            </span>
-          </div>
-          <div className="text-xs text-orange-600">
-            Federal Register: {countCheckStatus.federalRegisterCount} | Database: {countCheckStatus.databaseCount}
+    if (countCheckStatus.error) {
+      return (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} className="text-yellow-600" />
+              <span className="text-sm text-yellow-700">
+                Unable to check for updates: {countCheckStatus.error}
+              </span>
+            </div>
+            <button
+              onClick={checkForNewExecutiveOrders}
+              className="text-yellow-700 hover:text-yellow-800 text-sm font-medium"
+            >
+              Retry
+            </button>
           </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // OPTIONAL: Show a "up to date" message when database is synchronized
-  if (countCheckStatus.lastChecked && 
-      countCheckStatus.federalRegisterCount > 0 && 
-      countCheckStatus.databaseCount > 0 && 
-      countCheckStatus.newOrdersAvailable === 0) {
-    return (
-      <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Check size={16} className="text-green-600" />
-            <span className="text-sm text-green-700 font-medium">
-              Database is up to date
-            </span>
-          </div>
-          <div className="text-xs text-green-600">
-            {countCheckStatus.databaseCount} orders synchronized
+    if (countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0) {
+      return (
+        <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bell size={16} className="text-orange-600" />
+              <span className="text-sm text-orange-700 font-medium">
+                {countCheckStatus.newOrdersAvailable} new executive orders available!
+              </span>
+            </div>
+            <div className="text-xs text-orange-600">
+              Federal Register: {countCheckStatus.federalRegisterCount} | Database: {countCheckStatus.databaseCount}
+            </div>
           </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  return null;
-};
+    if (countCheckStatus.lastChecked && 
+        countCheckStatus.federalRegisterCount > 0 && 
+        countCheckStatus.databaseCount > 0 && 
+        countCheckStatus.newOrdersAvailable === 0) {
+      return (
+        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Check size={16} className="text-green-600" />
+              <span className="text-sm text-green-700 font-medium">
+                Database is up to date
+              </span>
+            </div>
+            <div className="text-xs text-green-600">
+              {countCheckStatus.databaseCount} orders synchronized
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   // =====================================
   // FUZZY SEARCH LOGIC
@@ -1254,282 +1554,27 @@ const FetchButtonWithNotification = () => {
     
     const autoLoad = async () => {
       try {
-        setLoading(true);
-        setError(null);
-        console.log('📊 Auto-loading executive orders from database...');
-
-        const url = `${API_URL}/api/executive-orders?page=1&per_page=100`;
-        console.log('🔍 Auto-load fetching from URL:', url);
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('🔍 Auto-load API Response:', data);
-
-        let ordersArray = [];
-        let totalCount = 0;
-        
-        if (Array.isArray(data)) {
-          ordersArray = data;
-          totalCount = data.length;
-        } else if (data.results && Array.isArray(data.results)) {
-          ordersArray = data.results;
-          totalCount = data.total || data.count || 0;
-        } else if (data.data && Array.isArray(data.data)) {
-          ordersArray = data.data;
-          totalCount = data.total || data.count || 0;
-        } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
-          ordersArray = data.executive_orders;
-          totalCount = data.total || data.count || 0;
-        }
-
-        const transformedOrders = ordersArray.map((order, index) => {
-          const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-1-${index}`;
-          
-          return {
-            id: uniqueId,
-            bill_id: uniqueId,
-            eo_number: order.executive_order_number || order.document_number || 'Unknown',
-            executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
-            title: order.title || order.bill_title || 'Untitled Executive Order',
-            summary: order.description || order.summary || '',
-            signing_date: order.signing_date || order.introduced_date || '',
-            publication_date: order.publication_date || order.last_action_date || '',
-            html_url: order.html_url || order.legiscan_url || '',
-            pdf_url: order.pdf_url || '',
-            category: order.category || 'civic',
-            formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
-            formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
-            ai_summary: order.ai_summary || order.ai_executive_summary || '',
-            ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
-            ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
-            ai_processed: !!(order.ai_summary || order.ai_executive_summary),
-            president: order.president || 'Donald Trump',
-            source: 'Database (Federal Register + Azure AI)',
-            is_highlighted: false,
-            index: index
-          };
-        });
-
-        console.log(`🔍 Auto-load transformed ${transformedOrders.length} orders`);
-
-        setAllOrders(transformedOrders);
-        setHasData(transformedOrders.length > 0);
-        console.log('✅ Auto-load completed successfully');
-
+        await fetchFromDatabase();
+        // Also do an initial count check
+        setTimeout(() => {
+          checkForNewExecutiveOrders();
+        }, 1000);
       } catch (err) {
         console.error('❌ Auto-load failed:', err);
-        setAllOrders([]);
-        setHasData(false);
-      } finally {
-        setLoading(false);
       }
     };
 
     const timeoutId = setTimeout(autoLoad, 100);
     return () => clearTimeout(timeoutId);
-  }, []);
+  }, [fetchFromDatabase, checkForNewExecutiveOrders]);
 
-const filterCounts = useMemo(() => {
-  return calculateAllCounts(allOrders, {
-    getCategoryFn: (order) => order?.category,
-    reviewStatusFn: (order) => isOrderReviewed(order),
-    includeOrderTypes: false
-  });
-}, [allOrders, isOrderReviewed]);
-
-  // =====================================
-  // API FUNCTIONS
-  // =====================================
-  const fetchFromDatabase = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setFetchStatus('📊 Loading executive orders from database...');
-
-      const url = `${API_URL}/api/executive-orders?per_page=100`;
-      console.log('🔍 Fetching from URL:', url);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('🔍 API Response:', data);
-
-      let ordersArray = [];
-      
-      if (Array.isArray(data)) {
-        ordersArray = data;
-      } else if (data.results && Array.isArray(data.results)) {
-        ordersArray = data.results;
-      } else if (data.data && Array.isArray(data.data)) {
-        ordersArray = data.data;
-      } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
-        ordersArray = data.executive_orders;
-      }
-
-      const transformedOrders = ordersArray.map((order, index) => {
-        const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-db-${index}`;
-        
-        return {
-          id: uniqueId,
-          bill_id: uniqueId,
-          eo_number: order.executive_order_number || order.document_number || 'Unknown',
-          executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
-          title: order.title || order.bill_title || 'Untitled Executive Order',
-          summary: order.description || order.summary || '',
-          signing_date: order.signing_date || order.introduced_date || '',
-          publication_date: order.publication_date || order.last_action_date || '',
-          html_url: order.html_url || order.legiscan_url || '',
-          pdf_url: order.pdf_url || '',
-          category: order.category || 'civic',
-          formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
-          formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
-          ai_summary: order.ai_summary || order.ai_executive_summary || '',
-          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
-          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
-          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
-          president: order.president || 'Donald Trump',
-          source: 'Database (Federal Register + Azure AI)',
-          is_highlighted: false,
-          index: index
-        };
-      });
-
-      console.log(`🔍 Transformed ${transformedOrders.length} orders`);
-
-      setAllOrders(transformedOrders);
-      setFetchStatus(`✅ Loaded ${transformedOrders.length} orders from database`);
-      setHasData(transformedOrders.length > 0);
-      
-      // Reset to page 1 when loading new data
-      setPagination(prev => ({ ...prev, page: 1 }));
-      
-      setTimeout(() => setFetchStatus(null), 4000);
-
-    } catch (err) {
-      console.error('❌ Error details:', err);
-      setError(`Failed to load executive orders: ${err.message}`);
-      setFetchStatus(`❌ Error: ${err.message}`);
-      setTimeout(() => setFetchStatus(null), 5000);
-      setAllOrders([]);
-      setHasData(false);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchExecutiveOrders = useCallback(async () => {
-    try {
-      setFetchingData(true);
-      console.log('🔄 Starting Executive Orders fetch from Federal Register...');
-
-      const requestBody = {
-        start_date: "2025-01-20",
-        end_date: null,
-        with_ai: true,
-        save_to_db: true
-      };
-
-      const endpoints = [
-        `${API_URL}/api/fetch-executive-orders-simple`,
-        `${API_URL}/api/executive-orders/run-pipeline`,
-        `${API_URL}/api/executive-orders/fetch`,
-        `${API_URL}/api/fetch-executive-orders`
-      ];
-
-      let response;
-      let successfulEndpoint = null;
-
-      for (const endpoint of endpoints) {
-        try {
-          console.log('🔍 Trying endpoint:', endpoint);
-          
-          setFetchStatus(`🔄 Connecting to ${endpoint.split('/').pop()}...`);
-          
-          response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            },
-            body: JSON.stringify(requestBody)
-          });
-
-          if (response.ok) {
-            successfulEndpoint = endpoint;
-            console.log('✅ Successfully connected to:', endpoint);
-            
-            if (endpoint.includes('fetch-executive-orders-simple')) {
-              setFetchStatus(`✅ Connected to Federal Register API - Processing with AI...`);
-            }
-            
-            break;
-          } else {
-            console.log(`❌ Endpoint ${endpoint} failed with status:`, response.status);
-          }
-        } catch (err) {
-          console.log(`❌ Endpoint ${endpoint} error:`, err.message);
-          continue;
-        }
-      }
-
-      if (!response || !response.ok) {
-        throw new Error(`All endpoints failed. Last status: ${response?.status || 'Network Error'}`);
-      }
-
-      const result = await response.json();
-      console.log('📥 Fetch Result:', result);
-
-      if (result.success !== false) {
-        const count = result.orders_saved || result.count || result.bills_analyzed || 0;
-        const method = result.method || 'unknown';
-        
-        if (method === 'federal_register_api_direct') {
-          setFetchStatus(`✅ Federal Register: ${count} executive orders fetched and analyzed with Azure AI!`);
-        } else {
-          setFetchStatus(`✅ Fetch completed: ${count} orders processed with Azure AI!`);
-        }
-        
-        setTimeout(() => {
-          fetchFromDatabase(1);
-          // Also refresh count check
-          checkForNewOrders(false);
-          fetchFromDatabase();
-        }, 2000);
-        
-        setTimeout(() => setFetchStatus(null), 5000);
-      } else {
-        throw new Error(result.message || result.error || 'Fetch failed');
-      }
-
-    } catch (err) {
-      console.error('❌ Fetch failed:', err);
-      setFetchStatus(`❌ Fetch failed: ${err.message}`);
-      setTimeout(() => setFetchStatus(null), 8000);
-    } finally {
-      setFetchingData(false);
-    }
-  }, [fetchFromDatabase, checkForNewOrders]);
+  const filterCounts = useMemo(() => {
+    return calculateAllCounts(allOrders, {
+      getCategoryFn: (order) => order?.category,
+      reviewStatusFn: (order) => isOrderReviewed(order),
+      includeOrderTypes: false
+    });
+  }, [allOrders, isOrderReviewed]);
 
   // =====================================
   // EVENT HANDLERS
@@ -1556,293 +1601,11 @@ const filterCounts = useMemo(() => {
     setSelectedFilters([]);
     setSearchTerm('');
     setPagination(prev => ({ ...prev, page: 1 }));
-
-    
-    // Fetch all data without filters
-    setTimeout(() => {
-      fetchFromDatabase(1);
-    }, 100);
   };
 
-  // 🔍 FIXED: Get ALL filtered data, not just paginated results
-  const fetchAllFilteredData = useCallback(async (filters, search) => {
-    try {
-      console.log(`🔍 Fetching ALL filtered data - Filters: ${filters.join(',')}, Search: "${search}"`);
-
-      // Build URL to get ALL results (use reasonable page size instead of 1000)
-      let url = `${API_URL}/api/executive-orders?per_page=100`; // FIXED: Changed from 1000 to 100
-      
-      // Add category filters - try different parameter formats
-      const categoryFilters = filters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
-      if (categoryFilters.length > 0) {
-        // Try multiple possible parameter formats your backend might expect
-        if (categoryFilters.length === 1) {
-          // Single category - try different formats
-          url += `&category=${categoryFilters[0]}`;
-          // Alternative formats your backend might expect:
-          // url += `&categories=${categoryFilters[0]}`;
-          // url += `&filter[category]=${categoryFilters[0]}`;
-        } else {
-          // Multiple categories
-          url += `&category=${categoryFilters.join(',')}`;
-          // Alternative: url += categoryFilters.map(cat => `&category=${cat}`).join('');
-        }
-      }
-      
-      // Add search parameter
-      if (search && search.trim()) {
-        url += `&search=${encodeURIComponent(search.trim())}`;
-        // Alternative: url += `&q=${encodeURIComponent(search.trim())}`;
-      }
-      
-      console.log('🔍 All Filtered URL:', url);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
-
-      // Better error handling for 422
-      if (!response.ok) {
-        if (response.status === 422) {
-          console.error('❌ 422 Error - Backend rejected parameters. Trying without filters...');
-          
-          // Try fallback without category filter
-          const fallbackUrl = `${API_URL}/api/executive-orders?per_page=100`; // FIXED: Changed from 1000 to 100
-          const fallbackResponse = await fetch(fallbackUrl, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (fallbackResponse.ok) {
-            const fallbackData = await fallbackResponse.json();
-            console.log('✅ Fallback request successful, applying client-side filters');
-            
-            // Apply client-side filtering
-            let allOrdersArray = [];
-            if (Array.isArray(fallbackData)) {
-              allOrdersArray = fallbackData;
-            } else if (fallbackData.results && Array.isArray(fallbackData.results)) {
-              allOrdersArray = fallbackData.results;
-            } else if (fallbackData.data && Array.isArray(fallbackData.data)) {
-              allOrdersArray = fallbackData.data;
-            } else if (fallbackData.executive_orders && Array.isArray(fallbackData.executive_orders)) {
-              allOrdersArray = fallbackData.executive_orders;
-            }
-            
-            console.log(`🔍 Fallback got ${allOrdersArray.length} total orders from backend`);
-            
-            // Filter client-side by category
-            if (categoryFilters.length > 0) {
-              console.log(`🔍 Filtering for categories: ${categoryFilters.join(', ')}`);
-              const beforeFilter = allOrdersArray.length;
-              allOrdersArray = allOrdersArray.filter(order => {
-                const hasCategory = categoryFilters.includes(order?.category);
-                return hasCategory;
-              });
-              console.log(`🔍 Category filtering: ${beforeFilter} -> ${allOrdersArray.length} orders`);
-            }
-            
-            // Filter by search term
-            if (search && search.trim()) {
-              const searchLower = search.toLowerCase();
-              const beforeSearch = allOrdersArray.length;
-              allOrdersArray = allOrdersArray.filter(order =>
-                order.title?.toLowerCase().includes(searchLower) ||
-                order.ai_summary?.toLowerCase().includes(searchLower) ||
-                order.summary?.toLowerCase().includes(searchLower)
-              );
-              console.log(`🔍 Search filtering: ${beforeSearch} -> ${allOrdersArray.length} orders`);
-            }
-            
-            // Transform the filtered orders
-            const allTransformedOrders = allOrdersArray.map((order, index) => {
-              const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-all-${index}`;
-              
-              return {
-                id: uniqueId,
-                bill_id: uniqueId,
-                eo_number: order.executive_order_number || order.document_number || 'Unknown',
-                executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
-                title: order.title || order.bill_title || 'Untitled Executive Order',
-                summary: order.description || order.summary || '',
-                signing_date: order.signing_date || order.introduced_date || '',
-                publication_date: order.publication_date || order.last_action_date || '',
-                html_url: order.html_url || order.legiscan_url || '',
-                pdf_url: order.pdf_url || '',
-                category: order.category || 'civic',
-                formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
-                formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
-                ai_summary: order.ai_summary || order.ai_executive_summary || '',
-                ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
-                ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
-                ai_processed: !!(order.ai_summary || order.ai_executive_summary),
-                president: order.president || 'Donald Trump',
-                source: 'Database (Federal Register + Azure AI)',
-                is_highlighted: false,
-                index: index
-              };
-            });
-
-            // Apply review status filtering
-            let finalAllOrders = allTransformedOrders;
-            const hasReviewedFilter = filters.includes('reviewed');
-            const hasNotReviewedFilter = filters.includes('not_reviewed');
-            
-            if (hasReviewedFilter && !hasNotReviewedFilter) {
-              finalAllOrders = allTransformedOrders.filter(order => isOrderReviewed(order));
-            } else if (hasNotReviewedFilter && !hasReviewedFilter) {
-              finalAllOrders = allTransformedOrders.filter(order => !isOrderReviewed(order));
-            }
-
-            console.log(`🔍 Client-side filtered results: ${finalAllOrders.length} orders`);
-            return finalAllOrders;
-          }
-        }
-        
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log('🔍 All Filtered API Response:', data);
-
-      // Extract ALL orders from response
-      let allOrdersArray = [];
-      
-      if (Array.isArray(data)) {
-        allOrdersArray = data;
-      } else if (data.results && Array.isArray(data.results)) {
-        allOrdersArray = data.results;
-      } else if (data.data && Array.isArray(data.data)) {
-        allOrdersArray = data.data;
-      } else if (data.executive_orders && Array.isArray(data.executive_orders)) {
-        allOrdersArray = data.executive_orders;
-      }
-
-      // Transform ALL orders
-      const allTransformedOrders = allOrdersArray.map((order, index) => {
-        const uniqueId = order.executive_order_number || order.document_number || order.id || order.bill_id || `order-all-${index}`;
-        
-        return {
-          id: uniqueId,
-          bill_id: uniqueId,
-          eo_number: order.executive_order_number || order.document_number || 'Unknown',
-          executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
-          title: order.title || order.bill_title || 'Untitled Executive Order',
-          summary: order.description || order.summary || '',
-          signing_date: order.signing_date || order.introduced_date || '',
-          publication_date: order.publication_date || order.last_action_date || '',
-          html_url: order.html_url || order.legiscan_url || '',
-          pdf_url: order.pdf_url || '',
-          category: order.category || 'civic',
-          formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
-          formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
-          ai_summary: order.ai_summary || order.ai_executive_summary || '',
-          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
-          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
-          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
-          president: order.president || 'Donald Trump',
-          source: 'Database (Federal Register + Azure AI)',
-          is_highlighted: false,
-          index: index
-        };
-      });
-
-      // Apply client-side review status filtering
-      let finalAllOrders = allTransformedOrders;
-      const hasReviewedFilter = filters.includes('reviewed');
-      const hasNotReviewedFilter = filters.includes('not_reviewed');
-      
-      if (hasReviewedFilter && !hasNotReviewedFilter) {
-        finalAllOrders = allTransformedOrders.filter(order => isOrderReviewed(order));
-      } else if (hasNotReviewedFilter && !hasReviewedFilter) {
-        finalAllOrders = allTransformedOrders.filter(order => !isOrderReviewed(order));
-      }
-
-      console.log(`🔍 All Filtered Results: ${finalAllOrders.length} orders`);
-      return finalAllOrders;
-
-    } catch (err) {
-      console.error('❌ All filtered fetch failed:', err);
-      return [];
-    }
-  }, [isOrderReviewed]);
-
-  // 🔍 NEW: Database-level filtering function with proper pagination
-  const fetchFilteredData = useCallback(async (filters, search, pageNum = 1) => {
-    try {
-      setLoading(true);
-      setError(null);
-      setFetchStatus('🔍 Filtering executive orders...');
-
-      console.log(`🔍 fetchFilteredData called with filters: ${filters}, search: "${search}", page: ${pageNum}`);
-
-      // First, get ALL filtered results to show correct total count
-      const allFilteredOrders = await fetchAllFilteredData(filters, search);
-      const totalFilteredCount = allFilteredOrders.length;
-
-      console.log(`🔍 Got ${totalFilteredCount} total filtered orders from fetchAllFilteredData`);
-
-      if (totalFilteredCount === 0) {
-        console.log('🔍 No filtered results found');
-        setOrders([]);
-        setPagination({
-          page: 1,
-          per_page: 25,
-          total_pages: 0,
-          count: 0
-        });
-        setFetchStatus(`❌ No results found for selected filters`);
-        setHasData(false);
-        setTimeout(() => setFetchStatus(null), 4000);
-        return;
-      }
-
-      // Now paginate the results client-side for correct display
-      const perPage = 25;
-      const startIndex = (pageNum - 1) * perPage;
-      const endIndex = startIndex + perPage;
-      const paginatedOrders = allFilteredOrders.slice(startIndex, endIndex);
-      
-      console.log(`🔍 Paginating: showing items ${startIndex + 1}-${Math.min(endIndex, totalFilteredCount)} of ${totalFilteredCount} total`);
-      console.log(`🔍 Paginated orders count: ${paginatedOrders.length}`);
-
-      // Calculate correct pagination
-      const totalPages = Math.ceil(totalFilteredCount / perPage);
-
-      // Update state with paginated results but correct total count
-      setOrders(paginatedOrders);
-      setPagination({
-        page: pageNum,
-        per_page: perPage,
-        total_pages: totalPages,
-        count: totalFilteredCount
-      });
-
-      console.log(`🔍 Set pagination: page ${pageNum}/${totalPages}, total count: ${totalFilteredCount}`);
-
-      setFetchStatus(`✅ Found ${totalFilteredCount} filtered orders, showing page ${pageNum} of ${totalPages}`);
-      setHasData(paginatedOrders.length > 0);
-      setTimeout(() => setFetchStatus(null), 4000);
-
-    } catch (err) {
-      console.error('❌ Filtered fetch failed:', err);
-      setError(`Failed to filter executive orders: ${err.message}`);
-      setFetchStatus(`❌ Filter error: ${err.message}`);
-      setTimeout(() => setFetchStatus(null), 5000);
-      setOrders([]);
-      setHasData(false);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchAllFilteredData]);
-
+  // =====================================
+  // PAGINATION AND EVENT HANDLERS
+  // =====================================
   const handlePageChange = useCallback((newPage) => {
     console.log(`🔄 Changing to page ${newPage}`);
     setPagination(prev => ({ ...prev, page: newPage }));
@@ -2098,7 +1861,7 @@ const filterCounts = useMemo(() => {
       <CountStatusComponent />
 
       {/* ===================================== */}
-      {/* FETCH EXECUTIVE ORDERS SECTION */}
+      {/* EXECUTIVE ORDERS MANAGEMENT SECTION */}
       {/* ===================================== */}
       <div className="mb-8">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -2117,19 +1880,6 @@ const filterCounts = useMemo(() => {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {/* Manual refresh button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleManualCountCheck();
-                  }}
-                  disabled={countCheckStatus.checking}
-                  className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all duration-200"
-                  title="Check for new orders"
-                >
-                  <RefreshCw size={16} className={countCheckStatus.checking ? 'animate-spin' : ''} />
-                </button>
-                
                 <ChevronDown 
                   size={20} 
                   className={`text-gray-500 transition-transform duration-200 ${isFetchExpanded ? 'rotate-180' : ''}`}
@@ -2148,41 +1898,96 @@ const filterCounts = useMemo(() => {
                       <RotateCw size={16} className="animate-spin text-blue-600" />
                     )}
                     <span className="text-sm text-blue-700 font-medium">
-                      {fetchStatus || (fetchingData ? 'Fetching and analyzing...' : 'Loading...')}
+                      {fetchStatus || (fetchingData ? 'Processing...' : 'Loading...')}
                     </span>
                   </div>
                 </div>
               )}
+
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
+                  <ScrollText size={16} className="text-purple-600" />
+                  Executive Orders Management
+                </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Enhanced Fetch Button with Notification */}
-                  <FetchButtonWithNotification />
+                  {/* Fetch Executive Orders Button */}
+                  <div className="relative h-full">
+                    <button
+                      onClick={fetchExecutiveOrders}
+                      disabled={fetchingData || loading}
+                      className={`w-full h-full p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 relative flex flex-col justify-center ${
+                        fetchingData || loading
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0
+                          ? 'hover:shadow-lg hover:border-purple-300 hover:bg-purple-50 border-purple-200 bg-purple-50'
+                          : 'hover:shadow-lg hover:border-purple-300 hover:bg-purple-50 border-gray-200 bg-white'
+                      }`}
+                    >
+                      {/* Notification badge if new orders available */}
+                      {countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0 && (
+                        <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-lg z-10">
+                          <Bell size={10} />
+                          {countCheckStatus.newOrdersAvailable}
+                        </div>
+                      )}
+                      
+                      <div className={`font-medium mb-2 flex items-center justify-center gap-2 ${
+                        countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0 ? 'text-purple-600' : 'text-purple-600'
+                      }`}>
+                        <Sparkles size={16} />
+                        <span className="text-center leading-tight">
+                          {countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0 
+                            ? 'Fetch New Executive Orders' 
+                            : 'Fetch Executive Orders'
+                          }
+                        </span>
+                      </div>
+                      
+                      <div className="text-xs text-gray-500 text-center leading-tight">
+                        {countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0
+                          ? `Get ${countCheckStatus.newOrdersAvailable} new orders with AI analysis`
+                          : 'Get all executive orders with AI analysis from Federal Register'
+                        }
+                      </div>
+                      
+                      {/* Show new orders available count */}
+                      {countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0 && (
+                        <div className="text-xs mt-2 text-purple-600 font-medium">
+                          {countCheckStatus.newOrdersAvailable} new orders available
+                        </div>
+                      )}
+                    </button>
+                  </div>
 
                   {/* Load from Database Button */}
-                  <button
-                    onClick={fetchFromDatabase}
-                    disabled={fetchingData || loading}
-                    className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 ${
-                      fetchingData || loading
-                        ? 'opacity-50 cursor-not-allowed' 
-                        : 'hover:shadow-lg hover:border-gray-300 hover:bg-gray-100'
-                    } border-gray-200 bg-white text-gray-700`}
-                  >
-                    <div className="font-medium mb-2 text-gray-600 flex items-center justify-center gap-2">
-                      <Database size={18} />
-                      Load from Database
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Load processed orders from local database
-                    </div>
-                    
-                    {/* Show count if available */}
-                    {countCheckStatus.databaseCount > 0 && (
-                      <div className="text-xs mt-2 text-blue-600 font-medium">
-                        {countCheckStatus.databaseCount} orders in database
+                  <div className="relative h-full">
+                    <button
+                      onClick={fetchFromDatabase}
+                      disabled={fetchingData || loading}
+                      className={`w-full h-full p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-104 ${
+                        fetchingData || loading
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50'
+                      } border-gray-200 bg-white text-gray-700`}
+                    >
+                      <div className="font-medium mb-2 text-blue-600 flex items-center justify-center gap-2">
+                        <Database size={16} />
+                        Load from Database
                       </div>
-                    )}
-                  </button>
+                      <div className="text-xs text-gray-500">
+                        Reload processed orders from local database
+                      </div>
+                      
+                      {/* Show count if available */}
+                      {countCheckStatus.databaseCount > 0 && (
+                        <div className="text-xs mt-2 text-blue-600 font-medium">
+                          {countCheckStatus.databaseCount} orders in database
+                        </div>
+                      )}
+                    </button>
+                  </div>
                 </div>
+              </div>
             </div>
           )}
         </div>
@@ -2280,34 +2085,34 @@ const filterCounts = useMemo(() => {
                       <SearchResultHighlight order={order} />
 
                       <div className="flex items-start justify-between">
-                        <div 
-                          className="flex-1 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2 -mb-1"
-                          onClick={() => {
-                            setExpandedOrders(prev => {
-                              const newSet = new Set(prev);
-                              if (newSet.has(orderId)) {
-                                newSet.delete(orderId);
-                              } else {
-                                newSet.add(orderId);
-                              }
-                              return newSet;
-                            });
-                          }}
-                        >
+                        <div className="flex-1">
                           <h3 className="text-lg font-semibold text-gray-800 mb-2">
                             {actualOrderNumber}. {cleanOrderTitle(order.title)}
                           </h3>
                           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
-                            <span className="font-medium">Executive Order #: {getExecutiveOrderNumber(order)}</span>
-                            <span>-</span>
-                            <span className="font-medium">Signed Date: {order.formatted_signing_date || order.formatted_publication_date}</span>
-                            <span>-</span>
-                            <CategoryTag category={order.category} />
-                            {order.ai_processed && (
-                              <span className="">-</span>
-                            )}
-                            <ReviewStatusTag isReviewed={isReviewed} />
-                          </div>
+                          <span className="font-medium">Executive Order #: {getExecutiveOrderNumber(order)}</span>
+                          <span>-</span>
+                          <span className="font-medium">Signed Date: {order.formatted_signing_date || 'N/A'}</span>
+                          {/* NEW: Add Publication Date */}
+                          {order.formatted_publication_date && order.formatted_publication_date !== order.formatted_signing_date && (
+                            <>
+                              <span>-</span>
+                              <span className="font-medium">Published Date: {order.formatted_publication_date}</span>
+                            </>
+                          )}
+                          <span>-</span>
+                          <EditableCategoryTag 
+                          category={order.category}
+                          orderId={getOrderId(orderWithIndex)}
+                          onCategoryChange={handleCategoryUpdate}
+                          disabled={fetchingData || loading}
+                          isUpdating={false}
+                          />
+                          {order.ai_processed && (
+                            <span className="">-</span>
+                          )}
+                          <ReviewStatusTag isReviewed={isReviewed} />
+                        </div>
                         </div>
                         
                         <div className="flex items-center gap-2 ml-4">
@@ -2420,35 +2225,6 @@ const filterCounts = useMemo(() => {
                         </div>
                       )}
 
-                      {/* External Links - Show when contracted */}
-                      {!isExpanded && (
-                        <div className="flex flex-wrap gap-2 pt-1 mb-2">
-                          {order.html_url && (
-                            <a
-                              href={order.html_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-2 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-all duration-300 text-sm flex items-center gap-2"
-                            >
-                              <ExternalLink size={14} />
-                              Federal Register
-                            </a>
-                          )}
-                          
-                          {order.pdf_url && (
-                            <a
-                              href={order.pdf_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-2 bg-red-50 text-red-700 rounded-md hover:bg-red-100 transition-all duration-300 text-sm flex items-center gap-2"
-                            >
-                              <FileText size={14} />
-                              View PDF
-                            </a>
-                          )}
-                        </div>
-                      )}
-
                       {/* Expanded Content */}
                       {isExpanded && (
                         <div>
@@ -2538,7 +2314,11 @@ const filterCounts = useMemo(() => {
 
                             <button 
                               type="button"
-                              className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 transition-all duration-300"
+                              className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all duration-300 ${
+                                copiedOrders.has(orderId) 
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -2643,19 +2423,55 @@ const filterCounts = useMemo(() => {
                                 
                                 const orderReport = reportSections.filter(line => line !== null && line !== undefined).join('\n');
                                 
-                                if (copyToClipboard && typeof copyToClipboard === 'function') {
-                                  copyToClipboard(orderReport);
-                                  console.log('✅ Copied formatted order report to clipboard');
-                                } else if (navigator.clipboard) {
-                                  navigator.clipboard.writeText(orderReport).catch(console.error);
-                                  console.log('✅ Copied formatted order report to clipboard (fallback)');
-                                } else {
-                                  console.log('❌ Copy to clipboard not available');
-                                }
+                                // Enhanced copy functionality with feedback
+                                const copySuccess = async () => {
+                                  try {
+                                    if (copyToClipboard && typeof copyToClipboard === 'function') {
+                                      copyToClipboard(orderReport);
+                                    } else if (navigator.clipboard) {
+                                      await navigator.clipboard.writeText(orderReport);
+                                    } else {
+                                      // Fallback for older browsers
+                                      const textArea = document.createElement('textarea');
+                                      textArea.value = orderReport;
+                                      document.body.appendChild(textArea);
+                                      textArea.select();
+                                      document.execCommand('copy');
+                                      document.body.removeChild(textArea);
+                                    }
+                                    
+                                    // Show copied state
+                                    setCopiedOrders(prev => new Set([...prev, orderId]));
+                                    console.log('✅ Copied formatted order report to clipboard');
+                                    
+                                    // Reset after 2 seconds
+                                    setTimeout(() => {
+                                      setCopiedOrders(prev => {
+                                        const newSet = new Set(prev);
+                                        newSet.delete(orderId);
+                                        return newSet;
+                                      });
+                                    }, 2000);
+                                    
+                                  } catch (error) {
+                                    console.error('❌ Failed to copy to clipboard:', error);
+                                  }
+                                };
+
+                                copySuccess();
                               }}
                             >
-                              <Copy size={14} />
-                              Copy Details
+                              {copiedOrders.has(orderId) ? (
+                                <>
+                                  <Check size={14} />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={14} />
+                                  <span>Copy Details</span>
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>

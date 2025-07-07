@@ -1,6 +1,5 @@
-# simple_executive_orders.py - Fixed integration with direct pyodbc
+# simple_executive_orders.py - Complete Fixed Version
 import os
-import re
 import json
 import asyncio
 import logging
@@ -8,13 +7,13 @@ import requests
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
-# Import our direct database connection
-from database_connection import get_db_cursor, get_db_connection
+# Import database connection
+from database_connection import get_db_connection
 
 logger = logging.getLogger(__name__)
 
 class SimpleExecutiveOrders:
-    """Simple integration for Executive Orders API"""
+    """Simple integration for Executive Orders API with proper pagination"""
     
     def __init__(self):
         self.federal_register_api_url = "https://www.federalregister.gov/api/v1/documents.json"
@@ -25,9 +24,9 @@ class SimpleExecutiveOrders:
         })
     
     def fetch_executive_orders_direct(self, start_date=None, end_date=None, limit=None):
-        """Fetch executive orders directly from Federal Register API"""
+        """Fetch ALL executive orders with proper pagination"""
         try:
-            logger.info(f"📡 Fetching from Federal Register API: {start_date} to {end_date}")
+            logger.info(f"📡 Fetching ALL Executive Orders from Federal Register API: {start_date} to {end_date}")
             
             # Default dates if not provided
             if not start_date:
@@ -36,56 +35,93 @@ class SimpleExecutiveOrders:
             if not end_date:
                 end_date = datetime.now().strftime('%m/%d/%Y')
             
-            # Build parameters
-            params = {
-                'conditions[correction]': '0',
-                'conditions[president]': 'donald-trump',
-                'conditions[presidential_document_type]': 'executive_order',
-                'conditions[signing_date][gte]': start_date,
-                'conditions[signing_date][lte]': end_date,
-                'conditions[type][]': 'PRESDOCU',
-                'fields[]': [
-                    'citation',
-                    'document_number',
-                    'end_page',
-                    'html_url',
-                    'pdf_url',
-                    'type',
-                    'subtype',
-                    'publication_date',
-                    'signing_date',
-                    'start_page',
-                    'title',
-                    'disposition_notes',
-                    'executive_order_number',
-                    'not_received_for_publication',
-                    'full_text_xml_url',
-                    'body_html_url',
-                    'json_url'
-                ],
-                'include_pre_1994_docs': 'true',
-                'maximum_per_page': '10000',
-                'order': 'executive_order',
-                'per_page': limit if limit else '10000'
-            }
+            logger.info(f"📅 Using date range: {start_date} to {end_date}")
             
-            # Make the request
-            response = self.session.get(self.federal_register_api_url, params=params, timeout=30)
-            response.raise_for_status()
+            all_results = []
+            page = 1
+            total_pages = 1
             
-            data = response.json()
-            results = data.get('results', [])
+            while page <= total_pages:
+                logger.info(f"📄 Fetching page {page} of {total_pages}...")
+                
+                # Use smaller per_page to avoid API timeouts
+                base_params = {
+                    'conditions[correction]': '0',
+                    'conditions[president]': 'donald-trump',
+                    'conditions[presidential_document_type]': 'executive_order',
+                    'conditions[signing_date][gte]': start_date,
+                    'conditions[signing_date][lte]': end_date,
+                    'conditions[signing_date][year]': '2025',
+                    'conditions[type][]': 'PRESDOCU',
+                    'fields[]': [
+                        'citation',
+                        'document_number', 
+                        'end_page',
+                        'html_url',
+                        'pdf_url',
+                        'type',
+                        'subtype',
+                        'publication_date',
+                        'signing_date',
+                        'start_page',
+                        'title',
+                        'disposition_notes',
+                        'executive_order_number',
+                        'not_received_for_publication',
+                        'full_text_xml_url',
+                        'body_html_url',
+                        'json_url'
+                    ],
+                    'include_pre_1994_docs': 'true',
+                    'per_page': '100',  # Smaller page size for reliability
+                    'page': str(page),   # Add pagination
+                    'order': 'executive_order'
+                }
+                
+                # Make the request
+                response = self.session.get(self.federal_register_api_url, params=base_params, timeout=60)
+                
+                if response.status_code != 200:
+                    logger.error(f"❌ API request failed: {response.status_code} - {response.text}")
+                    break
+                    
+                data = response.json()
+                results = data.get('results', [])
+                
+                if not results:
+                    logger.info("✅ No more results found")
+                    break
+                
+                all_results.extend(results)
+                
+                # Update pagination info
+                total_count = data.get('count', 0)
+                per_page = data.get('per_page', 100)
+                total_pages = max(1, (total_count + per_page - 1) // per_page)  # Ceiling division
+                
+                logger.info(f"📊 Page {page}: Got {len(results)} orders, {len(all_results)} total so far")
+                logger.info(f"📊 API reports {total_count} total orders across {total_pages} pages")
+                
+                # Move to next page
+                page += 1
+                
+                # Safety check to prevent infinite loops
+                if page > 100:  # Max 100 pages = 10,000 orders
+                    logger.warning("⚠️ Reached maximum page limit (100 pages)")
+                    break
             
-            logger.info(f"✅ Federal Register API returned {len(results)} executive orders")
+            logger.info(f"✅ Federal Register API returned {len(all_results)} total executive orders")
             
             # Transform into our standard format
             transformed = []
-            for order in results:
+            for order in all_results:
                 eo_num = order.get('executive_order_number', '')
                 doc_num = order.get('document_number', '')
+
+                primary_eo_number = eo_num if eo_num else doc_num
                 
                 # Skip if missing critical data
-                if not (eo_num or doc_num):
+                if not primary_eo_number:
                     continue
                 
                 # Process dates
@@ -112,15 +148,23 @@ class SimpleExecutiveOrders:
                     category = 'healthcare'
                 elif any(term in title for term in ['education', 'school', 'student']):
                     category = 'education'
-                elif any(term in title for term in ['infrastructure', 'transport']):
-                    category = 'engineering'
+                elif any(term in title for term in ['environment', 'climate', 'energy']):
+                    category = 'environment'
+                elif any(term in title for term in ['tax', 'economic', 'trade']):
+                    category = 'economic'
+                elif any(term in title for term in ['immigration', 'border', 'visa']):
+                    category = 'immigration'
+                elif any(term in title for term in ['defense', 'military', 'security']):
+                    category = 'defense'
                 
-                # Build standard format
-                transformed_order = {
-                    'eo_number': eo_num,
-                    'document_number': doc_num,
+                # Build the transformed order
+                    transformed_order = {
+                    'document_number': doc_num,                    # Keep original document number
+                    'eo_number': eo_num,                          # Store the actual EO number (like "14312")
+                    'executive_order_number': eo_num,             # Also store in this field for compatibility
+                    'primary_identifier': primary_eo_number,
                     'title': order.get('title', ''),
-                    'summary': '',  # Federal Register doesn't provide summaries
+                    'summary': order.get('abstract', '') or order.get('disposition_notes', ''),
                     'signing_date': signing_date,
                     'publication_date': publication_date,
                     'citation': order.get('citation', ''),
@@ -128,10 +172,13 @@ class SimpleExecutiveOrders:
                     'category': category,
                     'html_url': order.get('html_url', ''),
                     'pdf_url': order.get('pdf_url', ''),
-                    'trump_2025_url': '',  # Not available from this API
-                    'source': 'Federal Register API',
+                    'trump_2025_url': order.get('html_url', ''),  # Use html_url as fallback
+                    'source': 'federal_register_api',
                     'raw_data_available': True,
-                    'processing_status': 'completed',
+                    'processing_status': 'fetched',
+                    'created_at': datetime.now(),
+                    'last_updated': datetime.now(),
+                    'last_scraped_at': datetime.now()
                 }
                 
                 transformed.append(transformed_order)
@@ -140,180 +187,258 @@ class SimpleExecutiveOrders:
                 'success': True,
                 'results': transformed,
                 'count': len(transformed),
-                'total_found': len(results),
-                'date_range_used': f"{start_date} to {end_date}",
-                'api_response_count': len(results)
+                'total_found': len(all_results),
+                'pages_fetched': page - 1,
+                'message': f'Successfully fetched {len(transformed)} executive orders from {page - 1} pages'
             }
             
+        except requests.RequestException as e:
+            logger.error(f"❌ Network error fetching executive orders: {e}")
+            return {
+                'success': False,
+                'error': f'Network error: {str(e)}',
+                'results': [],
+                'count': 0
+            }
         except Exception as e:
-            logger.error(f"❌ Error fetching from Federal Register: {e}")
+            logger.error(f"❌ Error fetching executive orders: {e}")
             return {
                 'success': False,
                 'error': str(e),
                 'results': [],
                 'count': 0
             }
+    
+    def _process_date(self, date_string):
+        """Process date strings safely"""
+        if not date_string:
+            return None
+        
+        try:
+            if isinstance(date_string, str):
+                if 'T' in date_string:
+                    date_obj = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+                    return date_obj.strftime('%Y-%m-%d')
+                else:
+                    date_obj = datetime.strptime(date_string, '%Y-%m-%d')
+                    return date_obj.strftime('%Y-%m-%d')
+            else:
+                return str(date_string)
+        except (ValueError, TypeError):
+            return str(date_string) if date_string else None
+    
+    def _categorize_order(self, title_lower):
+        """Categorize order based on title"""
+        categorization_rules = {
+            'healthcare': ['health', 'medical', 'care', 'medicare', 'medicaid', 'insurance', 'pharmaceutical', 'drug', 'doctor', 'hospital', 'clinic', 'healthcare', 'hospitals', 'hospice', 'nursing', 'nursing home', 'nursing homes', 'nursing facility', 'nursing facilities', 'nurses', 'nursing staff', 'nursing care', 'nursing services', 'nursing service', 'nursing', 'doctors', 'physicians', 'physician', 'medical professionals', 'medical professional', 'healthcare professionals', 'healthcare professional', 'doctors office', 'doctors offices', 'medical office', 'medical offices', 'healthcare office', 'healthcare offices', 'healthcare facility', 'healthcare facilities', "vaccine", "vaccines", "immunization", "immunizations", "immunize", "immunizes", "immunizing"],
+            'education': ['education', 'school', 'student', 'university', 'college', 'teacher', 'professor', 'academic', 'learning', 'training', 'curriculum', 'scholarship', 'tuition', 'student loan', 'student loans', 'educational', 'educational institution', 'educational institutions', 'school district', 'school districts', 'school board', 'school boards', 'school system', 'school systems', 'school administration', 'school administrations', 'school policy', 'school policies', 'school program', 'school programs', 'teacher training', 'teacher training program', 'teacher training programs', 'teacher certification', 'teacher certifications', 'teacher education', 'teacher education program', 'teacher education programs', 'student assessment', 'student assessments', 'student achievement', 'student achievements', 'teacher', 'teachers', 'educators', 'educator', 'school principal', 'school principals', 'school counselor', 'school counselors', 'school psychologist', 'school psychologists', 'school nurse', 'school nurses'],
+            'engineering': ['infrastructure', 'transport', 'highway', 'bridge', 'road', 'rail', 'airport', 'port', 'construction', 'engineering', 'engineering project', 'engineering projects', 'civil engineering', 'civil engineer', 'civil engineers', 'structural engineering', 'structural engineer', 'structural engineers', 'mechanical engineering', 'mechanical engineer', 'mechanical engineers', 'electrical engineering', 'electrical engineer', 'electrical engineers', 'environmental engineering', 'environmental engineer', 'environmental engineers'],
+            'civic': ['business', 'trade', 'economic', 'commerce', 'criminal', 'justice', 'police', 'court', 'law', 'legal', 'legislation', 'regulation', 'government', 'public policy', 'public service', 'public safety', 'public health', 'public works', 'public infrastructure', 'public transportation', 'public utilities', 'public education', 'public finance', 'public administration', 'trainsportation', 'transportation system', 'transportation systems', 'transportation infrastructure', 'transportation infrastructure project', 'transportation infrastructure projects', 'transportation engineering', 'transportation engineer', 'transportation engineers', 'transportation policy', 'transportation policies', 'transportation program', 'transportation programs', 'transportation planning', 'transportation planner', 'transportation planners', 'first responders', 'first responder', 'first responders', 'emergency response', 'emergency responder', 'emergency responders', 'emergency management', 'emergency manager', 'emergency managers', 'public safety officer', 'public safety officers', 'public safety agency', 'public safety agencies', 'police officer', 'police officers', 'law enforcement officer', 'law enforcement officers', 'law enforcement agency', 'law enforcement agencies', 'court system', 'court systems', 'court administration', 'court administrations', 'court policy', 'court policies', 'court program', 'court programs', 'legal system', 'legal systems', 'legal administration', 'legal administrations', 'legal policy', 'legal policies', 'firefighter', 'firefighters', 'fire department', 'fire departments', 'fire service', 'fire services', 'emergency medical technician', 'emergency medical technicians', 'emergency medical service', 'emergency medical services', 'emergency medical response', 'emergency medical responder', 'emergency medical responders'],
+        }
+        
+        for category, keywords in categorization_rules.items():
+            if any(keyword in title_lower for keyword in keywords):
+                return category
+        
+        return 'civic'
+
+def get_date_range_for_period(period: str) -> tuple:
+    """Generate date ranges for periods"""
+    current_date = datetime.now()
+    
+    period_mappings = {
+        "inauguration": ("01/20/2025", current_date.strftime('%m/%d/%Y')),
+        "last_90_days": ((current_date - timedelta(days=90)).strftime('%m/%d/%Y'), current_date.strftime('%m/%d/%Y')),
+        "last_30_days": ((current_date - timedelta(days=30)).strftime('%m/%d/%Y'), current_date.strftime('%m/%d/%Y')),
+        "last_7_days": ((current_date - timedelta(days=7)).strftime('%m/%d/%Y'), current_date.strftime('%m/%d/%Y')),
+        "this_week": ((current_date - timedelta(days=current_date.weekday())).strftime('%m/%d/%Y'), current_date.strftime('%m/%d/%Y')),
+        "this_month": (current_date.replace(day=1).strftime('%m/%d/%Y'), current_date.strftime('%m/%d/%Y'))
+    }
+    
+    return period_mappings.get(period, ("01/20/2025", current_date.strftime('%m/%d/%Y')))
 
 async def fetch_executive_orders_simple_integration(
     start_date=None, 
     end_date=None, 
     with_ai=True, 
-    limit=None, 
-    period=None,
+    limit=None,
+    period=None, 
     save_to_db=True
 ):
     """
-    Complete executive orders pipeline: 
-    Federal Register API → AI Processing → Database
+    Complete integration pipeline - FIXED
     """
+    # Initialize at function scope
+    processed_orders = []
+    ai_stats = {'successful': 0, 'failed': 0, 'skipped': 0}
+    
     try:
-        # Handle period-based date selection
+        logger.info("🚀 Starting Production Executive Orders Integration")
+        
+        # Handle dates
         if period:
-            if period == "inauguration":
-                start_date = "01/20/2025"
-                end_date = datetime.now().strftime('%m/%d/%Y')
-            elif period == "last_30_days":
-                start_date = (datetime.now() - timedelta(days=30)).strftime('%m/%d/%Y')
-                end_date = datetime.now().strftime('%m/%d/%Y')
-            elif period == "last_90_days":
-                start_date = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
-                end_date = datetime.now().strftime('%m/%d/%Y')
+            start_date, end_date = get_date_range_for_period(period)
         elif not start_date:
-            start_date = "01/20/2025"  # Default to inauguration
+            start_date = "01/20/2025"
         
         if not end_date:
             end_date = datetime.now().strftime('%m/%d/%Y')
         
-        logger.info(f"🚀 Starting Executive Orders fetch using Federal Register API")
-        logger.info(f"📅 Date range: {start_date} to {end_date}")
+        logger.info(f"📅 Processing date range: {start_date} to {end_date}")
         logger.info(f"🤖 AI Analysis: {'ENABLED' if with_ai else 'DISABLED'}")
-        logger.info(f"💾 Save to DB: {'ENABLED' if save_to_db else 'DISABLED'}")
+        logger.info(f"💾 Database Save: {'ENABLED' if save_to_db else 'DISABLED'}")
         
-        # Step 1: Fetch from Federal Register API
-        simple_eo = SimpleExecutiveOrders()
-        fetch_result = simple_eo.fetch_executive_orders_direct(start_date, end_date, limit)
+        # Step 1: Fetch from API
+        api_client = SimpleExecutiveOrders()
+        fetch_result = api_client.fetch_executive_orders_direct(start_date, end_date, None)
         
         if not fetch_result.get('success'):
-            logger.error(f"❌ Federal Register API fetch failed: {fetch_result.get('error')}")
+            logger.error(f"❌ Federal Register fetch failed: {fetch_result.get('error')}")
             return fetch_result
         
         raw_orders = fetch_result.get('results', [])
-        logger.info(f"✅ Federal Register API found {len(raw_orders)} Executive Orders")
+        logger.info(f"✅ Federal Register: {len(raw_orders)} orders retrieved")
         
-        # Step 2: Process with AI (if enabled)
-        processed_orders = []
-        ai_successful = 0
-        ai_failed = 0
+        if len(raw_orders) == 0:
+            return {
+                'success': True,
+                'results': [],
+                'count': 0,
+                'message': 'No executive orders found'
+            }
         
-        # Process each order
-        for i, order in enumerate(raw_orders):
+        # Step 2: Process each order
+        for index, order in enumerate(raw_orders):
+            current_order = None  # Initialize for each order
+            
             try:
-                # Make a copy to avoid modifying the original
-                processed_order = dict(order)
+                current_order = dict(order)
                 
+                # AI processing if enabled
                 if with_ai:
                     try:
-                        # Try to import and use the AI processor
                         from ai import analyze_executive_order
                         
-                        logger.info(f"🤖 Processing order {i+1}/{len(raw_orders)} with AI")
                         ai_result = await analyze_executive_order(
                             title=order.get('title', ''),
                             abstract=order.get('summary', ''),
                             order_number=order.get('eo_number', '')
                         )
                         
-                        if ai_result:
-                            # Update with AI results
-                            processed_order.update({
+                        if ai_result and isinstance(ai_result, dict):
+                            current_order.update({
                                 'ai_summary': ai_result.get('ai_summary', ''),
                                 'ai_executive_summary': ai_result.get('ai_executive_summary', ''),
                                 'ai_talking_points': ai_result.get('ai_talking_points', ''),
                                 'ai_key_points': ai_result.get('ai_key_points', ''),
                                 'ai_business_impact': ai_result.get('ai_business_impact', ''),
                                 'ai_potential_impact': ai_result.get('ai_potential_impact', ''),
-                                'ai_version': ai_result.get('ai_version', 'simple_v1')
+                                'ai_version': 'azure_ai_production_v2',
+                                'ai_processed_at': datetime.now().isoformat()
                             })
-                            ai_successful += 1
-                            logger.info(f"✅ AI analysis successful for order {i+1}")
+                            ai_stats['successful'] += 1
                         else:
-                            ai_failed += 1
-                            logger.warning(f"⚠️ AI analysis returned no results for order {i+1}")
+                            ai_stats['failed'] += 1
                             
                     except ImportError:
-                        logger.warning(f"⚠️ AI module not available, skipping AI processing")
-                        ai_failed += 1
+                        logger.warning("⚠️ AI module not available")
+                        ai_stats['skipped'] = len(raw_orders) - index
+                        with_ai = False
                     except Exception as ai_error:
-                        logger.error(f"❌ AI processing error: {ai_error}")
-                        ai_failed += 1
+                        logger.warning(f"⚠️ AI failed for order {index+1}: {ai_error}")
+                        ai_stats['failed'] += 1
                 
-                processed_orders.append(processed_order)
+                if current_order:
+                    processed_orders.append(current_order)
                 
-                # Small delay to avoid overwhelming the system
-                if i < len(raw_orders) - 1:
+                # Small delay for AI processing
+                if index < len(raw_orders) - 1 and with_ai:
                     await asyncio.sleep(0.1)
-                    
-            except Exception as order_error:
-                logger.error(f"❌ Error processing order {i+1}: {order_error}")
+                
+            except Exception as processing_error:
+                logger.error(f"❌ Failed to process order {index+1}: {processing_error}")
+                if order:
+                    processed_orders.append(order)
                 continue
         
-        # Step 3: Save to database if enabled
-        orders_saved = 0
-        if save_to_db:
+        logger.info(f"✅ Processing complete: {len(processed_orders)} orders")
+        if with_ai:
+            logger.info(f"🤖 AI Stats: {ai_stats['successful']} successful, {ai_stats['failed']} failed")
+        
+        # Step 3: Save to database
+        saved_count = 0
+        if save_to_db and len(processed_orders) > 0:
             try:
-                # Import the database save function
                 from executive_orders_db import save_executive_orders_to_db
                 
-                logger.info(f"💾 Saving {len(processed_orders)} orders to database")
-                result = save_executive_orders_to_db(processed_orders)
+                logger.info(f"💾 Saving {len(processed_orders)} orders to database...")
+                save_result = save_executive_orders_to_db(processed_orders)
                 
-                if isinstance(result, dict):
-                    orders_saved = result.get('total_processed', 0)
-                    logger.info(f"✅ Saved {orders_saved} orders to database")
+                if isinstance(save_result, dict):
+                    saved_count = save_result.get('total_processed', 0)
                 else:
-                    orders_saved = result
-                    logger.info(f"✅ Saved {orders_saved} orders to database")
+                    saved_count = int(save_result) if save_result else 0
+                    
+                logger.info(f"✅ Database save complete: {saved_count} orders saved")
                     
             except ImportError:
                 logger.error("❌ Database module not available")
             except Exception as db_error:
-                logger.error(f"❌ Database save error: {db_error}")
+                logger.error(f"❌ Database save failed: {db_error}")
         
         return {
             'success': True,
             'results': processed_orders,
             'count': len(processed_orders),
-            'orders_saved': orders_saved,
+            'orders_saved': saved_count,
             'total_found': fetch_result.get('total_found', len(processed_orders)),
             'ai_analysis_enabled': with_ai,
-            'ai_successful': ai_successful,
-            'ai_failed': ai_failed,
+            'ai_successful': ai_stats['successful'],
+            'ai_failed': ai_stats['failed'],
+            'ai_skipped': ai_stats['skipped'],
             'date_range_used': f"{start_date} to {end_date}",
-            'message': f'Successfully processed {len(processed_orders)} Executive Orders'
+            'unlimited_fetch_used': True,
+            'skipped_orders': fetch_result.get('skipped', 0),
+            'processing_method': 'production_pipeline_v5_fixed',
+            'message': f'Pipeline complete: {len(processed_orders)} orders processed, {saved_count} saved'
         }
         
-    except Exception as e:
-        logger.error(f"❌ Error in fetch_executive_orders_simple_integration: {e}")
+    except Exception as pipeline_error:
+        logger.error(f"❌ Pipeline error: {pipeline_error}")
         return {
             'success': False,
-            'error': str(e),
+            'error': str(pipeline_error),
             'results': [],
             'count': 0,
-            'message': f'Error fetching executive orders: {str(e)}'
+            'message': f'Pipeline failed: {str(pipeline_error)}'
         }
 
-# ===============================
-# HELPER FUNCTIONS
-# ===============================
-
+def fetch_all_executive_orders_simple() -> Dict:
+    """Fetch all executive orders"""
+    logger.info("🚀 Fetching ALL Executive Orders")
+    
+    api_client = SimpleExecutiveOrders()
+    result = api_client.fetch_executive_orders_direct(
+        start_date="01/20/2025",
+        end_date=None,
+        limit=None
+    )
+    
+    if result.get('success'):
+        count = result.get('count', 0)
+        total = result.get('total_found', 0)
+        logger.info(f"✅ Fetch complete: {count} orders processed from {total} available")
+    else:
+        logger.error(f"❌ Fetch failed: {result.get('error', 'Unknown error')}")
+    
+    return result
 
 def check_executive_orders_table():
-    """Check if the executive_orders table exists and get its structure"""
+    """Check if table exists"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Check if executive_orders table exists
         cursor.execute("""
             SELECT COUNT(*) 
             FROM INFORMATION_SCHEMA.TABLES 
@@ -323,241 +448,65 @@ def check_executive_orders_table():
         table_exists = cursor.fetchone()[0] > 0
         
         if table_exists:
-            logger.info("✅ dbo.executive_orders table exists")
-            
-            # Get table structure
             cursor.execute("""
-                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
+                SELECT COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
                 ORDER BY ORDINAL_POSITION
             """)
             
-            columns = cursor.fetchall()
-            logger.debug("📊 Table structure:")
-            for col in columns:
-                length_info = f"({col[3]})" if col[3] else ""
-                logger.debug(f"   {col[0]}: {col[1]}{length_info}, nullable: {col[2]}")
+            columns = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            conn.close()
             
-            cursor.close()
-            conn.close()
-            return True, [col[0] for col in columns]
+            logger.info(f"✅ executive_orders table verified: {len(columns)} columns")
+            return True, columns
         else:
-            logger.error("❌ dbo.executive_orders table does not exist")
             cursor.close()
             conn.close()
+            logger.warning("⚠️ executive_orders table not found")
             return False, []
-        
+            
     except Exception as e:
-        logger.error(f"❌ Error checking executive_orders table: {e}")
+        logger.error(f"❌ Table check error: {e}")
         return False, []
 
-
-
-
-# NOTE: check alchemy here
-def get_date_range_for_period(period: str) -> tuple:
-    """Get start and end dates for different time periods in MM/DD/YYYY format"""
-    today = datetime.now()
-    
-    if period == "inauguration":
-        start_date = "01/20/2025"
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "last_90_days":
-        start_date = (today - timedelta(days=90)).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "last_30_days":
-        start_date = (today - timedelta(days=30)).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "last_7_days":
-        start_date = (today - timedelta(days=7)).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "this_week":
-        start_date = (today - timedelta(days=today.weekday())).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    elif period == "this_month":
-        start_date = today.replace(day=1).strftime('%m/%d/%Y')
-        end_date = today.strftime('%m/%d/%Y')
-    else:
-        start_date = "01/20/2025"
-        end_date = today.strftime('%m/%d/%Y')
-    
-    return start_date, end_date
-
-def fetch_all_executive_orders_simple() -> Dict:
-    """Simple function to fetch ALL 161+ executive orders without any limits"""
-    logger.info("🚀 Fetching ALL Executive Orders from Trump administration")
-    
-    simple_eo = SimpleExecutiveOrders()
-    
-    result = simple_eo.fetch_executive_orders_direct(
-        start_date="01/20/2025",
-        end_date=None,
-        limit=None
-    )
-    
-    if result.get('success'):
-        logger.info(f"✅ Successfully fetched {result.get('count', 0)} executive orders")
-        logger.info(f"📊 Total found by API: {result.get('total_found', 0)}")
-        logger.info(f"📄 Pages fetched: {result.get('pages_fetched', 1)}")
-    else:
-        logger.error(f"❌ Failed to fetch executive orders: {result.get('error', 'Unknown error')}")
-    
-    return result
-
-# ===============================
-# TEST FUNCTIONS
-# ===============================
-
-# NOTE: check alchemy here
-async def test_database_integration():
-    """Test database functions"""
+async def get_federal_register_count_lightweight(simple_eo_instance):
+    """Get count from Federal Register"""
     try:
-        print("🧪 Testing database integration...")
+        base_params = {
+            'conditions[correction]': '0',
+            'conditions[president]': 'donald-trump',
+            'conditions[presidential_document_type]': 'executive_order',
+            'conditions[signing_date][gte]': "2025-01-20",
+            'conditions[signing_date][lte]': datetime.now().strftime('%Y-%m-%d'),
+            'conditions[type][]': 'PRESDOCU',
+            'per_page': '1',
+            'fields[]': ['document_number']
+        }
         
-        # Test connection
-        conn = get_db_connection()
-        conn.close()
-        print("✅ Database connection works")
+        url = simple_eo_instance.federal_register_api_url
+        response = simple_eo_instance.session.get(url, params=base_params, timeout=30)
         
-        # Test table check
-        exists, columns = check_executive_orders_table()
-        print(f"✅ executive_orders table exists: {exists}")
-        if columns:
-            print(f"✅ Table has {len(columns)} columns")
-        
-        return exists
+        if response.status_code == 200:
+            data = response.json()
+            total_count = data.get('count', 0)
+            logger.info(f"📊 Federal Register count: {total_count}")
+            return total_count
+        else:
+            logger.error(f"❌ Federal Register API error: {response.status_code}")
+            return 0
+            
     except Exception as e:
-        print(f"❌ Database test failed: {e}")
-        return False
+        logger.error(f"❌ Count check error: {e}")
+        return 0
 
-async def test_federal_register_direct():
-    """Test the direct Federal Register API fetch with comprehensive output"""
-    print("🧪 Testing Federal Register API - Direct URL with Pagination\n")
-    print("=" * 60)
-    
-    result = await fetch_executive_orders_simple_integration(
-        start_date="01/20/2025",
-        end_date=None,
-        with_ai=False,
-        save_to_db=True
-    )
-    
-    print(f"📊 Test Results:")
-    print(f"   Success: {result.get('success')}")
-    print(f"   Count: {result.get('count', 0)}")
-    print(f"   Orders Saved: {result.get('orders_saved', 0)}")
-    print(f"   Orders Skipped: {result.get('orders_skipped', 0)}")
-    print(f"   Total Found: {result.get('total_found', 0)}")
-    print(f"   Date Range: {result.get('date_range_used', 'Unknown')}")
-    
-    if result.get('success') and result.get('results'):
-        print(f"\n📋 Sample Executive Orders:")
-        print("-" * 60)
-        for i, order in enumerate(result['results'][:5], 1):
-            print(f"{i}. EO #{order.get('eo_number')}: {order.get('title', 'No title')[:70]}...")
-            print(f"   📅 Signing Date: {order.get('signing_date', 'Unknown')}")
-            print(f"   📂 Source: {order.get('source', 'Unknown')}")
-            print()
-    
-    print("=" * 60)
-    print("🏁 Test completed")
-
-
-# FIXED: Replace this function in simple_executive_orders.py
 async def get_database_count_existing():
-    """FIXED: Get accurate database count that matches what the main API returns"""
+    """Get database count"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        logger.info("🔍 FIXED: Getting database count...")
-        
-        # Use the SAME query logic as your main get_executive_orders_from_db function
-        # This should match exactly what shows up on your page
-        
-        # First, let's check what queries work
-        test_queries = [
-            ("Total rows", "SELECT COUNT(*) FROM dbo.executive_orders"),
-            ("All with president", "SELECT COUNT(*) FROM dbo.executive_orders WHERE president IS NOT NULL"),
-            ("Donald Trump exact", "SELECT COUNT(*) FROM dbo.executive_orders WHERE president = 'Donald Trump'"),
-            ("donald-trump exact", "SELECT COUNT(*) FROM dbo.executive_orders WHERE president = 'donald-trump'"),
-            ("Trump lowercase", "SELECT COUNT(*) FROM dbo.executive_orders WHERE LOWER(president) LIKE '%trump%'"),
-            ("Any president like trump", "SELECT COUNT(*) FROM dbo.executive_orders WHERE president LIKE '%trump%'"),
-            ("No president filter", "SELECT COUNT(*) FROM dbo.executive_orders WHERE id IS NOT NULL")
-        ]
-        
-        counts = {}
-        for name, query in test_queries:
-            try:
-                cursor.execute(query)
-                count = cursor.fetchone()[0]
-                counts[name] = count
-                logger.info(f"📊 {name}: {count}")
-            except Exception as e:
-                logger.error(f"❌ Query failed '{name}': {e}")
-                counts[name] = 0
-        
-        # Check what president values actually exist
-        cursor.execute("SELECT DISTINCT president FROM dbo.executive_orders")
-        presidents = [row[0] for row in cursor.fetchall()]
-        logger.info(f"📊 Available president values: {presidents}")
-        
-        # Use the count that matches your main API (which returns 162)
-        # Since your main API returns 162, we should use that same logic
-        
-        # Try the most likely correct query based on your main API
-        final_query = "SELECT COUNT(*) FROM dbo.executive_orders"
-        
-        # If you have president filtering in your main API, we need to match it
-        # But since your main API returns 162 and total is 162, it's likely no president filter
-        
-        cursor.execute(final_query)
-        final_count = cursor.fetchone()[0]
-        
-        logger.info(f"✅ FIXED: Using final count: {final_count}")
-        logger.info(f"📊 This should match your main API count of 162")
-        
-        cursor.close()
-        conn.close()
-        
-        return final_count
-        
-    except Exception as e:
-        logger.error(f"❌ FIXED: Error getting database count: {e}")
-        return 0
-
-# NOTE: check alchemy here
-async def get_database_count_existing_simple():
-    """SIMPLE FIX: Just count all executive orders (matches your main API)"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Simple count that should match your main API
-        cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
-        count = cursor.fetchone()[0]
-        
-        logger.info(f"📊 SIMPLE FIX: Database count: {count}")
-        
-        cursor.close()
-        conn.close()
-        
-        return count
-        
-    except Exception as e:
-        logger.error(f"❌ SIMPLE FIX: Error getting database count: {e}")
-        return 0
-
-
-# Alternative simpler version if the above is too verbose:
-async def get_database_count_simple():
-    """Simplified database count - just count all Trump orders"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Simple count of all Trump executive orders
         cursor.execute("""
             SELECT COUNT(*) 
             FROM dbo.executive_orders 
@@ -568,83 +517,30 @@ async def get_database_count_simple():
         cursor.close()
         conn.close()
         
-        logger.info(f"📊 Simple database count: {count} Trump executive orders")
+        logger.info(f"📊 Database count: {count}")
         return count
         
     except Exception as e:
-        logger.error(f"❌ Error getting simple database count: {e}")
-        return 0
-
-
-async def get_federal_register_count_lightweight(simple_eo_instance):
-    """Get accurate Federal Register count with better error handling"""
-    try:
-        # Use exact same parameters as the main fetch to ensure consistency
-        base_params = {
-            'conditions[correction]': '0',
-            'conditions[president]': 'donald-trump',
-            'conditions[presidential_document_type]': 'executive_order',
-            'conditions[publication_date][gte]': "2025-01-20",  # Trump inauguration
-            'conditions[publication_date][lte]': datetime.now().strftime('%Y-%m-%d'),
-            'conditions[type][]': 'PRESDOCU',
-            'per_page': '1',  # We only need the count
-            'fields[]': ['document_number']  # Minimal field to reduce response size
-        }
-        
-        url = f"{simple_eo_instance.base_url}/documents.json"
-        response = simple_eo_instance.session.get(url, params=base_params, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            total_count = data.get('count', 0)
-            logger.info(f"📊 Federal Register API reports: {total_count} total executive orders")
-            return total_count
-        else:
-            logger.error(f"❌ Federal Register API error: {response.status_code}")
-            return 0
-            
-    except Exception as e:
-        logger.error(f"❌ Error in Federal Register count check: {e}")
+        logger.error(f"❌ Database count error: {e}")
         return 0
 
 async def check_executive_orders_count_integration():
-    """
-    Fixed integration function for accurate count checking
-    """
+    """Check counts and compare"""
     try:
-        logger.info("🔍 Starting executive orders count check...")
+        logger.info("🔍 Starting count check...")
         
         simple_eo = SimpleExecutiveOrders()
         
-        # Get Federal Register count
         federal_count = await get_federal_register_count_lightweight(simple_eo)
-        logger.info(f"📊 Federal Register count: {federal_count}")
-        
-        # Get database count
         database_count = await get_database_count_existing()
-        logger.info(f"📊 Database count: {database_count}")
         
-        # Calculate the difference
         new_orders_available = max(0, federal_count - database_count)
         needs_fetch = new_orders_available > 0
         
-        # Enhanced logging for debugging
-        logger.info(f"📊 Count comparison:")
-        logger.info(f"   Federal Register: {federal_count}")
-        logger.info(f"   Database: {database_count}")
-        logger.info(f"   Difference: {new_orders_available}")
-        logger.info(f"   Needs fetch: {needs_fetch}")
-        
-        # Determine appropriate message
         if needs_fetch:
-            message = f"Found {new_orders_available} new executive orders available for fetch"
+            message = f"Found {new_orders_available} new executive orders available"
         else:
-            if federal_count == database_count:
-                message = "Database is up to date - all orders synchronized"
-            elif database_count > federal_count:
-                message = f"Database has {database_count - federal_count} more orders than Federal Register (possible data cleanup needed)"
-            else:
-                message = "Database is up to date"
+            message = "Database is up to date"
         
         return {
             "success": True,
@@ -653,16 +549,11 @@ async def check_executive_orders_count_integration():
             "new_orders_available": new_orders_available,
             "needs_fetch": needs_fetch,
             "last_checked": datetime.now().isoformat(),
-            "message": message,
-            "debug_info": {
-                "federal_api_working": federal_count > 0,
-                "database_accessible": database_count >= 0,
-                "calculation": f"{federal_count} - {database_count} = {new_orders_available}"
-            }
+            "message": message
         }
         
     except Exception as e:
-        logger.error(f"❌ Error in count check integration: {e}")
+        logger.error(f"❌ Count check error: {e}")
         return {
             "success": False,
             "error": str(e),
@@ -670,101 +561,71 @@ async def check_executive_orders_count_integration():
             "database_count": 0,
             "new_orders_available": 0,
             "needs_fetch": False,
-            "last_checked": datetime.now().isoformat(),
-            "message": f"Error checking for updates: {str(e)}"
+            "message": f"Error: {str(e)}"
         }
 
-# Additional helper function to debug the count discrepancy
-async def debug_count_discrepancy():
-    """Debug function to understand why counts might not match"""
+# Test functions
+async def test_database_integration():
+    """Test database"""
     try:
+        print("🧪 Testing database...")
         conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get detailed breakdown of database contents
-        queries = {
-            "total_rows": "SELECT COUNT(*) FROM dbo.executive_orders",
-            "trump_rows": "SELECT COUNT(*) FROM dbo.executive_orders WHERE president = 'donald-trump'",
-            "valid_eo_numbers": """
-                SELECT COUNT(*) FROM dbo.executive_orders 
-                WHERE president = 'donald-trump' 
-                AND eo_number IS NOT NULL 
-                AND eo_number != '' 
-                AND eo_number != 'Unknown'
-                AND eo_number NOT LIKE 'DOC-%'
-                AND eo_number NOT LIKE 'ERROR-%'
-            """,
-            "has_document_number": """
-                SELECT COUNT(*) FROM dbo.executive_orders 
-                WHERE president = 'donald-trump' 
-                AND document_number IS NOT NULL 
-                AND document_number != ''
-            """,
-            "duplicate_eo_numbers": """
-                SELECT eo_number, COUNT(*) as count
-                FROM dbo.executive_orders 
-                WHERE president = 'donald-trump'
-                AND eo_number IS NOT NULL
-                GROUP BY eo_number
-                HAVING COUNT(*) > 1
-            """
-        }
-        
-        debug_info = {}
-        for name, query in queries.items():
-            if name == "duplicate_eo_numbers":
-                cursor.execute(query)
-                duplicates = cursor.fetchall()
-                debug_info[name] = [(eo_num, count) for eo_num, count in duplicates]
-            else:
-                cursor.execute(query)
-                debug_info[name] = cursor.fetchone()[0]
-        
-        # Sample of recent entries
-        cursor.execute("""
-            SELECT TOP 5 eo_number, document_number, title, created_at
-            FROM dbo.executive_orders 
-            WHERE president = 'donald-trump'
-            ORDER BY created_at DESC
-        """)
-        recent_entries = cursor.fetchall()
-        debug_info["recent_entries"] = [
-            {
-                "eo_number": entry[0],
-                "document_number": entry[1], 
-                "title": entry[2][:50] if entry[2] else "No title",
-                "created_at": entry[3].isoformat() if entry[3] else "No date"
-            }
-            for entry in recent_entries
-        ]
-        
-        cursor.close()
         conn.close()
+        print("✅ Database works")
         
-        logger.info("🔍 Database debug information:")
-        for key, value in debug_info.items():
-            logger.info(f"   {key}: {value}")
+        exists, columns = check_executive_orders_table()
+        print(f"✅ Table exists: {exists}")
+        if columns:
+            print(f"✅ Columns: {len(columns)}")
         
-        return debug_info
-        
+        return exists
     except Exception as e:
-        logger.error(f"❌ Error in debug count discrepancy: {e}")
-        return {"error": str(e)}
+        print(f"❌ Database test failed: {e}")
+        return False
+
+async def test_federal_register_direct():
+    """Test pipeline"""
+    print("🧪 Testing Pipeline")
+    print("=" * 60)
+    
+    result = await fetch_executive_orders_simple_integration(
+        start_date="01/20/2025",
+        end_date=None,
+        with_ai=False,
+        save_to_db=True
+    )
+    
+    print(f"📊 Results:")
+    print(f"   Success: {result.get('success')}")
+    print(f"   Count: {result.get('count', 0)}")
+    print(f"   Saved: {result.get('orders_saved', 0)}")
+    print(f"   Total: {result.get('total_found', 0)}")
+    
+    if result.get('success') and result.get('results'):
+        print(f"\n📋 Sample Orders:")
+        for i, order in enumerate(result['results'][:3], 1):
+            eo_num = order.get('eo_number', 'N/A')
+            title = order.get('title', 'No title')[:50] + "..."
+            date = order.get('signing_date', 'Unknown')
+            print(f"{i}. EO #{eo_num}: {title}")
+            print(f"   📅 Signed: {date}")
+    
+    print("🏁 Test Complete")
 
 if __name__ == "__main__":
-    print("🚀 Executive Orders Fetcher - Complete Version with Database Integration")
-    print("=" * 70)
+    import asyncio
     
-    # Set up logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(levelname)s:%(name)s:%(message)s'
     )
     
-    # Test database integration
-    asyncio.run(test_database_integration())
+    print("🚀 Testing Executive Orders Integration")
+    print("=" * 70)
     
-    print("\n" + "=" * 70)
+    async def run_tests():
+        await test_database_integration()
+        print("\n" + "=" * 70)
+        await test_federal_register_direct()
     
-    # Test the full system
-    asyncio.run(test_federal_register_direct())
+    asyncio.run(run_tests())

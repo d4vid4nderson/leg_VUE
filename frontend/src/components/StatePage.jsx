@@ -1,4 +1,4 @@
-// Complete StatePage.jsx with all original functionality plus FilterDropdown component matching ExecutiveOrdersPage
+// Complete StatePage.jsx with all original functionality plus EditableCategoryTag integration
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -32,6 +32,7 @@ import {
 import useReviewStatus from '../hooks/useReviewStatus';
 import FilterDropdown from '../components/FilterDropdown';
 import ShimmerLoader from '../components/ShimmerLoader';
+import EditableCategoryTag from './EditableCategoryTag';
 import API_URL from '../config/api';
 
 // Pagination configuration
@@ -95,58 +96,6 @@ const ScrollToTopButton = () => {
         </button>
     );
 };
-
-// Create a custom CategoryTag component that handles not-applicable and uses FILTER icons
-const CustomCategoryTag = ({ category }) => {
-    const cleanedCategory = cleanCategory(category);
-
-    // Find the matching filter to get the icon
-    const matchingFilter = FILTERS.find(filter => filter.key === cleanedCategory);
-    const IconComponent = matchingFilter?.icon || AlertTriangle; // Default to AlertTriangle for not-applicable
-
-    const getCategoryStyle = (cat) => {
-        switch (cat) {
-            case 'civic':
-                return 'bg-blue-100 text-blue-800';
-            case 'education':
-                return 'bg-orange-100 text-orange-800';
-            case 'engineering':
-                return 'bg-green-100 text-green-800';
-            case 'healthcare':
-                return 'bg-red-100 text-red-800';
-            case 'not-applicable':
-                return 'bg-gray-100 text-gray-800';
-            default:
-                return 'bg-gray-100 text-gray-800';
-        }
-    };
-
-    const getCategoryLabel = (cat) => {
-        // First try to get label from FILTERS
-        const matchingFilter = FILTERS.find(filter => filter.key === cat);
-        if (matchingFilter) {
-            return matchingFilter.label;
-        }
-
-        // Fallback labels
-        switch (cat) {
-            case 'civic': return 'Civic';
-            case 'education': return 'Education';
-            case 'engineering': return 'Engineering';
-            case 'healthcare': return 'Healthcare';
-            case 'not-applicable': return 'Not Applicable';
-            default: return 'General';
-        }
-    };
-
-    return (
-        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getCategoryStyle(cleanedCategory)}`}>
-            <IconComponent size={12} />
-            {getCategoryLabel(cleanedCategory)}
-        </span>
-    );
-};
-
 
 // Function to clean and validate status values - only allow specific statuses
 const cleanStatus = (status) => {
@@ -239,7 +188,6 @@ const cleanCategory = (category) => {
 
     return validCategories.includes(mappedCategory) ? mappedCategory : 'not-applicable';
 };
-
 
 // Category-specific styling for fetch status bar
 const getCategoryStyles = (category) => {
@@ -402,7 +350,7 @@ const PaginationControls = ({
 
 const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) => {
     // Core state
-    const [stateOrders, setStateOrders] = useState([]);
+    const [allBills, setAllBills] = useState([]);
     const [stateLoading, setStateLoading] = useState(false);
     const [stateError, setStateError] = useState(null);
     const [stateSearchTerm, setStateSearchTerm] = useState('');
@@ -413,6 +361,9 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
+
+    // ADD THIS LINE: Copy feedback state
+    const [copiedBills, setCopiedBills] = useState(new Set());
 
     // ✅ NEW: PAGINATION STATE (copied from ExecutiveOrdersPage)
     const [pagination, setPagination] = useState({
@@ -439,7 +390,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         isItemReviewed,
         isItemReviewLoading,
         reviewCounts
-    } = useReviewStatus(stateOrders, 'state_legislation');
+    } = useReviewStatus(allBills, 'state_legislation');
 
     // Highlights state - Local state for immediate UI feedback
     const [localHighlights, setLocalHighlights] = useState(new Set());
@@ -540,6 +491,74 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         // Last resort
         return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
     }, [stateName]);
+
+    // ✅ NEW: Category Update Handler Function
+    const handleCategoryUpdate = useCallback(async (itemId, newCategory, itemType) => {
+        try {
+            console.log(`🔄 Updating category for ${itemType} ${itemId} to ${newCategory}`);
+            
+            // Update the local state immediately for responsive UI
+            setAllBills(prevBills => 
+                prevBills.map(bill => {
+                    const currentBillId = getStateBillId(bill);
+                    if (currentBillId === itemId) {
+                        return { ...bill, category: newCategory };
+                    }
+                    return bill;
+                })
+            );
+
+            // Determine the correct API endpoint
+            const endpoint = `${API_URL}/api/state-legislation/${itemId}/category`;
+
+            // Make API call to update the database
+            const response = await fetch(endpoint, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    category: newCategory
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.success) {
+                console.log(`✅ Category successfully updated in database`);
+                
+                // Refresh filter counts
+                fetchExistingData();
+            } else {
+                throw new Error(result.message || 'Update failed');
+            }
+
+        } catch (error) {
+            console.error('❌ Failed to update category:', error);
+            
+            // Revert the local state change on error
+            setAllBills(prevBills => 
+                prevBills.map(bill => {
+                    const currentBillId = getStateBillId(bill);
+                    if (currentBillId === itemId) {
+                        // Revert to original category
+                        return { ...bill, category: bill.originalCategory || 'civic' };
+                    }
+                    return bill;
+                })
+            );
+            
+            // Show error message to user
+            setStateError(`Failed to update category: ${error.message}`);
+            setTimeout(() => setStateError(null), 5000);
+            
+            throw error;
+        }
+    }, [getStateBillId]);
 
     // Expand/collapse functions for AI content
     const toggleBillExpansion = useCallback((bill) => {
@@ -888,7 +907,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 });
 
                 // ✅ SET STATE: Update orders and pagination with proper count
-                setStateOrders(transformedBills);
+                setAllBills(transformedBills);
                 setPagination({
                     page: pageNum,
                     per_page: perPage,
@@ -978,7 +997,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             console.log(`🔍 Transformed ${transformedBills.length} bills`);
 
             // ✅ SET STATE: Update orders and pagination
-            setStateOrders(transformedBills);
+            setAllBills(transformedBills);
             setPagination({
                 page: currentPage,
                 per_page: perPage,
@@ -997,7 +1016,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             setStateError(`Failed to load state legislation: ${err.message}`);
             setFetchStatus(`❌ Error: ${err.message}`);
             setTimeout(() => setFetchStatus(null), 5000);
-            setStateOrders([]);
+            setAllBills([]);
             setHasData(false);
         } finally {
             setStateLoading(false);
@@ -1092,7 +1111,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             }
 
             // Get reviewed counts from current data
-            const reviewedCount = stateOrders.filter(bill => isItemReviewed(bill)).length;
+            const reviewedCount = allBills.filter(bill => isItemReviewed(bill)).length;
 
             const newFilterCounts = {
                 ...categoryCounts,
@@ -1110,11 +1129,11 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             // Enhanced fallback using current page data
             const fallbackCounts = {};
             FILTERS.forEach(filter => {
-                fallbackCounts[filter.key] = stateOrders.filter(order => cleanCategory(order?.category) === filter.key).length;
+                fallbackCounts[filter.key] = allBills.filter(order => cleanCategory(order?.category) === filter.key).length;
             });
 
-            const total = pagination.count || stateOrders.length || 0; // Use pagination total if available
-            const reviewed = stateOrders.filter(order => isItemReviewed(order)).length;
+            const total = pagination.count || allBills.length || 0; // Use pagination total if available
+            const reviewed = allBills.filter(order => isItemReviewed(order)).length;
 
             console.log('📊 Using fallback counts with pagination total:', total);
 
@@ -1125,7 +1144,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 total: total
             });
         }
-    }, [stateOrders, stateName, pagination.count, isItemReviewed]);
+    }, [allBills, stateName, pagination.count, isItemReviewed]);
 
     // 🔍 NEW: Get ALL filtered data, not just paginated results
     const fetchAllFilteredData = useCallback(async (filters, search) => {
@@ -1440,7 +1459,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             if (totalFilteredCount === 0) {
                 console.log('🔍 No filtered results found');
-                setStateOrders([]);
+                setAllBills([]);
                 setPagination({
                     page: 1,
                     per_page: 25,
@@ -1466,7 +1485,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             const totalPages = Math.ceil(totalFilteredCount / perPage);
 
             // Update state with paginated results but correct total count
-            setStateOrders(paginatedOrders);
+            setAllBills(paginatedOrders);
             setPagination({
                 page: pageNum,
                 per_page: perPage,
@@ -1485,7 +1504,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             setStateError(`Failed to filter state legislation: ${err.message}`);
             setFetchStatus(`❌ Filter error: ${err.message}`);
             setTimeout(() => setFetchStatus(null), 5000);
-            setStateOrders([]);
+            setAllBills([]);
             setHasData(false);
         } finally {
             setStateLoading(false);
@@ -1588,29 +1607,29 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 // Fallback to current data
                 const fallbackCounts = {};
                 FILTERS.forEach(filter => {
-                    fallbackCounts[filter.key] = stateOrders.filter(bill => cleanCategory(bill?.category) === filter.key).length;
+                    fallbackCounts[filter.key] = allBills.filter(bill => cleanCategory(bill?.category) === filter.key).length;
                 });
 
-                const reviewed = stateOrders.filter(bill => isItemReviewed(bill)).length;
+                const reviewed = allBills.filter(bill => isItemReviewed(bill)).length;
 
                 setAllFilterCounts({
                     ...fallbackCounts,
                     reviewed: reviewed,
-                    not_reviewed: Math.max(0, stateOrders.length - reviewed),
-                    total: stateOrders.length
+                    not_reviewed: Math.max(0, allBills.length - reviewed),
+                    total: allBills.length
                 });
             }
         } catch (error) {
             console.error('❌ Error updating filter counts:', error);
         }
-    }, [stateName, fetchFilterCounts, stateOrders, isItemReviewed]);
+    }, [stateName, fetchFilterCounts, allBills, isItemReviewed]);
 
     // Update filter counts when filters or search changes
     useEffect(() => {
-        if (stateOrders.length > 0) {
+        if (allBills.length > 0) {
             updateFilterCounts(selectedFilters, stateSearchTerm);
         }
-    }, [selectedFilters, stateSearchTerm, stateOrders.length, updateFilterCounts]);
+    }, [selectedFilters, stateSearchTerm, allBills.length, updateFilterCounts]);
 
     // UPDATED: Load existing highlights on component mount - using same pattern as ExecutiveOrdersPage
     useEffect(() => {
@@ -1654,7 +1673,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
     // ALSO load highlights when state orders are loaded
     useEffect(() => {
-        if (stateOrders.length > 0) {
+        if (allBills.length > 0) {
             const loadExistingHighlights = async () => {
                 try {
                     const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
@@ -1685,7 +1704,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             loadExistingHighlights();
         }
-    }, [stateOrders.length]);
+    }, [allBills.length]);
 
     // 🚀 NEW: AUTO-LOAD: Auto-load data from database on component mount
     useEffect(() => {
@@ -1700,7 +1719,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 } catch (err) {
                     console.error('❌ Auto-load failed:', err);
                     // Don't show error for auto-load failure, just log it
-                    setStateOrders([]);
+                    setAllBills([]);
                     setHasData(false);
                 }
             };
@@ -1728,7 +1747,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             const newStatus = await toggleReviewStatus(bill);
 
             // Update the local state to reflect the change immediately
-            setStateOrders(prevOrders =>
+            setAllBills(prevOrders =>
                 prevOrders.map(order =>
                     (order.id === bill.id || order.bill_id === bill.bill_id)
                         ? { ...order, reviewed: newStatus }
@@ -1909,13 +1928,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     }, []);
 
     // Fetch existing data on component mount
-    useEffect(() => {
-        if (stateName && SUPPORTED_STATES[stateName]) {
-            fetchExistingData();
-        }
-    }, [stateName]);
-
-    const fetchExistingData = async () => {
+    const fetchExistingData = useCallback(async () => {
         setStateLoading(true);
         setStateError(null);
 
@@ -1976,6 +1989,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                     ai_potential_impact: bill?.ai_potential_impact,
                     introduced_date: bill?.introduced_date,
                     last_action_date: bill?.last_action_date,
+                    reviewed: bill?.reviewed || false,
 
                     // Highlights page compatibility
                     executive_order_number: bill?.bill_number || uniqueId,
@@ -1996,17 +2010,17 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             });
 
             console.log('🔍 Transformed bills:', transformedBills.length, 'bills');
-            setStateOrders(transformedBills);
+            setAllBills(transformedBills);
             setHasData(transformedBills.length > 0);
         } catch (error) {
             console.error('❌ Error fetching existing state legislation:', error);
             setStateError(error.message);
             setHasData(false);
-            setStateOrders([]);
+            setAllBills([]);
         } finally {
             setStateLoading(false);
         }
-    };
+    }, [stateName, getStateBillId]);
 
     // Enhanced topic-based fetch function with category tracking
     const handleQuickFetchByTopic = async (topic, description) => {
@@ -2057,11 +2071,11 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     };
 
     const filteredStateOrders = useMemo(() => {
-        if (!Array.isArray(stateOrders)) {
+        if (!Array.isArray(allBills)) {
             return [];
         }
 
-        let filtered = stateOrders;
+        let filtered = allBills;
 
         // Apply category filters
         const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed', 'all_practice_areas'].includes(f));
@@ -2110,8 +2124,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         });
 
         return filtered;
-    }, [stateOrders, selectedFilters, stateSearchTerm, getStateBillId, isItemReviewed]);
-
+    }, [allBills, selectedFilters, stateSearchTerm, getStateBillId, isItemReviewed]);
 
     // Pagination calculations
     const totalItems = filteredStateOrders.length;
@@ -2119,7 +2132,6 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const currentPageItems = filteredStateOrders.slice(startIndex, endIndex);
-
 
     // Get dynamic styles for fetch status bar
     const fetchStatusStyles = getCategoryStyles(lastFetchedCategory);
@@ -2214,7 +2226,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                         {stateSearchTerm && (
                             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                                 <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                                    {stateOrders.length} found
+                                    {allBills.length} found
                                 </span>
                             </div>
                         )}
@@ -2398,10 +2410,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                         <div key={bill.id || index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
                                             {/* Bill Header */}
                                             <div className="flex items-start justify-between px-6 pt-6 pb-2">
-                                                <div
-                                                    className="flex-1 pr-4 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2"
-                                                    onClick={() => toggleBillExpansion(bill)}
-                                                >
+                                                <div className="flex-1">
                                                     <h3 className="text-lg font-semibold text-gray-900 mb-3">
                                                         {reverseNumber}. {cleanBillTitle(bill.title)}
                                                     </h3>
@@ -2431,7 +2440,15 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                             {bill.status}
                                                         </span>
                                                         <span>-</span>
-                                                        <CustomCategoryTag category={bill.category} />
+                                                        {/* ✅ UPDATED: Replace CustomCategoryTag with EditableCategoryTag */}
+                                                        <EditableCategoryTag 
+                                                            category={bill.category}
+                                                            itemId={getStateBillId(bill)}
+                                                            itemType="state_legislation"
+                                                            onCategoryChange={handleCategoryUpdate}
+                                                            disabled={stateLoading}
+                                                            isUpdating={false}
+                                                        />
                                                         <span>-</span>
                                                         <ReviewStatusTag isReviewed={isReviewed} />
                                                     </div>
@@ -2518,7 +2535,6 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                             {/* AI Summary - Always show if available */}
                                             {bill.summary && bill.summary !== 'No AI summary available' && (
                                                 <div className="mb-4 mt-2 mx-6">
-                                                    <div className="mb-4 mx-6">
                                                         <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
                                                             <div className="flex items-center gap-2 mb-2">
                                                                 <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
@@ -2539,8 +2555,8 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </div>
                                                 </div>
+
                                             )}
 
                                             {/* Expanded Content Section */}
@@ -2590,7 +2606,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                                     href={bill.legiscan_url}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 transition-all duration-300"
+                                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-all duration-300"
                                                                 >
                                                                     <ExternalLink size={16} />
                                                                     <span>View on LegiScan</span>
@@ -2598,7 +2614,11 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                             )}
                                                             <button
                                                                 type="button"
-                                                                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 transition-all duration-300"
+                                                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ${
+                                                                    copiedBills.has(billId) 
+                                                                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
                                                                 onClick={(e) => {
                                                                     e.preventDefault();
                                                                     e.stopPropagation();
@@ -2620,20 +2640,55 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                                         bill.legiscan_url ? 'LegiScan URL: ' + bill.legiscan_url : ''
                                                                     ].filter(line => line.length > 0).join('\n');
 
-                                                                    // Try to copy to clipboard
-                                                                    if (copyToClipboard && typeof copyToClipboard === 'function') {
-                                                                        copyToClipboard(billReport);
-                                                                        console.log('✅ Copied bill report to clipboard');
-                                                                    } else if (navigator.clipboard) {
-                                                                        navigator.clipboard.writeText(billReport).catch(console.error);
-                                                                        console.log('✅ Copied bill report to clipboard (fallback)');
-                                                                    } else {
-                                                                        console.log('❌ Copy to clipboard not available');
-                                                                    }
+                                                                    // Enhanced copy functionality with feedback
+                                                                    const copySuccess = async () => {
+                                                                        try {
+                                                                            if (copyToClipboard && typeof copyToClipboard === 'function') {
+                                                                                copyToClipboard(billReport);
+                                                                            } else if (navigator.clipboard) {
+                                                                                await navigator.clipboard.writeText(billReport);
+                                                                            } else {
+                                                                                // Fallback for older browsers
+                                                                                const textArea = document.createElement('textarea');
+                                                                                textArea.value = billReport;
+                                                                                document.body.appendChild(textArea);
+                                                                                textArea.select();
+                                                                                document.execCommand('copy');
+                                                                                document.body.removeChild(textArea);
+                                                                            }
+                                                                            
+                                                                            // Show copied state
+                                                                            setCopiedBills(prev => new Set([...prev, billId]));
+                                                                            console.log('✅ Copied bill report to clipboard');
+                                                                            
+                                                                            // Reset after 2 seconds
+                                                                            setTimeout(() => {
+                                                                                setCopiedBills(prev => {
+                                                                                    const newSet = new Set(prev);
+                                                                                    newSet.delete(billId);
+                                                                                    return newSet;
+                                                                                });
+                                                                            }, 2000);
+                                                                            
+                                                                        } catch (error) {
+                                                                            console.error('❌ Failed to copy to clipboard:', error);
+                                                                        }
+                                                                    };
+
+                                                                    copySuccess();
                                                                 }}
                                                             >
-                                                                <Copy size={16} />
-                                                                <span>Copy Details</span>
+                                                                {copiedBills.has(billId) ? (
+                                                                    <>
+                                                                        <Check size={16} />
+                                                                        <span>Copied</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Copy size={16} />
+                                                                        <span>Copy Details</span>
+                                                                    </>
+                                                                )}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -2687,7 +2742,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 <div className="mt-4 text-center">
                     <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
                         <span>
-                            {stateOrders.length === 0 ? 'No results' : `${pagination.count} total results`} for:
+                            {allBills.length === 0 ? 'No results' : `${pagination.count} total results`} for:
                             {selectedFilters.length > 0 && (
                                 <span className="font-medium ml-1">
                                     {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
