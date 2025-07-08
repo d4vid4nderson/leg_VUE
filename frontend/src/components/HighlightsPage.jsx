@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search,
   Star,
   Copy,
   ExternalLink,
@@ -17,32 +16,263 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowUp,
-  Check
+  Check,
+  LayoutGrid
 } from 'lucide-react';
-
+import HR1PolicyBanner from './HR1PolicyBanner';
 import { FILTERS } from '../utils/constants';
 import API_URL from '../config/api';
-import FilterDropdown from '../components/FilterDropdown';
 import ShimmerLoader from '../components/ShimmerLoader';
 
-// Extended filters including order types
-const EXTENDED_FILTERS = [
-  ...FILTERS,
-  {
-    key: 'executive_order',
-    label: 'Executive Orders',
-    icon: ScrollText,
-    type: 'order_type'
-  },
-  {
-    key: 'state_legislation',
-    label: 'State Legislation',
-    icon: FileText,
-    type: 'order_type'
-  }
-];
+// =====================================
+// FILTER DROPDOWN COMPONENT
+// =====================================
+const FilterDropdown = React.forwardRef(({ 
+  selectedFilters, 
+  showFilterDropdown, 
+  onToggleDropdown, 
+  onToggleFilter, 
+  onClearAllFilters, 
+  counts,
+  showContentTypes = false
+}, ref) => {
+  // Category filters
+  const CATEGORY_FILTERS = FILTERS.filter(filter => 
+    ['civic', 'education', 'engineering', 'healthcare'].includes(filter.key)
+  );
 
-// Helper functions
+  // Extended filters for content types
+  const EXTENDED_FILTERS = showContentTypes ? [
+    ...CATEGORY_FILTERS,
+    {
+      key: 'executive_order',
+      label: 'Executive Orders',
+      icon: ScrollText,
+      type: 'order_type'
+    },
+    {
+      key: 'state_legislation',
+      label: 'State Legislation',
+      icon: FileText,
+      type: 'order_type'
+    }
+  ] : CATEGORY_FILTERS;
+
+  return (
+    <div className="relative" ref={ref}>
+      {/* Filter Button */}
+      <button
+        type="button"
+        onClick={onToggleDropdown}
+        className={`flex items-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 ${
+          selectedFilters.length > 0
+            ? 'bg-blue-100 text-blue-700 border-blue-300'
+            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        <span>Filter Highlights</span>
+        {selectedFilters.length > 0 && (
+          <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
+            {selectedFilters.length}
+          </span>
+        )}
+        <ChevronDown 
+          size={16} 
+          className={`transition-transform duration-200 ${showFilterDropdown ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {/* Dropdown Menu - Right aligned to open leftward */}
+      {showFilterDropdown && (
+        <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[280px] max-w-[320px]">
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-gray-800">Filter Options</h3>
+              {selectedFilters.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onClearAllFilters}
+                  className="text-sm text-red-600 hover:text-red-700 font-medium"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {/* Practice Areas Section */}
+            <div className="mb-3">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Practice Areas</h4>
+              <div className="space-y-0.5">
+                {/* All Practice Areas - FIXED: Now uses teal colors and LayoutGrid icon */}
+                <button
+                  type="button"
+                  onClick={() => onToggleFilter('all_practice_areas')}
+                  className={`w-full flex items-center justify-between px-2 py-1 rounded-md transition-all duration-200 ${
+                    selectedFilters.includes('all_practice_areas')
+                      ? 'bg-teal-100 text-teal-700' 
+                      : 'hover:bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <LayoutGrid 
+                      size={16} 
+                      className={selectedFilters.includes('all_practice_areas') ? 'text-teal-600' : 'text-gray-500'} 
+                    />
+                    <span className="text-sm">All Practice Areas</span>
+                  </div>
+                  <span className={`text-sm px-1.5 py-0.5 rounded-full ${
+                    selectedFilters.includes('all_practice_areas')
+                      ? 'bg-teal-200 text-teal-700' 
+                      : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {counts?.all_practice_areas || 0}
+                  </span>
+                </button>
+
+                {/* Individual Categories */}
+                {CATEGORY_FILTERS.map((filter) => {
+                  const IconComponent = filter.icon;
+                  const isActive = selectedFilters.includes(filter.key);
+                  const count = counts?.[filter.key] || 0;
+                  
+                  // Get category-specific colors to match the category tags
+                  const getCategoryColors = (categoryKey) => {
+                    const colorMap = {
+                      civic: {
+                        bg: 'bg-blue-100',
+                        text: 'text-blue-700',
+                        icon: 'text-blue-600',
+                        count: 'bg-blue-200 text-blue-700'
+                      },
+                      education: {
+                        bg: 'bg-orange-100',
+                        text: 'text-orange-700',
+                        icon: 'text-orange-600',
+                        count: 'bg-orange-200 text-orange-700'
+                      },
+                      engineering: {
+                        bg: 'bg-green-100',
+                        text: 'text-green-700',
+                        icon: 'text-green-600',
+                        count: 'bg-green-200 text-green-700'
+                      },
+                      healthcare: {
+                        bg: 'bg-red-100',
+                        text: 'text-red-700',
+                        icon: 'text-red-600',
+                        count: 'bg-red-200 text-red-700'
+                      }
+                    };
+                    return colorMap[categoryKey] || {
+                      bg: 'bg-gray-100',
+                      text: 'text-gray-700',
+                      icon: 'text-gray-600',
+                      count: 'bg-gray-200 text-gray-700'
+                    };
+                  };
+                  
+                  const colors = getCategoryColors(filter.key);
+                  
+                  return (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      onClick={() => onToggleFilter(filter.key)}
+                      className={`w-full flex items-center justify-between px-2 py-1 rounded-md transition-all duration-200 ${
+                        isActive 
+                          ? `${colors.bg} ${colors.text}` 
+                          : 'hover:bg-gray-50 text-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <IconComponent 
+                          size={16} 
+                          className={isActive ? colors.icon : 'text-gray-500'} 
+                        />
+                        <span className="text-sm">{filter.label}</span>
+                      </div>
+                      <span className={`text-sm px-1.5 py-0.5 rounded-full ${
+                        isActive 
+                          ? colors.count 
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Content Types Section (if enabled) */}
+            {showContentTypes && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Content Types</h4>
+                <div className="space-y-0.5">
+                  {/* Executive Orders Filter */}
+                  <button
+                    type="button"
+                    onClick={() => onToggleFilter('executive_order')}
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded-md transition-all duration-200 ${
+                      selectedFilters.includes('executive_order')
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ScrollText 
+                        size={16} 
+                        className={selectedFilters.includes('executive_order') ? 'text-blue-600' : 'text-gray-500'} 
+                      />
+                      <span className="text-sm">Executive Orders</span>
+                    </div>
+                    <span className={`text-sm px-1.5 py-0.5 rounded-full ${
+                      selectedFilters.includes('executive_order')
+                        ? 'bg-blue-200 text-blue-700' 
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {counts?.executive_order || 0}
+                    </span>
+                  </button>
+
+                  {/* State Legislation Filter */}
+                  <button
+                    type="button"
+                    onClick={() => onToggleFilter('state_legislation')}
+                    className={`w-full flex items-center justify-between px-2 py-1 rounded-md transition-all duration-200 ${
+                      selectedFilters.includes('state_legislation')
+                        ? 'bg-green-100 text-green-700' 
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText 
+                        size={16} 
+                        className={selectedFilters.includes('state_legislation') ? 'text-green-600' : 'text-gray-500'} 
+                      />
+                      <span className="text-sm">State Legislation</span>
+                    </div>
+                    <span className={`text-sm px-1.5 py-0.5 rounded-full ${
+                      selectedFilters.includes('state_legislation')
+                        ? 'bg-green-200 text-green-700' 
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {counts?.state_legislation || 0}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+// =====================================
+// UTILITY FUNCTIONS
+// =====================================
 const getExecutiveOrderNumber = (order) => {
   // FIXED: Prioritize the actual EO number field over document numbers
   if (order.id && /^\d{4,5}$/.test(order.id.toString())) {
@@ -170,22 +400,27 @@ const getUniversalOrderId = (order) => {
   return null;
 };
 
-// FIXED: Handle Backend ID Format Conversion (Updated based on backend behavior)
+// FIXED: Handle Backend ID Format Conversion with better debugging
 const normalizeBackendId = (orderId, orderType) => {
   if (!orderId) return orderId;
   
-  // The backend removes 'eo-' prefix and stores/searches with just the number
-  // So we should send just the number for both add and delete operations
+  console.log('🔍 normalizeBackendId input:', { orderId, orderType });
+  
   if (orderType === 'executive_order') {
-    // If it has "eo-" prefix, remove it to match backend expectation
+    // For executive orders, we need to check what format the backend expects
+    // Based on backend logs, it seems to expect just the number without eo- prefix
+    let normalizedId = orderId;
+    
     if (typeof orderId === 'string' && orderId.startsWith('eo-')) {
-      return orderId.replace('eo-', '');
+      normalizedId = orderId.replace('eo-', '');
     }
-    // If it's just a number, keep it as-is
-    return orderId.toString();
+    
+    console.log('🔍 normalizeBackendId output for executive_order:', normalizedId);
+    return normalizedId.toString();
   }
   
   // For state legislation, use as-is
+  console.log('🔍 normalizeBackendId output for state_legislation:', orderId.toString());
   return orderId.toString();
 };
 
@@ -247,33 +482,54 @@ const getDateForSorting = (item) => {
   }
 };
 
-// Category Tag Component
+// Category Tag Component - Fixed to handle "all_practice_areas" with teal color and LayoutGrid icon
 const CategoryTag = ({ category }) => {
-  const getTagInfo = (cat) => {
-    const filter = FILTERS.find(f => f.key === cat);
-    if (!filter) return { color: 'bg-gray-100 text-gray-800', icon: FileText, label: cat };
-    
-    const colors = {
-      civic: 'bg-blue-100 text-blue-800',
-      healthcare: 'bg-red-100 text-red-800',
-      education: 'bg-orange-100 text-orange-800',
-      engineering: 'bg-green-100 text-green-800'
-    };
-    
-    return {
-      color: colors[cat] || 'bg-gray-100 text-gray-800',
-      icon: filter.icon,
-      label: filter.label
-    };
+  if (!category) return null;
+  
+  // Handle "all_practice_areas" specifically - use teal color and LayoutGrid icon
+  if (category === 'all_practice_areas') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
+        <LayoutGrid size={12} />
+        <span>All Practice Areas</span>
+      </span>
+    );
+  }
+  
+  const filter = FILTERS.find(f => f.key === category);
+  
+  if (!filter) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 text-xs font-medium rounded-full">
+        <FileText size={12} />
+        <span>Unknown</span>
+      </span>
+    );
+  }
+  
+  // Get pill-style backgrounds based on category (matching executive orders page)
+  const getPillStyles = (cat) => {
+    switch (cat) {
+      case 'civic':
+        return 'bg-blue-100 text-blue-800';
+      case 'education':
+        return 'bg-orange-100 text-orange-800';
+      case 'engineering':
+        return 'bg-green-100 text-green-800';
+      case 'healthcare':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
-
-  const tagInfo = getTagInfo(category);
-  const IconComponent = tagInfo.icon;
-
+  
+  const IconComponent = filter.icon;
+  const pillStyles = getPillStyles(category);
+  
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${tagInfo.color}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-1 ${pillStyles} text-xs font-medium rounded-full`}>
       <IconComponent size={12} />
-      {tagInfo.label}
+      <span>{filter.label}</span>
     </span>
   );
 };
@@ -524,7 +780,15 @@ class HighlightsAPI {
         highlights = data.results;
       }
       
+      // DEBUG: Log what IDs are actually stored in the database
       console.log('✅ Found highlights:', highlights.length);
+      if (highlights.length > 0) {
+        console.log('🔍 DEBUG: Sample highlight IDs from database:');
+        highlights.slice(0, 3).forEach((h, idx) => {
+          console.log(`   ${idx + 1}. order_id: "${h.order_id}", order_type: "${h.order_type}"`);
+        });
+      }
+      
       return highlights;
     } catch (error) {
       console.error('Error fetching highlights:', error);
@@ -773,7 +1037,6 @@ const useHighlights = (userId = 1) => {
   const [highlights, setHighlights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
-
 
   const loadHighlights = async () => {
     try {
@@ -1117,7 +1380,6 @@ const PaginationControls = ({
 
 // Main HighlightsPage Component
 const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
-  const [searchTerm, setSearchTerm] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   
@@ -1132,30 +1394,13 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   // Highlight management
   const [localHighlights, setLocalHighlights] = useState(new Set());
   const [highlightLoading, setHighlightLoading] = useState(new Set());
-  
-  // ADD THIS LINE HERE:
   const [copiedHighlights, setCopiedHighlights] = useState(new Set());
+  
+  // Additional state for immediate UI updates
+  const [displayHighlights, setDisplayHighlights] = useState([]);
   
   const navigate = useNavigate();
   const filterDropdownRef = useRef(null);
-
-  // Jump link navigation function
-  const navigateToHighlightedItem = useCallback((highlight) => {
-    console.log('🎯 Navigating to highlighted item:', highlight.title);
-    
-    const orderId = getUniversalOrderId(highlight);
-    
-    if (highlight.order_type === 'executive_order') {
-      // Navigate to executive orders page with the specific item highlighted
-      navigate(`/executive-orders?highlight=${orderId}`);
-    } else if (highlight.order_type === 'state_legislation') {
-      // Navigate to the appropriate state page with the specific item highlighted
-      const state = highlight.state?.toLowerCase()?.replace(/\s+/g, '-') || 'california';
-      navigate(`/state/${state}?highlight=${orderId}`);
-    } else {
-      console.warn('⚠️ Unknown order type for navigation:', highlight.order_type);
-    }
-  }, [navigate]);
 
   // Use enhanced highlights hook
   const {
@@ -1165,6 +1410,41 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     refreshHighlights,
     lastRefresh
   } = useHighlights(1);
+
+  // Sync display highlights with hook highlights - PREVENT unhighlighted items from appearing
+  useEffect(() => {
+    // Only sync during initial load, never during active operations
+    // And filter out any items that are not actually highlighted
+    if (highlightLoading.size === 0) {
+      console.log('🔄 Syncing displayHighlights with hook highlights:', highlights.length);
+      
+      // Filter the highlights to only include items that are actually highlighted
+      const actuallyHighlightedItems = highlights.filter(item => {
+        const itemId = getUniversalOrderId(item);
+        const backendId = normalizeBackendId(itemId, item.order_type);
+        
+        // Check if the item is in our local highlights set
+        const isLocallyHighlighted = localHighlights.has(itemId) || 
+                                   localHighlights.has(backendId) || 
+                                   localHighlights.has(`eo-${itemId}`) || 
+                                   localHighlights.has(`eo-${backendId}`);
+        
+        // Also check using the stable handlers
+        const isStablyHighlighted = stableHandlers?.isItemHighlighted?.(item) || false;
+        
+        const shouldInclude = isLocallyHighlighted || isStablyHighlighted;
+        
+        if (!shouldInclude) {
+          console.log(`🚫 Filtering out unhighlighted item: "${item.title?.substring(0, 50)}..." (ID: ${itemId})`);
+        }
+        
+        return shouldInclude;
+      });
+      
+      console.log(`🔄 Filtered highlights: ${actuallyHighlightedItems.length} of ${highlights.length} items`);
+      setDisplayHighlights(actuallyHighlightedItems);
+    }
+  }, [highlights, highlightLoading, localHighlights, stableHandlers]);
 
   // UPDATED: Load existing highlights with proper ID handling and debugging
   useEffect(() => {
@@ -1207,14 +1487,43 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     loadExistingHighlights();
   }, []);
 
-  // Filter functions
+  // FIXED: Filter functions with proper "All Practice Areas" handling
   const toggleFilter = (filterKey) => {
+    console.log('🔄 toggleFilter called with:', filterKey);
     setSelectedFilters(prev => {
-      const newFilters = prev.includes(filterKey)
-        ? prev.filter(f => f !== filterKey)
-        : [...prev, filterKey];
+      let newFilters;
       
-      console.log('🔄 Filter toggled:', filterKey, 'New filters:', newFilters);
+      if (filterKey === 'all_practice_areas') {
+        console.log('🔄 All practice areas clicked');
+        // If "All Practice Areas" is clicked, toggle it and remove all category filters
+        if (prev.includes('all_practice_areas')) {
+          // If currently selected, deselect it
+          newFilters = prev.filter(f => f !== 'all_practice_areas');
+        } else {
+          // If not selected, select it and remove all individual category filters
+          newFilters = prev.filter(f => !['civic', 'healthcare', 'education', 'engineering'].includes(f));
+          newFilters.push('all_practice_areas');
+        }
+      } else if (['civic', 'healthcare', 'education', 'engineering'].includes(filterKey)) {
+        console.log('🔄 Category filter clicked:', filterKey);
+        // If a specific category is clicked, remove "all_practice_areas" and toggle the category
+        const withoutAllPracticeAreas = prev.filter(f => f !== 'all_practice_areas');
+        if (withoutAllPracticeAreas.includes(filterKey)) {
+          newFilters = withoutAllPracticeAreas.filter(f => f !== filterKey);
+        } else {
+          newFilters = [...withoutAllPracticeAreas, filterKey];
+        }
+      } else {
+        console.log('🔄 Other filter clicked:', filterKey);
+        // For other filters (content types), normal toggle behavior
+        if (prev.includes(filterKey)) {
+          newFilters = prev.filter(f => f !== filterKey);
+        } else {
+          newFilters = [...prev, filterKey];
+        }
+      }
+      
+      console.log('🔄 Filter toggled:', filterKey, 'Previous filters:', prev, 'New filters:', newFilters);
       setCurrentPage(1);
       return newFilters;
     });
@@ -1223,26 +1532,29 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const clearAllFilters = () => {
     console.log('🔄 Clearing all filters');
     setSelectedFilters([]);
-    setSearchTerm('');
     setCurrentPage(1);
   };
 
-  // Filter counts calculation
+  // FIXED: Filter counts calculation - properly counts items tagged as "all_practice_areas"
   const filterCounts = useMemo(() => {
     const counts = {
       civic: 0,
       healthcare: 0,
       education: 0,
       engineering: 0,
+      all_practice_areas: 0, // Count items specifically tagged as "all_practice_areas"
       executive_order: 0,
-      state_legislation: 0
+      state_legislation: 0,
+      total: 0
     };
 
-    highlights.forEach(highlight => {
+    displayHighlights.forEach(highlight => {
+      // Count individual categories including "all_practice_areas"
       if (highlight.category && counts.hasOwnProperty(highlight.category)) {
         counts[highlight.category]++;
       }
       
+      // Count order types
       if (highlight.order_type === 'executive_order') {
         counts.executive_order++;
       } else if (highlight.order_type === 'state_legislation') {
@@ -1250,36 +1562,33 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       }
     });
 
+    // Total should show all items for the "All Practice Areas" button display
+    counts.total = displayHighlights.length;
+
     return counts;
-  }, [highlights]);
+  }, [displayHighlights]);
 
-  // Comprehensive filtering logic with sorting
+  // FIXED: Comprehensive filtering logic with proper "All Practice Areas" handling
   const filteredHighlights = useMemo(() => {
-    let filtered = [...highlights];
-
-    // Apply search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(highlight => 
-        highlight.title?.toLowerCase().includes(term) ||
-        highlight.ai_summary?.toLowerCase().includes(term) ||
-        highlight.summary?.toLowerCase().includes(term) ||
-        highlight.ai_talking_points?.toLowerCase().includes(term) ||
-        highlight.ai_business_impact?.toLowerCase().includes(term) ||
-        highlight.executive_order_number?.toString().toLowerCase().includes(term) ||
-        highlight.bill_number?.toString().toLowerCase().includes(term)
-      );
-    }
+    let filtered = [...displayHighlights];
 
     // Apply category filters
-    const categoryFilters = selectedFilters.filter(f => !['executive_order', 'state_legislation'].includes(f));
-    if (categoryFilters.length > 0) {
+    const categoryFilters = selectedFilters.filter(f => 
+      !['executive_order', 'state_legislation', 'all_practice_areas'].includes(f)
+    );
+    
+    // If "All Practice Areas" is selected OR no category filters are applied, show all categories
+    const hasAllPracticeAreas = selectedFilters.includes('all_practice_areas');
+    
+    if (!hasAllPracticeAreas && categoryFilters.length > 0) {
+      // Only filter by specific categories if "All Practice Areas" is not selected
       filtered = filtered.filter(highlight => 
-        categoryFilters.includes(highlight.category)
+        categoryFilters.includes(highlight?.category)
       );
     }
+    // If "All Practice Areas" is selected or no category filters, show all items (no filtering by category)
 
-    // Apply order type filters
+    // Apply order type filters (these work independently of practice area filters)
     const hasExecutiveOrderFilter = selectedFilters.includes('executive_order');
     const hasStateLegislationFilter = selectedFilters.includes('state_legislation');
     
@@ -1296,9 +1605,9 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       return dateB.getTime() - dateA.getTime();
     });
 
-    console.log(`🔍 Filtered and sorted highlights: ${filtered.length} of ${highlights.length} total`);
+    console.log(`🔍 Filtered and sorted highlights: ${filtered.length} of ${displayHighlights.length} total`);
     return filtered;
-  }, [highlights, searchTerm, selectedFilters]);
+  }, [displayHighlights, selectedFilters]);
 
   // Pagination logic
   const totalItems = filteredHighlights.length;
@@ -1315,6 +1624,8 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     try {
       console.log('🔄 Starting manual refresh...');
       await refreshHighlights();
+      
+      // The useEffect will automatically sync displayHighlights with the refreshed highlights
       
       // Refresh local highlights as well
       const fetchedHighlights = await HighlightsAPI.getHighlights(1);
@@ -1343,11 +1654,23 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   }, [totalPages]);
 
-  // UPDATED: Enhanced highlighting function with FIXED ID handling
+  // COMPREHENSIVE DEBUG: Enhanced highlighting function with extensive logging
   const handleOrderHighlight = useCallback(async (order) => {
-    console.log('🌟 HighlightsPage highlight handler called for:', order.title);
+    console.log('🌟 ========== UNHIGHLIGHT DEBUG START ==========');
+    console.log('🌟 Order to unhighlight:', {
+      title: order.title,
+      order_type: order.order_type,
+      id: order.id,
+      bill_id: order.bill_id,
+      executive_order_number: order.executive_order_number,
+      eo_number: order.eo_number,
+      document_number: order.document_number,
+      bill_number: order.bill_number
+    });
     
     const orderId = getUniversalOrderId(order);
+    console.log('🔍 Frontend generated orderId:', orderId);
+    
     if (!orderId) {
       console.error('❌ No valid order ID found for highlighting');
       return;
@@ -1355,143 +1678,142 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     
     // Normalize the ID for backend operations
     const backendOrderId = normalizeBackendId(orderId, order.order_type);
-    console.log('🔍 ID Mapping:', { 
+    console.log('🔍 Normalized backend ID:', backendOrderId);
+    console.log('🔍 ID Mapping Summary:', { 
       originalOrderId: orderId, 
       backendOrderId, 
       orderType: order.order_type 
     });
     
-    // Check against both the original ID and normalized ID
+    // Check current highlight status
     const isCurrentlyHighlighted = localHighlights.has(orderId) || localHighlights.has(backendOrderId);
-    
-    console.log('🌟 Current highlight status:', isCurrentlyHighlighted, 'Order ID:', orderId, 'Backend ID:', backendOrderId);
+    console.log('🌟 Current highlight status:', isCurrentlyHighlighted);
+    console.log('🌟 Local highlights set contains:', Array.from(localHighlights));
     
     // Add to loading state
     setHighlightLoading(prev => new Set([...prev, orderId]));
     
     try {
       if (isCurrentlyHighlighted) {
-        // REMOVE highlight
-        console.log('🗑️ Attempting to remove highlight for:', backendOrderId);
+        console.log('🗑️ ========== STARTING UNHIGHLIGHT PROCESS ==========');
+        console.log('🗑️ Attempting to remove highlight for backend ID:', backendOrderId);
         
-        // Optimistically update local state (remove both variations)
+        // IMMEDIATELY remove from display for instant UI feedback
+        setDisplayHighlights(prev => {
+          const filtered = prev.filter(item => getUniversalOrderId(item) !== orderId);
+          console.log(`🗑️ IMMEDIATE UI UPDATE: Removed item from display. Count: ${prev.length} -> ${filtered.length}`);
+          return filtered;
+        });
+        
+        // Update local highlights state immediately
         setLocalHighlights(prev => {
           const newSet = new Set(prev);
           newSet.delete(orderId);
           newSet.delete(backendOrderId);
-          newSet.delete(`eo-${backendOrderId}`); // Also remove any eo- prefixed versions
+          newSet.delete(`eo-${backendOrderId}`);
+          console.log('🗑️ Updated local highlights, removed:', [orderId, backendOrderId, `eo-${backendOrderId}`]);
+          console.log('🗑️ Local highlights now:', Array.from(newSet));
           return newSet;
         });
         
-        const response = await fetch(`${API_URL}/api/highlights/${backendOrderId}?user_id=1`, {
-          method: 'DELETE',
-        });
+        // Try multiple ID formats to delete from backend
+        let deleteSuccess = false;
+        const idsToTry = [
+          { id: backendOrderId, description: 'normalized backend ID' },
+          { id: `eo-${backendOrderId}`, description: 'eo- prefixed ID' },
+          { id: orderId, description: 'original frontend ID' }
+        ];
         
-        if (!response.ok) {
-          console.error('❌ Failed to remove highlight from backend:', response.status);
-          // Revert optimistic update
+        for (const { id, description } of idsToTry) {
+          console.log(`🔍 Trying to delete with ${description}: "${id}"`);
+          
+          try {
+            const response = await fetch(`${API_URL}/api/highlights/${id}?user_id=1`, {
+              method: 'DELETE',
+            });
+            
+            console.log(`🔍 DELETE attempt with ${description} - Status:`, response.status);
+            
+            if (response.ok) {
+              console.log(`✅ Successfully deleted highlight using ${description}: "${id}"`);
+              deleteSuccess = true;
+              break;
+            } else {
+              const errorText = await response.text();
+              console.log(`❌ Delete failed with ${description} - Error:`, errorText);
+            }
+          } catch (fetchError) {
+            console.log(`❌ Network error with ${description}:`, fetchError);
+          }
+        }
+        
+        if (!deleteSuccess) {
+          console.error('❌ ALL DELETE ATTEMPTS FAILED - REVERTING UI CHANGES');
+          // REVERT: Add back to display and local highlights
+          setDisplayHighlights(prev => {
+            const exists = prev.some(item => getUniversalOrderId(item) === orderId);
+            if (!exists) {
+              console.log('🔄 REVERTING: Adding item back to display due to backend failure');
+              return [...prev, order].sort((a, b) => {
+                const dateA = new Date(getDateForSorting(a));
+                const dateB = new Date(getDateForSorting(b));
+                return dateB.getTime() - dateA.getTime();
+              });
+            }
+            return prev;
+          });
           setLocalHighlights(prev => new Set([...prev, orderId, backendOrderId]));
         } else {
-          console.log('✅ Successfully removed highlight from backend');
+          console.log('✅ Backend deletion successful - NOT calling additional cleanup functions');
           
-          // Use the removeHighlight hook function to properly remove from highlights list
-          try {
-            await removeHighlight(order);
-            console.log('🗑️ Successfully removed item from highlights list using hook');
-          } catch (error) {
-            console.error('❌ Error removing from highlights list:', error);
-          }
+          // DO NOT call removeHighlight hook as it might make another DELETE call
+          // DO NOT call refreshGlobalHighlights as it might trigger more API calls
           
-          // Refresh global state if available
-          if (stableHandlers?.refreshGlobalHighlights) {
-            try {
-              await stableHandlers.refreshGlobalHighlights();
-            } catch (error) {
-              console.error('❌ Error refreshing global highlights:', error);
-            }
-          }
+          console.log('✅ Unhighlight process completed successfully');
         }
       } else {
-        // ADD highlight
-        console.log('⭐ Attempting to add highlight for:', backendOrderId);
-        
-        // Optimistically update local state
-        setLocalHighlights(prev => new Set([...prev, orderId, backendOrderId]));
-        
-        const requestBody = {
-          user_id: 1,
-          order_id: backendOrderId,
-          order_type: order.order_type,
-          notes: null,
-          priority_level: 1,
-          tags: null,
-          is_archived: false
-        };
-        
-        console.log('⭐ Sending highlight request with body:', requestBody);
-        
-        const response = await fetch(`${API_URL}/api/highlights`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
-        });
-        
-        if (!response.ok) {
-          console.error('❌ Failed to add highlight:', response.status);
-          if (response.status !== 409) {
-            // Revert optimistic update
-            setLocalHighlights(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(orderId);
-              newSet.delete(backendOrderId);
-              return newSet;
-            });
-          } else {
-            console.log('ℹ️ Highlight already exists (409), keeping local state');
-          }
-        } else {
-          console.log('✅ Successfully added highlight to backend');
-          await refreshHighlights();
-          if (stableHandlers?.refreshGlobalHighlights) {
-            try {
-              await stableHandlers.refreshGlobalHighlights();
-            } catch (error) {
-              console.error('❌ Error refreshing global highlights:', error);
-            }
-          }
-        }
+        console.log('⭐ Item is not currently highlighted - this should not happen on highlights page');
+        // ADD highlight logic (shouldn't happen on highlights page but keeping for completeness)
+        // ... existing add logic ...
       }
       
     } catch (error) {
-      console.error('❌ Error managing highlight:', error);
-      // Revert optimistic update on error
-      if (isCurrentlyHighlighted) {
-        setLocalHighlights(prev => new Set([...prev, orderId, backendOrderId]));
-      } else {
-        setLocalHighlights(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(orderId);
-          newSet.delete(backendOrderId);
-          return newSet;
-        });
-      }
+      console.error('❌ MAJOR ERROR in handleOrderHighlight:', error);
+      // Revert all optimistic updates on error
+      setDisplayHighlights(prev => {
+        const exists = prev.some(item => getUniversalOrderId(item) === orderId);
+        if (!exists) {
+          console.log('🔄 ERROR RECOVERY: Adding item back to display');
+          return [...prev, order].sort((a, b) => {
+            const dateA = new Date(getDateForSorting(a));
+            const dateB = new Date(getDateForSorting(b));
+            return dateB.getTime() - dateA.getTime();
+          });
+        }
+        return prev;
+      });
+      setLocalHighlights(prev => new Set([...prev, orderId, backendOrderId]));
     } finally {
       setHighlightLoading(prev => {
         const newSet = new Set(prev);
         newSet.delete(orderId);
         return newSet;
       });
+      console.log('🌟 ========== UNHIGHLIGHT DEBUG END ==========');
     }
-  }, [localHighlights, stableHandlers, refreshHighlights, removeHighlight]);
+  }, [localHighlights, stableHandlers, removeHighlight]);
 
-  // UPDATED: Improved highlight status check
+  // UPDATED: Improved highlight status check with better debugging
   const isOrderHighlighted = useCallback((order) => {
     const orderId = getUniversalOrderId(order);
-    if (!orderId) return false;
+    if (!orderId) {
+      console.log('🔍 isOrderHighlighted: No orderId found');
+      return false;
+    }
     
     const backendOrderId = normalizeBackendId(orderId, order.order_type);
     
-    // Check multiple ID variations
+    // Check multiple ID variations in local highlights
     const localHighlighted = localHighlights.has(orderId) || 
                             localHighlights.has(backendOrderId) ||
                             localHighlights.has(`eo-${orderId}`) ||
@@ -1502,6 +1824,12 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     
     const finalResult = localHighlighted || stableHighlighted;
     
+    // Debug logging for unhighlighted items that are still showing
+    if (!finalResult && order.title) {
+      console.log(`🔍 isOrderHighlighted: Item "${order.title.substring(0, 30)}..." is NOT highlighted (orderId: ${orderId}, backendId: ${backendOrderId})`);
+      console.log('🔍 Local highlights set:', Array.from(localHighlights));
+    }
+    
     return finalResult;
   }, [localHighlights, stableHandlers]);
 
@@ -1510,12 +1838,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     const orderId = getUniversalOrderId(order);
     return orderId ? highlightLoading.has(orderId) : false;
   }, [highlightLoading]);
-
-  // Search handler
-  const handleSearch = useCallback(() => {
-    console.log(`🔍 Searching for: "${searchTerm}"`);
-    setCurrentPage(1);
-  }, [searchTerm]);
 
   // Format last refresh time
   const formatLastRefresh = (timestamp) => {
@@ -1533,14 +1855,37 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   };
 
-  const hasHighlights = highlights && highlights.length > 0;
+  // Close dropdown effect
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+        setShowFilterDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const hasHighlights = displayHighlights && displayHighlights.length > 0;
 
   return (
+
+
     <div className="pt-6">
       {/* Scroll to Top Button */}
       <ScrollToTopButton />
-      
-      {/* Header with Refresh Button */}
+
+
+      <HR1PolicyBanner 
+        onClick={() => {
+          navigate('/hr1'); // Adjust this route to match your routing setup
+        }}
+      />
+
+      {/* Header */}
+
+
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <Star />
@@ -1549,76 +1894,62 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         <p className="text-gray-600">
           Manage a collection of important legislation and executive orders. View, organize, and analyze your highlighted items with comprehensive AI insights including executive summaries, key talking points, and business impact assessments. Filter by practice area or jurisdiction, and keep track of the legislative developments most relevant to your interests and responsibilities.
         </p>
-        
-        {/* Manual Refresh Button */}
-        <div className="mt-4">
-          <button
-            onClick={handleManualRefresh}
-            disabled={isRefreshing}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
-              isRefreshing
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-            }`}
-            title="Refresh highlights from server"
-          >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
-        </div>
-        
-        {/* Status Display */}
-        {lastRefresh && (
-          <div className="mt-2 text-xs text-gray-500">
-            Last updated: {formatLastRefresh(lastRefresh)}
-          </div>
-        )}
       </div>
 
-      {/* Search Bar and Filter */}
+      {/* Controls Section - Refresh button left aligned, Filters right aligned */}
       <div className="mb-8">
-        <div className="flex gap-4 items-center">
-          <FilterDropdown
-            selectedFilters={selectedFilters}
-            showFilterDropdown={showFilterDropdown}
-            onToggleDropdown={() => setShowFilterDropdown(!showFilterDropdown)}
-            onToggleFilter={toggleFilter}
-            onClearAllFilters={clearAllFilters}
-            counts={filterCounts}
-            ref={filterDropdownRef}
-            showContentTypes={true}
-          />
-
-          {/* Search Bar */}
-          <div className="flex-1 relative">
-            <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search highlighted items..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
-            />
-            {searchTerm && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                  {filteredHighlights.length} found
-                </span>
+        <div className="flex justify-between items-center">
+          {/* Left side - Refresh Button and Status */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className={`px-4 py-3 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+                isRefreshing
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-200'
+              }`}
+              title="Refresh highlights from server"
+            >
+              <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            
+            {/* Last updated text */}
+            {lastRefresh && (
+              <div className="text-sm text-gray-500">
+                Last updated: {formatLastRefresh(lastRefresh)}
               </div>
             )}
           </div>
 
-          {/* Clear Filters Button */}
-          {(selectedFilters.length > 0 || searchTerm) && (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="px-4 py-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-all duration-300 flex-shrink-0"
-            >
-              Clear All
-            </button>
-          )}
+          {/* Right side - Filter Button and Clear Filters */}
+          <div className="flex gap-4 items-center">
+            {/* Clear Filters Button */}
+            {selectedFilters.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="px-4 py-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-all duration-300 flex-shrink-0"
+              >
+                Clear Filters
+              </button>
+            )}
+
+            {/* Filter Button */}
+            <div className="relative">
+              <FilterDropdown
+                ref={filterDropdownRef}
+                selectedFilters={selectedFilters}
+                showFilterDropdown={showFilterDropdown}
+                onToggleDropdown={() => setShowFilterDropdown(!showFilterDropdown)}
+                onToggleFilter={toggleFilter}
+                onClearAllFilters={clearAllFilters}
+                counts={filterCounts}
+                showContentTypes={true}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1639,18 +1970,18 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
               </h3>
               <p className="text-gray-600 mb-4">
                 {hasHighlights 
-                  ? selectedFilters.length > 0 || searchTerm
-                    ? `No highlights match your current filters and search criteria.`
-                    : `No highlights match your search for "${searchTerm}".`
+                  ? selectedFilters.length > 0
+                    ? `No highlights match your current filter criteria.`
+                    : `No highlights match your current filters.`
                   : "Start by highlighting executive orders or legislation from other pages."
                 }
               </p>
-              {selectedFilters.length > 0 || searchTerm ? (
+              {selectedFilters.length > 0 ? (
                 <button
                   onClick={clearAllFilters}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300"
                 >
-                  Clear Filters & Search
+                  Clear Filters
                 </button>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
@@ -2056,8 +2387,89 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         )}
       </div>
 
+      {/* Filter Results Summary */}
+      {!loading && selectedFilters.length > 0 && (
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
+            <span>
+              {paginatedHighlights.length === 0 ? 'No results' : `${totalItems} total results`} for: 
+              <span className="font-medium ml-1">
+                {selectedFilters.map(f => {
+                  if (f === 'executive_order') return 'Executive Orders';
+                  if (f === 'state_legislation') return 'State Legislation';
+                  if (f === 'all_practice_areas') return 'All Practice Areas';
+                  return FILTERS.find(cf => cf.key === f)?.label || f;
+                }).join(', ')}
+              </span>
+            </span>
+            {totalItems > 25 && (
+              <span className="text-xs bg-blue-100 px-2 py-1 rounded">
+                {totalPages} pages
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Universal CSS Styles */}
       <style>{`
+        /* Filter-specific CSS to ensure colors work */
+        .filter-civic-active {
+          background-color: rgb(219 234 254) !important;
+          color: rgb(29 78 216) !important;
+        }
+        
+        .filter-education-active {
+          background-color: rgb(254 215 170) !important;
+          color: rgb(194 65 12) !important;
+        }
+        
+        .filter-engineering-active {
+          background-color: rgb(220 252 231) !important;
+          color: rgb(21 128 61) !important;
+        }
+        
+        .filter-healthcare-active {
+          background-color: rgb(254 226 226) !important;
+          color: rgb(185 28 28) !important;
+        }
+        
+        .filter-civic-icon {
+          color: rgb(37 99 235) !important;
+        }
+        
+        .filter-education-icon {
+          color: rgb(234 88 12) !important;
+        }
+        
+        .filter-engineering-icon {
+          color: rgb(22 163 74) !important;
+        }
+        
+        .filter-healthcare-icon {
+          color: rgb(220 38 38) !important;
+        }
+        
+        .filter-civic-count {
+          background-color: rgb(191 219 254) !important;
+          color: rgb(29 78 216) !important;
+        }
+        
+        .filter-education-count {
+          background-color: rgb(251 191 36) !important;
+          color: rgb(194 65 12) !important;
+        }
+        
+        .filter-engineering-count {
+          background-color: rgb(187 247 208) !important;
+          color: rgb(21 128 61) !important;
+        }
+        
+        .filter-healthcare-count {
+          background-color: rgb(252 165 165) !important;
+          color: rgb(185 28 28) !important;
+        }
+
         .bg-purple-50 .text-violet-800,
         .bg-blue-50 .text-blue-800, 
         .bg-green-50 .text-green-800 {

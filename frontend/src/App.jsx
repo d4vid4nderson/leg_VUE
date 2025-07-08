@@ -13,6 +13,7 @@ import SettingsPage from './components/SettingsPage';
 import LoadingAnimation from './components/LoadingAnimation';
 import AzureADLoginModal from './components/AzureADLoginModal';
 import AuthRedirect from './components/AuthRedirect';
+import HR1Page from './components/HR1Page';
 
 // Debug: Log imported components to identify undefined ones
 console.log('🔍 Component imports check:', {
@@ -321,6 +322,16 @@ const AppContent = () => {
                     makeApiCall={makeApiCall}
                     appVersion={appVersion}
                     setAppVersion={setAppVersion}
+                  />
+                } 
+              />
+
+              <Route 
+                path="/hr1" 
+                element={
+                  <SafeComponent
+                    component={HR1Page}
+                    fallbackName="HR1Page"
                   />
                 } 
               />

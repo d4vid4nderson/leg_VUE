@@ -76,6 +76,7 @@ class BillCategory(Enum):
     ENGINEERING = "engineering"
     CIVIC = "civic"
     NOT_APPLICABLE = "not_applicable"
+    ALL_PRACTICE_AREAS = "all_practice_areas"
 
 # Enhanced prompt templates
 ENHANCED_PROMPTS = {
@@ -568,7 +569,10 @@ def categorize_bill_enhanced(title: str, description: str) -> BillCategory:
     if not content:
         return BillCategory.NOT_APPLICABLE
     
-    if any(word in content for word in ['health', 'medical', 'healthcare', 'medicine', 'hospital', 'patient', 'medicare', 'medicaid']):
+    # Check for "all practice areas" keywords
+    if any(word in content for word in ['all practice', 'multiple area', 'cross-disciplinary', 'interdisciplinary']):
+        return BillCategory.ALL_PRACTICE_AREAS
+    elif any(word in content for word in ['health', 'medical', 'healthcare', 'medicine', 'hospital', 'patient', 'medicare', 'medicaid']):
         return BillCategory.HEALTHCARE
     elif any(word in content for word in ['education', 'school', 'student', 'university', 'college', 'learning', 'teacher']):
         return BillCategory.EDUCATION
@@ -1068,14 +1072,16 @@ def get_state_legislation_from_db(limit=1000, offset=0, filters=None):
     """Get state legislation from Azure SQL database"""
     try:
         base_query = """
-        SELECT 
-            id, bill_id, bill_number, title, description, state, state_abbr,
-            status, category, introduced_date, last_action_date, session_id,
-            session_name, bill_type, body, legiscan_url, pdf_url,
-            ai_summary, ai_executive_summary, ai_talking_points, ai_key_points,
-            ai_business_impact, ai_potential_impact, ai_version,
-            created_at, last_updated, reviewed
-        FROM dbo.state_legislation
+            SELECT 
+                id, document_number, eo_number, title, summary, 
+                signing_date, publication_date, citation, presidential_document_type, category,
+                html_url, pdf_url, trump_2025_url, 
+                ai_summary, ai_executive_summary, ai_key_points, ai_talking_points, 
+                ai_business_impact, ai_potential_impact, ai_version,
+                source, raw_data_available, processing_status, error_message,
+                created_at, last_updated, last_scraped_at, tags,
+                reviewed
+            FROM dbo.executive_orders
         """
         
         where_conditions = []
@@ -1406,7 +1412,7 @@ async def get_executive_orders_with_highlights(
     limit: Optional[str] = Query(None, description="Special parameter: 'none' to get all records"),
     user_id: Optional[str] = Query(None, description="User ID to show highlight status")
 ):
-    """Get executive orders with highlighting, pagination, and validation - FIXED to handle unlimited requests"""
+    """Get executive orders with highlighting, pagination, and validation - FIXED to include reviewed field"""
     
     try:
         logger.info(f"🔍 Getting executive orders - page: {page}, per_page: {per_page}, limit: {limit}")
@@ -1471,6 +1477,22 @@ async def get_executive_orders_with_highlights(
                 eo_number = order.get('eo_number', '') or order.get('bill_number', '') or ''
                 doc_number = order.get('document_number', '') or f"doc_{i+1}"
                 
+                # CRITICAL FIX: Handle reviewed field properly
+                reviewed_value = order.get('reviewed')
+                if reviewed_value is None:
+                    reviewed = False
+                elif isinstance(reviewed_value, bool):
+                    reviewed = reviewed_value
+                elif isinstance(reviewed_value, int):
+                    reviewed = bool(reviewed_value)
+                elif isinstance(reviewed_value, str):
+                    reviewed = reviewed_value.lower() in ('true', '1', 'yes')
+                else:
+                    reviewed = False
+                
+                # Debug logging for reviewed field
+                logger.debug(f"🔍 Order {eo_number}: reviewed_value={reviewed_value} (type: {type(reviewed_value)}) -> reviewed={reviewed}")
+                
                 validated_order = {
                     "id": order.get('id', i+1),
                     "document_number": doc_number,
@@ -1497,7 +1519,8 @@ async def get_executive_orders_with_highlights(
                     "created_at": order.get('created_at', ''),
                     "last_updated": order.get('last_updated', ''),
                     "tags": order.get('tags', ''),
-                    "highlighted": False  # Default value
+                    "highlighted": False,  # Default value
+                    "reviewed": reviewed  # CRITICAL: Include reviewed field
                 }
                 
                 validated_orders.append(validated_order)
@@ -1507,6 +1530,10 @@ async def get_executive_orders_with_highlights(
                 continue
         
         logger.info(f"✅ Validated {len(validated_orders)} orders")
+        
+        # Log summary of reviewed status for debugging
+        reviewed_count = sum(1 for order in validated_orders if order.get('reviewed', False))
+        logger.info(f"📊 Review status summary: {reviewed_count}/{len(validated_orders)} orders marked as reviewed")
         
         # Calculate pagination
         if limit == "none":
@@ -1651,9 +1678,9 @@ async def fetch_executive_orders_simple_endpoint(request: ExecutiveOrderFetchReq
 
 @app.post("/api/executive-orders/run-pipeline")
 async def run_unlimited_executive_orders_pipeline(request: dict = None):
-    """Run the complete executive orders pipeline - fetch ALL executive orders"""
+    """Run the complete executive orders pipeline with database checking - ENHANCED"""
     try:
-        logger.info("🚀 Starting Executive Orders Pipeline - Fetching ALL orders")
+        logger.info("🚀 Starting Enhanced Executive Orders Pipeline with Database Check")
         
         if not SIMPLE_EO_AVAILABLE:
             return {
@@ -1661,7 +1688,7 @@ async def run_unlimited_executive_orders_pipeline(request: dict = None):
                 "message": "Simple Executive Orders API not available"
             }
         
-        # Parse request parameters
+        # Parse request parameters with enhanced options
         force_fetch = False
         fetch_only_new = True
         
@@ -1669,23 +1696,24 @@ async def run_unlimited_executive_orders_pipeline(request: dict = None):
             force_fetch = request.get('force_fetch', False)
             fetch_only_new = request.get('fetch_only_new', True)
         
-        logger.info(f"📋 Pipeline parameters:")
+        logger.info(f"📋 Enhanced Pipeline parameters:")
         logger.info(f"   - force_fetch: {force_fetch}")
         logger.info(f"   - fetch_only_new: {fetch_only_new}")
         
-        # Use explicit parameters to ensure we get ALL orders
+        # Use the enhanced integration with database checking
         result = await fetch_executive_orders_simple_integration(
             start_date="2025-01-20",
             end_date=None,
             with_ai=True,
             limit=None,
             period=None,
-            save_to_db=True
+            save_to_db=True,
+            force_fetch=force_fetch  # Pass the force_fetch parameter
         )
         
         if not result.get('success'):
             error_msg = result.get('error', 'Unknown error')
-            logger.warning(f"⚠️ Pipeline failed: {error_msg}")
+            logger.warning(f"⚠️ Enhanced pipeline failed: {error_msg}")
             return {
                 "success": False,
                 "message": error_msg,
@@ -1695,69 +1723,115 @@ async def run_unlimited_executive_orders_pipeline(request: dict = None):
         
         orders = result.get('results', [])
         total_found = result.get('total_found', len(orders))
+        fetch_performed = result.get('fetch_performed', False)
+        database_was_current = result.get('database_was_current', False)
         
-        logger.info(f"📥 Pipeline retrieved {len(orders)} executive orders")
-        logger.info(f"📊 Total found by Federal Register API: {total_found}")
+        logger.info(f"📥 Enhanced pipeline processed {len(orders)} executive orders")
+        logger.info(f"📊 Total found: {total_found}")
+        logger.info(f"🔄 Fetch performed: {fetch_performed}")
+        logger.info(f"💾 Database was current: {database_was_current}")
         
-        # Transform and save orders to database
-        saved_count = 0
-        if orders and EXECUTIVE_ORDERS_AVAILABLE:
-            try:
-                logger.info(f"💾 Saving {len(orders)} orders to database...")
-                
-                # Use the executive orders save function directly - no transform needed!
-                save_result = save_executive_orders_to_db(orders)
-                
-                # Handle different return types
-                if isinstance(save_result, dict):
-                    saved_count = save_result.get('total_processed', 0)
-                else:
-                    saved_count = int(save_result) if save_result else 0
-                
-                logger.info(f"✅ Successfully saved {saved_count} orders to database")
-                
-                return {
-                    "success": True,
-                    "message": f"Pipeline completed successfully - processed {len(orders)} orders",
-                    "orders_fetched": len(orders),
-                    "orders_saved": saved_count,
-                    "total_found": total_found,
-                    "ai_analysis_enabled": result.get('ai_analysis_enabled', False),
-                    "ai_successful": result.get('ai_successful', 0),
-                    "ai_failed": result.get('ai_failed', 0),
-                    "date_range": result.get('date_range_used', 'Inauguration to today'),
-                    "pipeline_type": "federal_register_unlimited",
-                    "method": "fetch_executive_orders_simple_integration",
-                    "database_integration": "azure_sql"
-                }
-                
-            except Exception as save_error:
-                logger.error(f"❌ Error saving to database: {save_error}")
-                return {
-                    "success": False,
-                    "message": f"Pipeline fetched {len(orders)} orders but database save failed: {str(save_error)}",
-                    "orders_fetched": len(orders),
-                    "orders_saved": 0,
-                    "save_error": str(save_error)
-                }
-        else:
-            logger.warning("⚠️ No orders to save or database not available")
-            return {
-                "success": len(orders) > 0,
-                "message": f"Pipeline completed - found {len(orders)} orders but database not available" if orders else "No orders found",
-                "orders_fetched": len(orders),
-                "orders_saved": 0,
-                "database_available": EXECUTIVE_ORDERS_AVAILABLE
-            }
+        return {
+            "success": True,
+            "message": result.get('message', f"Enhanced pipeline completed - processed {len(orders)} orders"),
+            "orders_fetched": len(orders),
+            "orders_saved": result.get('orders_saved', 0),
+            "total_found": total_found,
+            "ai_analysis_enabled": result.get('ai_analysis_enabled', False),
+            "ai_successful": result.get('ai_successful', 0),
+            "ai_failed": result.get('ai_failed', 0),
+            "date_range_used": result.get('date_range_used'),
+            "method": "enhanced_federal_register_with_database_check",
+            
+            # Enhanced database check info
+            "fetch_performed": fetch_performed,
+            "fetch_reason": result.get('fetch_reason', 'unknown'),
+            "database_was_current": database_was_current,
+            "new_orders_fetched": result.get('new_orders_fetched', 0),
+            "database_count_before": result.get('database_count_before', 0),
+            "federal_count": result.get('federal_count', 0),
+            "processing_method": result.get('processing_method', 'enhanced'),
+            
+            # Backward compatibility
+            "pipeline_type": "enhanced_with_database_check",
+            "database_integration": "azure_sql_with_checking"
+        }
             
     except Exception as e:
-        logger.error(f"❌ Error in executive orders pipeline: {e}")
+        logger.error(f"❌ Error in enhanced executive orders pipeline: {e}")
         return {
             "success": False,
-            "message": f"Pipeline error: {str(e)}",
+            "message": f"Enhanced pipeline error: {str(e)}",
             "orders_fetched": 0,
             "orders_saved": 0,
             "error_type": type(e).__name__
+        }
+    else:
+        logger.warning("⚠️ No orders to save or database not available")
+        return {
+            "success": len(orders) > 0,
+            "message": f"Pipeline completed - found {len(orders)} orders but database not available" if orders else "No orders found",
+            "orders_fetched": len(orders),
+            "orders_saved": 0,
+            "database_available": EXECUTIVE_ORDERS_AVAILABLE
+        }
+    
+# Also add this new endpoint for explicit database checking
+@app.get("/api/executive-orders/check-database-status")
+async def check_database_status():
+    """Check database status and compare with Federal Register"""
+    try:
+        logger.info("🔍 Checking database status and Federal Register comparison")
+        
+        if not SIMPLE_EO_AVAILABLE:
+            return {
+                "success": False,
+                "message": "Simple Executive Orders API not available"
+            }
+        
+        from simple_executive_orders import SimpleExecutiveOrders
+        
+        simple_eo = SimpleExecutiveOrders()
+        
+        # Get comprehensive fetch decision
+        fetch_decision = simple_eo.should_fetch_orders(force_fetch=False)
+        
+        # Also get database details
+        db_check = simple_eo.check_database_for_existing_orders()
+        
+        return {
+            "success": True,
+            "database_status": {
+                "table_exists": db_check.get('table_exists', False),
+                "count": db_check.get('count', 0),
+                "latest_date": db_check.get('latest_date'),
+                "latest_eo_number": db_check.get('latest_eo_number'),
+                "latest_title": db_check.get('latest_title')
+            },
+            "federal_register_status": {
+                "count": fetch_decision.get('federal_count', 0),
+                "api_accessible": fetch_decision.get('federal_count') is not None
+            },
+            "comparison": {
+                "needs_fetch": fetch_decision.get('should_fetch', False),
+                "reason": fetch_decision.get('reason', 'unknown'),
+                "new_orders_available": fetch_decision.get('new_orders_available', 0),
+                "database_up_to_date": not fetch_decision.get('should_fetch', True)
+            },
+            "recommendations": {
+                "should_run_pipeline": fetch_decision.get('should_fetch', False),
+                "force_fetch_available": True,
+                "message": fetch_decision.get('message', 'Status check completed')
+            },
+            "last_checked": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking database status: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Database status check failed: {str(e)}"
         }
 
 @app.get("/api/executive-orders/check-count")
@@ -1817,8 +1891,13 @@ async def update_executive_order_category(order_id: str, request: dict):
                 detail="Category is required"
             )
         
-        # Validate category
-        valid_categories = ['civic', 'healthcare', 'education', 'engineering', 'not_applicable']
+        # UPDATED: Add "all_practice_areas" to valid categories
+        valid_categories = [
+            'civic', 'healthcare', 'education', 'engineering', 'business',
+            'environment', 'finance', 'labor', 'transportation', 'agriculture', 
+            'criminal_justice', 'not_applicable', 'all_practice_areas'  # <-- ADDED THIS
+        ]
+        
         if new_category not in valid_categories:
             raise HTTPException(
                 status_code=400,
@@ -1829,12 +1908,10 @@ async def update_executive_order_category(order_id: str, request: dict):
         clean_order_id = order_id.replace('eo-', '') if order_id.startswith('eo-') else order_id
         logger.info(f"📝 Cleaned order ID: {clean_order_id}, new category: {new_category}")
         
-        # FIXED: Call the database function and handle the response properly
+        # Call the database function
         try:
-            # Import the function that updates categories
             from executive_orders_db import update_executive_order_category_in_db
             
-            # Call the function - it returns True/False
             update_success = update_executive_order_category_in_db(clean_order_id, new_category)
             
             if update_success:
@@ -1871,54 +1948,75 @@ async def update_executive_order_category(order_id: str, request: dict):
             detail=f"Failed to update category: {str(e)}"
         )
 
+
+# REPLACE your review endpoint in main.py with this fixed version:
+
 @app.patch("/api/executive-orders/{id}/review")
-async def update_executive_order_review_status(id: str, request: dict):
-    """Update executive order review status"""
+async def update_executive_order_review_status(
+    id: str,
+    request: dict
+):
+    """Update review status for executive order - FIXED ID HANDLING"""
     try:
         reviewed = request.get('reviewed', False)
         
-        conn = get_azure_sql_connection()
-        if not conn:
-            raise HTTPException(status_code=503, detail="Database connection failed")
+        print(f"🔍 BACKEND: Received executive order ID: '{id}'")
+        print(f"🔍 BACKEND: Setting reviewed to: {reviewed}")
         
-        cursor = conn.cursor()
+        # FIXED: Strip 'eo-' prefix if present
+        clean_id = id.replace('eo-', '') if id.startswith('eo-') else id
+        print(f"🔍 BACKEND: Cleaned ID for database search: '{clean_id}'")
         
-        # Try multiple search methods
-        search_attempts = [
-            ("Direct ID match", "SELECT id FROM dbo.executive_orders WHERE id = ?", id),
-            ("EO number match", "SELECT id FROM dbo.executive_orders WHERE eo_number = ?", id),
-            ("Document number match", "SELECT id FROM dbo.executive_orders WHERE document_number = ?", id),
-            ("String ID match", "SELECT id FROM dbo.executive_orders WHERE CAST(id AS VARCHAR) = ?", str(id)),
-            ("String EO number match", "SELECT id FROM dbo.executive_orders WHERE CAST(eo_number AS VARCHAR) = ?", str(id)),
-            ("String document number match", "SELECT id FROM dbo.executive_orders WHERE CAST(document_number AS VARCHAR) = ?", str(id))
-        ]
+        from database_connection import get_db_connection
         
-        found_record_id = None
-        for attempt_name, query, param in search_attempts:
-            try:
-                cursor.execute(query, param)
-                result = cursor.fetchone()
-                if result:
-                    found_record_id = result[0]
-                    break
-            except Exception:
-                continue
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Search using the cleaned ID (without eo- prefix)
+            search_attempts = [
+                ("Direct ID match", "SELECT id FROM dbo.executive_orders WHERE id = ?", clean_id),
+                ("EO number match", "SELECT id FROM dbo.executive_orders WHERE eo_number = ?", clean_id),
+                ("Document number match", "SELECT id FROM dbo.executive_orders WHERE document_number = ?", clean_id),
+                ("String ID match", "SELECT id FROM dbo.executive_orders WHERE CAST(id AS VARCHAR) = ?", str(clean_id)),
+                ("String EO number match", "SELECT id FROM dbo.executive_orders WHERE CAST(eo_number AS VARCHAR) = ?", str(clean_id)),
+                ("String document number match", "SELECT id FROM dbo.executive_orders WHERE CAST(document_number AS VARCHAR) = ?", str(clean_id))
+            ]
+            
+            found_record_id = None
+            for attempt_name, query, param in search_attempts:
+                try:
+                    print(f"🔍 BACKEND: Trying {attempt_name} with param: '{param}'")
+                    cursor.execute(query, param)
+                    result = cursor.fetchone()
+                    if result:
+                        found_record_id = result[0]
+                        print(f"✅ BACKEND: Found record with {attempt_name}, database ID: {found_record_id}")
+                        break
+                    else:
+                        print(f"❌ BACKEND: No match with {attempt_name}")
+                except Exception as e:
+                    print(f"❌ BACKEND: Error with {attempt_name}: {e}")
+            
+            if not found_record_id:
+                print(f"❌ BACKEND: Could not find any executive order for ID: '{id}' (cleaned: '{clean_id}')")
+                cursor.close()
+                raise HTTPException(status_code=404, detail=f"Executive order not found for ID: {id}")
+            
+            # Update the record
+            print(f"🔄 BACKEND: Updating record ID {found_record_id} with reviewed={reviewed}")
+            update_query = "UPDATE dbo.executive_orders SET reviewed = ?, last_updated = GETUTCDATE() WHERE id = ?"
+            cursor.execute(update_query, reviewed, found_record_id)
+            rows_affected = cursor.rowcount
+            
+            print(f"📊 BACKEND: Updated {rows_affected} rows")
+            
+            if rows_affected == 0:
+                cursor.close()
+                raise HTTPException(status_code=404, detail="No rows were updated")
+            
+            cursor.close()
         
-        if not found_record_id:
-            conn.close()
-            raise HTTPException(status_code=404, detail=f"Executive order not found for ID: {id}")
-        
-        # Update the record
-        update_query = "UPDATE dbo.executive_orders SET reviewed = ?, last_updated = GETDATE() WHERE id = ?"
-        cursor.execute(update_query, reviewed, found_record_id)
-        rows_affected = cursor.rowcount
-        
-        if rows_affected == 0:
-            conn.close()
-            raise HTTPException(status_code=404, detail="No rows were updated")
-        
-        conn.commit()
-        conn.close()
+        print(f"✅ BACKEND: Successfully updated executive order {found_record_id} review status to {reviewed}")
         
         return {
             "success": True,
@@ -2405,15 +2503,18 @@ async def update_state_legislation_category(id: str, request: dict):
         if not category:
             raise HTTPException(status_code=400, detail="Category is required")
         
-        # Validate category
+        # UPDATED: Add "all_practice_areas" to valid categories
         valid_categories = [
             'civic', 'healthcare', 'education', 'engineering', 'business', 
             'environment', 'finance', 'labor', 'transportation', 'agriculture', 
-            'criminal_justice', 'not_applicable'
+            'criminal_justice', 'not_applicable', 'all_practice_areas'  # <-- ADDED THIS
         ]
         
         if category not in valid_categories:
-            raise HTTPException(status_code=400, detail=f"Invalid category")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid category. Must be one of: {', '.join(valid_categories)}"
+            )
         
         conn = get_azure_sql_connection()
         if not conn:
