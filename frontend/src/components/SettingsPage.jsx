@@ -95,31 +95,17 @@ const SettingsPage = ({
     const debugDatabaseConnection = async () => {
         try {
             setDatabaseDebugInfo({ ...databaseDebugInfo, loading: true });
-            
-            // Explicit GET method with proper headers
-            const response = await fetch(`${API_URL}/api/debug/database-msi`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Cache-Control': 'no-cache'
-                }
-            });
-            
-            // Handle non-200 responses
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP error ${response.status}: ${errorText}`);
-            }
-            
+
+            const response = await fetch(`${API_URL}/api/debug/database-msi`);
             const data = await response.json();
-            
+
             setDatabaseDebugInfo({
                 success: data.success,
                 logs: data.logs || [],
                 timestamp: data.timestamp,
                 loading: false
             });
-            
+
             // Also update the general status
             setIntegrationStatus(prev => ({
                 ...prev,
@@ -129,26 +115,14 @@ const SettingsPage = ({
                     responseTime: null
                 }
             }));
-            
+
         } catch (error) {
             console.error('Database debug failed:', error);
-            
             setDatabaseDebugInfo({
                 success: false,
                 logs: [`Error: ${error.message}`],
-                timestamp: new Date().toISOString(),
                 loading: false
             });
-            
-            // Update integration status to reflect the error
-            setIntegrationStatus(prev => ({
-                ...prev,
-                database: {
-                    status: 'error',
-                    message: `Connection failed: ${error.message}`,
-                    responseTime: null
-                }
-            }));
         }
     };
 

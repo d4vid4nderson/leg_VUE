@@ -9,7 +9,6 @@ import {
     Wrench,
     X as XIcon,
     ScrollText,
-    Scroll,
     Search,
     RotateCw as RefreshIcon,
     Settings,
@@ -134,7 +133,7 @@ const Header = ({
                                 {showDropdown && (
                                     <div 
                                         ref={dropdownRef}
-                                        className="absolute top-full right-0 mt-2 w-80 bg-white rounded-md shadow-lg border border-gray-200 py-3 z-50"
+                                        className="absolute top-full right-0 mt-2 w-72 bg-white rounded-md shadow-lg border border-gray-200 py-3 z-50"
                                     >
                                         
                                         {/* User Profile Section - Show when authenticated */}
@@ -194,28 +193,6 @@ const Header = ({
                                         >
                                             <ScrollText size={16} />
                                             <span>Executive Orders</span>
-                                        </button>
-
-                                        {/* Separator */}
-                                        <div className="border-t border-gray-200 my-2"></div>
-
-                                        {/* Federal Bills Header */}
-                                        <div className="px-6 py-3 text-sm font-bold text-gray-800 flex items-center gap-3">
-                                            <Scroll size={16} />
-                                            <span>Federal Bills</span>
-                                        </div>
-
-                                        {/* H.R.1 Sub-item */}
-                                        <button
-                                            onClick={() => handleMenuItemClick(() => navigate('/hr1'))}
-                                            className={
-                                                "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
-                                                (location.pathname === '/hr1'
-                                                    ? 'bg-blue-50 text-blue-700 font-medium'
-                                                    : 'text-gray-600 hover:bg-gray-100')
-                                            }
-                                        >
-                                            H.R.1 - One Big Beautiful Bill Act
                                         </button>
 
                                         {/* Separator */}

@@ -1,7 +1,8 @@
-// Complete StatePage.jsx with removed search functionality and fetch container, filter moved to left side below header
+// Complete StatePage.jsx with all original functionality plus FilterDropdown component matching ExecutiveOrdersPage
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+    Search,
     ChevronDown,
     Download,
     RotateCw,
@@ -19,9 +20,7 @@ import {
     RotateCw as RefreshIcon,
     ChevronLeft,
     ChevronRight,
-    ArrowUp,
-    Calendar,
-    Clock
+    ArrowUp
 } from 'lucide-react';
 
 import { FILTERS, SUPPORTED_STATES } from '../utils/constants';
@@ -33,7 +32,6 @@ import {
 import useReviewStatus from '../hooks/useReviewStatus';
 import FilterDropdown from '../components/FilterDropdown';
 import ShimmerLoader from '../components/ShimmerLoader';
-import EditableCategoryTag from './EditableCategoryTag';
 import API_URL from '../config/api';
 
 // Pagination configuration
@@ -64,11 +62,15 @@ const ScrollToTopButton = () => {
 
     useEffect(() => {
         const handleScroll = () => {
+            // Show button when user scrolls down 300px (when header typically disappears)
             const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
             setIsVisible(scrollTop > 300);
         };
 
+        // Add scroll event listener
         window.addEventListener('scroll', handleScroll);
+
+        // Cleanup
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
@@ -94,21 +96,79 @@ const ScrollToTopButton = () => {
     );
 };
 
-// Function to clean and validate status values
+// Create a custom CategoryTag component that handles not-applicable and uses FILTER icons
+const CustomCategoryTag = ({ category }) => {
+    const cleanedCategory = cleanCategory(category);
+
+    // Find the matching filter to get the icon
+    const matchingFilter = FILTERS.find(filter => filter.key === cleanedCategory);
+    const IconComponent = matchingFilter?.icon || AlertTriangle; // Default to AlertTriangle for not-applicable
+
+    const getCategoryStyle = (cat) => {
+        switch (cat) {
+            case 'civic':
+                return 'bg-blue-100 text-blue-800';
+            case 'education':
+                return 'bg-orange-100 text-orange-800';
+            case 'engineering':
+                return 'bg-green-100 text-green-800';
+            case 'healthcare':
+                return 'bg-red-100 text-red-800';
+            case 'not-applicable':
+                return 'bg-gray-100 text-gray-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
+        }
+    };
+
+    const getCategoryLabel = (cat) => {
+        // First try to get label from FILTERS
+        const matchingFilter = FILTERS.find(filter => filter.key === cat);
+        if (matchingFilter) {
+            return matchingFilter.label;
+        }
+
+        // Fallback labels
+        switch (cat) {
+            case 'civic': return 'Civic';
+            case 'education': return 'Education';
+            case 'engineering': return 'Engineering';
+            case 'healthcare': return 'Healthcare';
+            case 'not-applicable': return 'Not Applicable';
+            default: return 'General';
+        }
+    };
+
+    return (
+        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getCategoryStyle(cleanedCategory)}`}>
+            <IconComponent size={12} />
+            {getCategoryLabel(cleanedCategory)}
+        </span>
+    );
+};
+
+
+// Function to clean and validate status values - only allow specific statuses
 const cleanStatus = (status) => {
     if (!status || typeof status !== 'string') return 'Active';
 
     const trimmedStatus = status.trim().toLowerCase();
+
+    // Define the only allowed status values
     const validStatuses = ['active', 'inactive', 'fail', 'pass'];
 
+    // Check if the trimmed status is already valid
     if (validStatuses.includes(trimmedStatus)) {
+        // Capitalize first letter and return
         return trimmedStatus.charAt(0).toUpperCase() + trimmedStatus.slice(1);
     }
 
+    // Check for any numbers in the status - if found, default to Active
     if (/\d/.test(trimmedStatus)) {
         return 'Active';
     }
 
+    // Map common variations to valid statuses
     const statusMap = {
         'pending': 'Active',
         'in progress': 'Active',
@@ -129,6 +189,7 @@ const cleanStatus = (status) => {
         '': 'Active'
     };
 
+    // Try to map the status, otherwise default to Active
     return statusMap[trimmedStatus] || 'Active';
 };
 
@@ -138,6 +199,7 @@ const cleanCategory = (category) => {
 
     const trimmedCategory = category.trim().toLowerCase();
 
+    // Handle specific cases - convert unknown to not-applicable
     if (trimmedCategory === 'unknown') {
         return 'not-applicable';
     }
@@ -145,13 +207,15 @@ const cleanCategory = (category) => {
     const unwantedValues = ['4', 'not reviewed', 'null', ''];
 
     if (unwantedValues.includes(trimmedCategory) || trimmedCategory.length === 0) {
-        return 'not-applicable';
+        return 'not-applicable'; // Default fallback
     }
 
+    // Keep "not-applicable" as is if it's already that
     if (trimmedCategory === 'not applicable' || trimmedCategory === 'not-applicable') {
         return 'not-applicable';
     }
 
+    // Map common variations to standard categories - these should match your FILTERS exactly
     const categoryMap = {
         'government': 'civic',
         'public policy': 'civic',
@@ -164,17 +228,53 @@ const cleanCategory = (category) => {
         'construction': 'engineering',
         'medical': 'healthcare',
         'health': 'healthcare',
-        'hospital': 'healthcare',
-        'all practice areas': 'all_practice_areas',
-        'all-practice-areas': 'all_practice_areas'
+        'hospital': 'healthcare'
     };
 
     const mappedCategory = categoryMap[trimmedCategory] || trimmedCategory;
+
+    // Get the valid category keys from your existing FILTERS
     const validCategories = FILTERS.map(f => f.key);
-    validCategories.push('not-applicable');
-    validCategories.push('all_practice_areas');
+    validCategories.push('not-applicable'); // Add not-applicable as valid
 
     return validCategories.includes(mappedCategory) ? mappedCategory : 'not-applicable';
+};
+
+
+// Category-specific styling for fetch status bar
+const getCategoryStyles = (category) => {
+    switch (category) {
+        case 'civic':
+            return {
+                background: 'bg-blue-50',
+                border: 'border-blue-200',
+                text: 'text-blue-800'
+            };
+        case 'education':
+            return {
+                background: 'bg-orange-50',
+                border: 'border-orange-200',
+                text: 'text-orange-800'
+            };
+        case 'engineering':
+            return {
+                background: 'bg-green-50',
+                border: 'border-green-200',
+                text: 'text-green-800'
+            };
+        case 'healthcare':
+            return {
+                background: 'bg-red-50',
+                border: 'border-red-200',
+                text: 'text-red-800'
+            };
+        default:
+            return {
+                background: 'bg-blue-50',
+                border: 'border-blue-200',
+                text: 'text-blue-800'
+            };
+    }
 };
 
 // Review Status Tag Component
@@ -207,15 +307,18 @@ const PaginationControls = ({
     const startItem = (currentPage - 1) * itemsPerPage + 1;
     const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
+    // Calculate page range to show
     const getPageNumbers = () => {
         const pages = [];
         const maxVisiblePages = 7;
 
         if (totalPages <= maxVisiblePages) {
+            // Show all pages if total is small
             for (let i = 1; i <= totalPages; i++) {
                 pages.push(i);
             }
         } else {
+            // Show pages around current page
             const startPage = Math.max(1, currentPage - 3);
             const endPage = Math.min(totalPages, currentPage + 3);
 
@@ -239,14 +342,17 @@ const PaginationControls = ({
 
     return (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-gray-200">
+            {/* Results info */}
             <div className="text-sm text-gray-700">
                 Showing <span className="font-medium">{startItem}</span> to{' '}
                 <span className="font-medium">{endItem}</span> of{' '}
                 <span className="font-medium">{totalItems}</span> bills
             </div>
 
+            {/* Pagination controls */}
             {totalPages > 1 && (
                 <div className="flex items-center gap-2">
+                    {/* Previous button */}
                     <button
                         onClick={() => onPageChange(currentPage - 1)}
                         disabled={currentPage === 1}
@@ -258,6 +364,7 @@ const PaginationControls = ({
                         <ChevronLeft size={16} />
                     </button>
 
+                    {/* Page numbers */}
                     <div className="flex items-center gap-1">
                         {getPageNumbers().map((page, index) => (
                             <button
@@ -276,6 +383,7 @@ const PaginationControls = ({
                         ))}
                     </div>
 
+                    {/* Next button */}
                     <button
                         onClick={() => onPageChange(currentPage + 1)}
                         disabled={currentPage === totalPages}
@@ -294,22 +402,19 @@ const PaginationControls = ({
 
 const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) => {
     // Core state
-    const [allBills, setAllBills] = useState([]);
+    const [stateOrders, setStateOrders] = useState([]);
     const [stateLoading, setStateLoading] = useState(false);
     const [stateError, setStateError] = useState(null);
+    const [stateSearchTerm, setStateSearchTerm] = useState('');
 
-    // Filter state
+    // Filter state (matching ExecutiveOrdersPage pattern)
     const [selectedFilters, setSelectedFilters] = useState([]);
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-    
-    // Fetch button state
-    const [showFetchDropdown, setShowFetchDropdown] = useState(false);
-    const [fetchLoading, setFetchLoading] = useState(false);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
-    const [copiedBills, setCopiedBills] = useState(new Set());
 
+    // ✅ NEW: PAGINATION STATE (copied from ExecutiveOrdersPage)
     const [pagination, setPagination] = useState({
         page: 1,
         per_page: 25,
@@ -317,6 +422,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         count: 0
     });
 
+    // 🔢 NEW: FILTER COUNTS STATE (copied from ExecutiveOrdersPage)
     const [allFilterCounts, setAllFilterCounts] = useState({
         civic: 0,
         education: 0,
@@ -327,28 +433,33 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         total: 0
     });
 
-    // Database-driven review status
+    // NEW: Database-driven review status (replaces localStorage)
     const {
         toggleReviewStatus,
         isItemReviewed,
         isItemReviewLoading,
         reviewCounts
-    } = useReviewStatus(allBills, 'state_legislation');
+    } = useReviewStatus(stateOrders, 'state_legislation');
 
-    // Highlights state
+    // Highlights state - Local state for immediate UI feedback
     const [localHighlights, setLocalHighlights] = useState(new Set());
     const [highlightLoading, setHighlightLoading] = useState(new Set());
 
-    // Expanded bills state
+    // Expanded bills state for showing AI content
     const [expandedBills, setExpandedBills] = useState(new Set());
 
     // UI state
+    const [isFetchExpanded, setIsFetchExpanded] = useState(false);
+    const [fetchingData, setFetchingData] = useState(false);
+    const [fetchStatus, setFetchStatus] = useState(null);
     const [hasData, setHasData] = useState(false);
 
-    const filterDropdownRef = useRef(null);
-    const fetchDropdownRef = useRef(null);
+    // Track the last fetched category for styling
+    const [lastFetchedCategory, setLastFetchedCategory] = useState('civic');
 
-    // Helper functions
+    const filterDropdownRef = useRef(null);
+
+    // Function to capitalize first letter of text
     const capitalizeFirstLetter = (text) => {
         if (!text || typeof text !== 'string') return text;
         const trimmed = text.trim();
@@ -359,26 +470,29 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     const cleanBillTitle = (title) => {
         if (!title) return 'Untitled Bill';
 
+        // Remove common problematic characters and formatting
         let cleaned = title
-            .replace(/^\s*["'"']|["'"']\s*$/g, '')
-            .replace(/&quot;/g, '"')
+            .replace(/^\s*["'"']|["'"']\s*$/g, '') // Remove leading/trailing quotes
+            .replace(/&quot;/g, '"') // Replace HTML entities
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/&#39;/g, "'")
             .replace(/&nbsp;/g, ' ')
-            .replace(/\s+/g, ' ')
-            .replace(/\u2018|\u2019/g, "'")
-            .replace(/\u201C|\u201D/g, '"')
-            .replace(/\u2013|\u2014/g, '-')
-            .replace(/\.\s*\.\s*\.+/g, '...')
-            .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '')
+            .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+            .replace(/\u2018|\u2019/g, "'") // Replace smart quotes with regular quotes
+            .replace(/\u201C|\u201D/g, '"') // Replace smart double quotes
+            .replace(/\u2013|\u2014/g, '-') // Replace em/en dashes with regular dash
+            .replace(/\.\s*\.\s*\.+/g, '...') // Clean up multiple periods
+            .replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '') // Remove non-printable characters
             .trim();
 
+        // Remove trailing periods if they seem wrong (like "Bill Title.")
         if (cleaned.endsWith('.') && !cleaned.includes('etc.') && !cleaned.includes('Inc.')) {
             cleaned = cleaned.slice(0, -1).trim();
         }
 
+        // Capitalize first letter if needed
         if (cleaned.length > 0) {
             cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
         }
@@ -386,21 +500,30 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         return cleaned || 'Untitled Bill';
     };
 
+    // Helper function to parse date strings and handle various formats
     const parseDate = (dateString) => {
-        if (!dateString) return new Date(0);
+        if (!dateString) return new Date(0); // Very old date for null values
+
+        // Try parsing the date string
         const date = new Date(dateString);
+
+        // If parsing failed, return a very old date
         if (isNaN(date.getTime())) {
             return new Date(0);
         }
+
         return date;
     };
 
+    // FIXED: Improved bill ID generation for consistency with highlights
     const getStateBillId = useCallback((bill) => {
         if (!bill) return null;
 
+        // Priority order for ID selection to ensure consistency with highlights
         if (bill.bill_id && typeof bill.bill_id === 'string') return bill.bill_id;
         if (bill.id && typeof bill.id === 'string') return bill.id;
 
+        // Create consistent ID format
         if (bill.bill_number && bill.state) {
             return `${bill.state}-${bill.bill_number}`;
         }
@@ -408,75 +531,17 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             return `${stateName || 'unknown'}-${bill.bill_number}`;
         }
 
+        // Fallback using title hash for consistency
         if (bill.title) {
             const titleHash = bill.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20);
             return `state-bill-${titleHash}`;
         }
 
+        // Last resort
         return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
     }, [stateName]);
 
-    // Category Update Handler
-    const handleCategoryUpdate = useCallback(async (itemId, newCategory, itemType) => {
-        try {
-            console.log(`🔄 Updating category for ${itemType} ${itemId} to ${newCategory}`);
-            
-            setAllBills(prevBills => 
-                prevBills.map(bill => {
-                    const currentBillId = getStateBillId(bill);
-                    if (currentBillId === itemId) {
-                        return { ...bill, category: newCategory };
-                    }
-                    return bill;
-                })
-            );
-
-            const endpoint = `${API_URL}/api/state-legislation/${itemId}/category`;
-
-            const response = await fetch(endpoint, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    category: newCategory
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const result = await response.json();
-            
-            if (result.success) {
-                console.log(`✅ Category successfully updated in database`);
-                fetchExistingData();
-            } else {
-                throw new Error(result.message || 'Update failed');
-            }
-
-        } catch (error) {
-            console.error('❌ Failed to update category:', error);
-            
-            setAllBills(prevBills => 
-                prevBills.map(bill => {
-                    const currentBillId = getStateBillId(bill);
-                    if (currentBillId === itemId) {
-                        return { ...bill, category: bill.originalCategory || 'civic' };
-                    }
-                    return bill;
-                })
-            );
-            
-            setStateError(`Failed to update category: ${error.message}`);
-            setTimeout(() => setStateError(null), 5000);
-            
-            throw error;
-        }
-    }, [getStateBillId]);
-
-    // Expand/collapse functions
+    // Expand/collapse functions for AI content
     const toggleBillExpansion = useCallback((bill) => {
         const billId = getStateBillId(bill);
         if (!billId) return;
@@ -497,24 +562,35 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         return billId ? expandedBills.has(billId) : false;
     }, [expandedBills, getStateBillId]);
 
-    // AI content formatting functions
+    // AI content formatting functions (similar to ExecutiveOrdersPage)
     const formatTalkingPoints = (content) => {
         if (!content) return null;
 
+        // Remove HTML tags first
         let textContent = content.replace(/<[^>]*>/g, '');
+
+        // Split by periods followed by numbers, but be more careful about sentence boundaries
         const points = [];
+
+        // Try to split by numbered patterns first - improved regex
         const numberedMatches = textContent.match(/\d+\.\s*[^.]*(?:\.[^0-9][^.]*)*(?=\s*\d+\.|$)/g);
 
         if (numberedMatches && numberedMatches.length > 1) {
+            // Found numbered points, extract them
             numberedMatches.forEach((match) => {
                 let cleaned = match.replace(/^\d+\.\s*/, '').trim();
-                if (cleaned.length > 10) {
+                // Don't remove period if it's part of the sentence
+                if (cleaned.length > 10) { // Only include substantial content
                     points.push(cleaned);
                 }
             });
         } else {
+            // Fallback: split more intelligently by sentence patterns
+            // Look for content that starts with numbers
             const sentences = textContent.split(/(?=\d+\.\s)/).filter(s => s.trim().length > 0);
+
             sentences.forEach((sentence) => {
+                // Remove leading numbers/bullets but keep the content intact
                 const cleaned = sentence.replace(/^\d+\.\s*/, '').trim();
                 if (cleaned.length > 10) {
                     points.push(cleaned);
@@ -535,15 +611,18 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             );
         }
 
+        // If no points found, display as-is but cleaned
         return <div className="universal-text-content">{textContent}</div>;
     };
 
     const formatUniversalContent = (content) => {
         if (!content) return null;
 
+        // Remove HTML tags but preserve formatting indicators
         let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
         textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
 
+        // Updated section keywords to include Summary and Market Opportunity
         const sectionKeywords = [
             'Risk Assessment',
             'Market Opportunity',
@@ -554,8 +633,10 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             'Summary'
         ];
 
+        // IMPROVED: Better regex that captures complete sentences until the next section
         const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]?\\s*([^]*?)(?=\\s*(?:${sectionKeywords.join('|')}|$))`, 'gi');
 
+        // First, try to extract inline sections
         const inlineMatches = [];
         let match;
         while ((match = inlinePattern.exec(textContent)) !== null) {
@@ -566,19 +647,24 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             });
         }
 
+        // If we found inline sections, process them
         if (inlineMatches.length > 0) {
             const sections = [];
 
             inlineMatches.forEach(({ header, content }) => {
                 if (header && content && content.length > 5) {
+                    // Clean up the header
                     let cleanHeader = header.trim();
                     if (!cleanHeader.endsWith(':')) {
                         cleanHeader += ':';
                     }
 
+                    // IMPROVED: Better content processing that preserves complete sentences
                     const items = [];
 
+                    // Check if content has explicit bullet patterns
                     if (content.includes('•') || (content.includes('-') && content.match(/^\s*-/m)) || (content.includes('*') && content.match(/^\s*\*/m))) {
+                        // Split by explicit bullet indicators, but be more careful
                         const bulletPattern = /(?:^|\n)\s*[•\-*]\s*(.+?)(?=(?:\n\s*[•\-*]|\n\s*$|$))/gs;
                         const bulletMatches = [...content.matchAll(bulletPattern)];
 
@@ -590,6 +676,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                 }
                             });
                         } else {
+                            // Fallback: split by line breaks and look for bullet-like content
                             const lines = content.split(/\n/).map(line => line.trim()).filter(line => line.length > 5);
                             lines.forEach(line => {
                                 const cleanLine = line.replace(/^[•\-*]\s*/, '').trim();
@@ -599,11 +686,14 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                             });
                         }
                     } else {
+                        // IMPROVED: For non-bulleted content, check if it's a single sentence or multiple sentences
                         const sentences = content.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 5);
 
                         if (sentences.length === 1 || content.length < 200) {
+                            // Single sentence or short content - treat as one item
                             items.push(capitalizeFirstLetter(content.trim()));
                         } else {
+                            // Multiple sentences - create bullet points
                             sentences.forEach(sentence => {
                                 if (sentence.length > 10) {
                                     items.push(capitalizeFirstLetter(sentence));
@@ -654,6 +744,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             }
         }
 
+        // Fallback: display as simple text if no sections found
         return <div className="universal-text-content" style={{
             fontSize: '14px',
             lineHeight: '1.6',
@@ -662,7 +753,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         }}>{textContent}</div>;
     };
 
-    // Filter helper functions
+    // Filter helper functions (matching ExecutiveOrdersPage pattern)
     const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
 
     const toggleFilter = (filterKey) => {
@@ -672,7 +763,10 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 : [...prev, filterKey];
 
             console.log('🔄 Filter toggled:', filterKey, 'New filters:', newFilters);
+
+            // Reset to page 1 when filters change
             setPagination(prev => ({ ...prev, page: 1 }));
+
             return newFilters;
         });
     };
@@ -680,25 +774,30 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     const clearAllFilters = () => {
         console.log('🔄 Clearing all filters');
         setSelectedFilters([]);
+        setStateSearchTerm('');
         setPagination(prev => ({ ...prev, page: 1 }));
     };
 
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [selectedFilters]);
+    }, [selectedFilters, stateSearchTerm]);
 
-    // Fetch from database function
+    // ✅ FIXED: Fetch from database with proper pagination AND date sorting
     const fetchFromDatabase = useCallback(async (pageNum = 1) => {
         try {
             setStateLoading(true);
             setStateError(null);
+            setFetchStatus('📊 Loading state legislation from database...');
 
             console.log(`🔍 Fetching page ${pageNum} for state: ${stateName}...`);
 
             const perPage = 25;
             const stateAbbr = SUPPORTED_STATES[stateName];
+
+            // ✅ NEW: Add explicit date sorting parameters
             const url = `${API_URL}/api/state-legislation?state=${stateAbbr}&page=${pageNum}&per_page=${perPage}&order_by=introduced_date&order=desc`;
+            console.log('🔍 Fetching from URL with date sorting:', url);
 
             const response = await fetch(url, {
                 method: 'GET',
@@ -709,6 +808,8 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             });
 
             if (!response.ok) {
+                // If date sorting isn't supported by backend, try without it
+                console.log('🔄 Date sorting not supported, trying without sorting...');
                 const fallbackUrl = `${API_URL}/api/state-legislation?state=${stateAbbr}&page=${pageNum}&per_page=${perPage}`;
                 const fallbackResponse = await fetch(fallbackUrl, {
                     method: 'GET',
@@ -724,6 +825,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
                 const fallbackData = await fallbackResponse.json();
 
+                // ✅ CLIENT-SIDE SORTING: Sort by date if backend doesn't support it
                 let ordersArray = [];
                 if (Array.isArray(fallbackData)) {
                     ordersArray = fallbackData;
@@ -735,6 +837,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                     ordersArray = fallbackData.state_legislation;
                 }
 
+                // ✅ IMPROVED SORTING: Better date sorting for display
                 ordersArray.sort((a, b) => {
                     const getDate = (bill) => {
                         const dateStr = bill.introduced_date || bill.last_action_date || bill.signing_date || '1900-01-01';
@@ -744,9 +847,13 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
                     const dateA = getDate(a);
                     const dateB = getDate(b);
-                    return dateB - dateA;
+
+                    console.log(`📅 Main sort: ${a.title?.substring(0, 30)} (${dateA.toDateString()}) vs ${b.title?.substring(0, 30)} (${dateB.toDateString()})`);
+
+                    return dateB - dateA; // Newest first (descending)
                 });
 
+                // Use the display-sorted data with simple reverse numbering
                 const totalCount = fallbackData.total || fallbackData.count || ordersArray.length;
                 const totalPages = fallbackData.total_pages || Math.ceil(totalCount / perPage);
 
@@ -780,21 +887,28 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                     };
                 });
 
-                setAllBills(transformedBills);
+                // ✅ SET STATE: Update orders and pagination with proper count
+                setStateOrders(transformedBills);
                 setPagination({
                     page: pageNum,
                     per_page: perPage,
                     total_pages: totalPages,
-                    count: Math.max(totalCount, transformedBills.length)
+                    count: Math.max(totalCount, transformedBills.length) // Ensure count is never 0
                 });
 
+                console.log(`✅ Updated state - Page: ${pageNum}/${totalPages}, Count: ${Math.max(totalCount, transformedBills.length)}`);
+                console.log(`🔢 First bill should be numbered: ${Math.max(totalCount, transformedBills.length) - ((pageNum - 1) * perPage + 0)}`);
+
+                setFetchStatus(`✅ Loaded ${transformedBills.length} of ${Math.max(totalCount, transformedBills.length)} bills (Page ${pageNum}/${totalPages}) - Sorted by date`);
                 setHasData(transformedBills.length > 0);
+                setTimeout(() => setFetchStatus(null), 4000);
                 return;
             }
 
             const data = await response.json();
             console.log('🔍 API Response:', data);
 
+            // ✅ COMPREHENSIVE DATA EXTRACTION: Handle different response formats
             let ordersArray = [];
             let totalCount = 0;
             let currentPage = pageNum;
@@ -802,24 +916,35 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             if (Array.isArray(data)) {
                 ordersArray = data;
                 totalCount = data.length;
+                console.log('🔍 Using data directly as array');
             } else if (data.results && Array.isArray(data.results)) {
                 ordersArray = data.results;
                 totalCount = data.total || data.count || 0;
                 currentPage = data.page || pageNum;
+                console.log('🔍 Using data.results - total:', totalCount, 'current page:', currentPage);
             } else if (data.data && Array.isArray(data.data)) {
                 ordersArray = data.data;
                 totalCount = data.total || data.count || 0;
                 currentPage = data.page || pageNum;
+                console.log('🔍 Using data.data');
             } else if (data.state_legislation && Array.isArray(data.state_legislation)) {
                 ordersArray = data.state_legislation;
                 totalCount = data.total || data.count || 0;
                 currentPage = data.page || pageNum;
+                console.log('🔍 Using data.state_legislation');
             } else {
+                console.error('🔍 Could not find bills array in response!');
+                console.error('🔍 Available fields:', Object.keys(data));
                 throw new Error('No bills found in API response');
             }
 
+            // Calculate totalPages after we have all the data
             const totalPages = data.total_pages || Math.ceil(totalCount / perPage);
 
+            console.log(`🔍 Extracted ${ordersArray.length} bills from page ${currentPage}`);
+            console.log(`🔍 Total count: ${totalCount}, Total pages: ${totalPages}`);
+
+            // Transform bills with enhanced compatibility and CLEANED META VALUES
             const transformedBills = ordersArray.map((bill, index) => {
                 const uniqueId = getStateBillId(bill) || `fallback-${pageNum}-${index}`;
 
@@ -850,7 +975,10 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 };
             });
 
-            setAllBills(transformedBills);
+            console.log(`🔍 Transformed ${transformedBills.length} bills`);
+
+            // ✅ SET STATE: Update orders and pagination
+            setStateOrders(transformedBills);
             setPagination({
                 page: currentPage,
                 per_page: perPage,
@@ -858,12 +986,18 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 count: totalCount
             });
 
+            console.log(`✅ Updated state - Page: ${currentPage}/${totalPages}, Count: ${totalCount}`);
+
+            setFetchStatus(`✅ Loaded ${transformedBills.length} of ${totalCount} bills (Page ${currentPage}/${totalPages})`);
             setHasData(transformedBills.length > 0);
+            setTimeout(() => setFetchStatus(null), 4000);
 
         } catch (err) {
             console.error('❌ Error details:', err);
             setStateError(`Failed to load state legislation: ${err.message}`);
-            setAllBills([]);
+            setFetchStatus(`❌ Error: ${err.message}`);
+            setTimeout(() => setFetchStatus(null), 5000);
+            setStateOrders([]);
             setHasData(false);
         } finally {
             setStateLoading(false);
@@ -879,7 +1013,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             // Start with smaller sample sizes that your API can handle
             let totalCount = 0;
-            let categoryCounts = { civic: 0, education: 0, engineering: 0, healthcare: 0, all_practice_areas: 0 };
+            let categoryCounts = { civic: 0, education: 0, engineering: 0, healthcare: 0 };
             let allOrders = [];
 
             // Try different approaches in order of preference
@@ -941,9 +1075,6 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             FILTERS.forEach(filter => {
                 categoryCounts[filter.key] = allOrders.filter(order => cleanCategory(order?.category) === filter.key).length;
             });
-            
-            // Also count all_practice_areas separately
-            categoryCounts.all_practice_areas = allOrders.filter(order => cleanCategory(order?.category) === 'all_practice_areas').length;
 
             console.log('📊 Category counts from sample:', categoryCounts);
 
@@ -961,7 +1092,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             }
 
             // Get reviewed counts from current data
-            const reviewedCount = allBills.filter(bill => isItemReviewed(bill)).length;
+            const reviewedCount = stateOrders.filter(bill => isItemReviewed(bill)).length;
 
             const newFilterCounts = {
                 ...categoryCounts,
@@ -979,14 +1110,11 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             // Enhanced fallback using current page data
             const fallbackCounts = {};
             FILTERS.forEach(filter => {
-                fallbackCounts[filter.key] = allBills.filter(order => cleanCategory(order?.category) === filter.key).length;
+                fallbackCounts[filter.key] = stateOrders.filter(order => cleanCategory(order?.category) === filter.key).length;
             });
-            
-            // Also count all_practice_areas separately in fallback
-            fallbackCounts.all_practice_areas = allBills.filter(order => cleanCategory(order?.category) === 'all_practice_areas').length;
 
-            const total = pagination.count || allBills.length || 0; // Use pagination total if available
-            const reviewed = allBills.filter(order => isItemReviewed(order)).length;
+            const total = pagination.count || stateOrders.length || 0; // Use pagination total if available
+            const reviewed = stateOrders.filter(order => isItemReviewed(order)).length;
 
             console.log('📊 Using fallback counts with pagination total:', total);
 
@@ -997,7 +1125,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 total: total
             });
         }
-    }, [allBills, stateName, pagination.count, isItemReviewed]);
+    }, [stateOrders, stateName, pagination.count, isItemReviewed]);
 
     // 🔍 NEW: Get ALL filtered data, not just paginated results
     const fetchAllFilteredData = useCallback(async (filters, search) => {
@@ -1300,6 +1428,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         try {
             setStateLoading(true);
             setStateError(null);
+            setFetchStatus('🔍 Filtering state legislation...');
 
             console.log(`🔍 fetchFilteredData called with filters: ${filters}, search: "${search}", page: ${pageNum}`);
 
@@ -1311,14 +1440,16 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             if (totalFilteredCount === 0) {
                 console.log('🔍 No filtered results found');
-                setAllBills([]);
+                setStateOrders([]);
                 setPagination({
                     page: 1,
                     per_page: 25,
                     total_pages: 0,
                     count: 0
                 });
+                setFetchStatus(`❌ No results found for selected filters`);
                 setHasData(false);
+                setTimeout(() => setFetchStatus(null), 4000);
                 return;
             }
 
@@ -1335,7 +1466,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             const totalPages = Math.ceil(totalFilteredCount / perPage);
 
             // Update state with paginated results but correct total count
-            setAllBills(paginatedOrders);
+            setStateOrders(paginatedOrders);
             setPagination({
                 page: pageNum,
                 per_page: perPage,
@@ -1345,17 +1476,40 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             console.log(`🔍 Set pagination: page ${pageNum}/${totalPages}, total count: ${totalFilteredCount}`);
 
+            setFetchStatus(`✅ Found ${totalFilteredCount} filtered bills, showing page ${pageNum} of ${totalPages}`);
             setHasData(paginatedOrders.length > 0);
+            setTimeout(() => setFetchStatus(null), 4000);
 
         } catch (err) {
             console.error('❌ Filtered fetch failed:', err);
             setStateError(`Failed to filter state legislation: ${err.message}`);
-            setAllBills([]);
+            setFetchStatus(`❌ Filter error: ${err.message}`);
+            setTimeout(() => setFetchStatus(null), 5000);
+            setStateOrders([]);
             setHasData(false);
         } finally {
             setStateLoading(false);
         }
     }, [fetchAllFilteredData]);
+
+    // ✅ NEW: PAGE CHANGE HANDLER
+    const handlePageChange = useCallback((newPage) => {
+        console.log(`🔄 Changing to page ${newPage} with filters:`, selectedFilters);
+
+        if (selectedFilters.length > 0 || stateSearchTerm) {
+            fetchFilteredData(selectedFilters, stateSearchTerm, newPage);
+        } else {
+            fetchFromDatabase(newPage);
+        }
+    }, [selectedFilters, stateSearchTerm, fetchFromDatabase, fetchFilteredData]);
+
+    // Handle search
+    const handleSearch = useCallback(() => {
+        console.log(`🔍 Searching for: "${stateSearchTerm}"`);
+        if (selectedFilters.length > 0 || stateSearchTerm) {
+            fetchFilteredData(selectedFilters, stateSearchTerm, 1);
+        }
+    }, [stateSearchTerm, selectedFilters, fetchFilteredData]);
 
     // 🔢 NEW: Dynamic filter counts based on current filtering state
     const updateFilterCounts = useCallback(async (activeFilters, searchTerm) => {
@@ -1434,44 +1588,73 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 // Fallback to current data
                 const fallbackCounts = {};
                 FILTERS.forEach(filter => {
-                    fallbackCounts[filter.key] = allBills.filter(bill => cleanCategory(bill?.category) === filter.key).length;
+                    fallbackCounts[filter.key] = stateOrders.filter(bill => cleanCategory(bill?.category) === filter.key).length;
                 });
 
-                const reviewed = allBills.filter(bill => isItemReviewed(bill)).length;
+                const reviewed = stateOrders.filter(bill => isItemReviewed(bill)).length;
 
                 setAllFilterCounts({
                     ...fallbackCounts,
                     reviewed: reviewed,
-                    not_reviewed: Math.max(0, allBills.length - reviewed),
-                    total: allBills.length
+                    not_reviewed: Math.max(0, stateOrders.length - reviewed),
+                    total: stateOrders.length
                 });
             }
         } catch (error) {
             console.error('❌ Error updating filter counts:', error);
         }
-    }, [stateName, fetchFilterCounts, allBills, isItemReviewed]);
+    }, [stateName, fetchFilterCounts, stateOrders, isItemReviewed]);
 
     // Update filter counts when filters or search changes
     useEffect(() => {
-        if (allBills.length > 0) {
-            updateFilterCounts(selectedFilters, '');
+        if (stateOrders.length > 0) {
+            updateFilterCounts(selectedFilters, stateSearchTerm);
         }
-    }, [selectedFilters, allBills.length, updateFilterCounts]);
+    }, [selectedFilters, stateSearchTerm, stateOrders.length, updateFilterCounts]);
 
-    // ✅ NEW: PAGE CHANGE HANDLER
-    const handlePageChange = useCallback((newPage) => {
-        console.log(`🔄 Changing to page ${newPage} with filters:`, selectedFilters);
+    // UPDATED: Load existing highlights on component mount - using same pattern as ExecutiveOrdersPage
+    useEffect(() => {
+        const loadExistingHighlights = async () => {
+            try {
+                console.log('🔍 StatePage: Loading existing highlights...');
+                const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('🔍 StatePage: Raw highlights response:', data);
 
-        if (selectedFilters.length > 0) {
-            fetchFilteredData(selectedFilters, '', newPage);
-        } else {
-            fetchFromDatabase(newPage);
-        }
-    }, [selectedFilters, fetchFromDatabase, fetchFilteredData]);
+                    // Handle different response formats (same as ExecutiveOrdersPage)
+                    let highlights = [];
+                    if (Array.isArray(data)) {
+                        highlights = data;
+                    } else if (data.highlights && Array.isArray(data.highlights)) {
+                        highlights = data.highlights;
+                    } else if (data.results && Array.isArray(data.results)) {
+                        highlights = data.results;
+                    }
+
+                    const stateBillIds = new Set();
+
+                    highlights.forEach(highlight => {
+                        if (highlight.order_type === 'state_legislation' && highlight.order_id) {
+                            stateBillIds.add(highlight.order_id);
+                        }
+                    });
+
+                    setLocalHighlights(stateBillIds);
+                    console.log('🌟 StatePage: Loaded highlights:', Array.from(stateBillIds));
+                }
+            } catch (error) {
+                console.error('Error loading existing highlights:', error);
+            }
+        };
+
+        // Load highlights immediately on mount
+        loadExistingHighlights();
+    }, []); // Empty dependency array - run once on mount
 
     // ALSO load highlights when state orders are loaded
     useEffect(() => {
-        if (allBills.length > 0) {
+        if (stateOrders.length > 0) {
             const loadExistingHighlights = async () => {
                 try {
                     const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
@@ -1502,64 +1685,50 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             loadExistingHighlights();
         }
-    }, [allBills.length]);
+    }, [stateOrders.length]);
 
-    // Load existing highlights
-    useEffect(() => {
-        const loadExistingHighlights = async () => {
-            try {
-                const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
-                if (response.ok) {
-                    const data = await response.json();
-                    let highlights = [];
-                    if (Array.isArray(data)) {
-                        highlights = data;
-                    } else if (data.highlights && Array.isArray(data.highlights)) {
-                        highlights = data.highlights;
-                    } else if (data.results && Array.isArray(data.results)) {
-                        highlights = data.results;
-                    }
-
-                    const stateBillIds = new Set();
-                    highlights.forEach(highlight => {
-                        if (highlight.order_type === 'state_legislation' && highlight.order_id) {
-                            stateBillIds.add(highlight.order_id);
-                        }
-                    });
-
-                    setLocalHighlights(stateBillIds);
-                }
-            } catch (error) {
-                console.error('Error loading existing highlights:', error);
-            }
-        };
-
-        loadExistingHighlights();
-    }, []);
-
-    // Auto-load data
+    // 🚀 NEW: AUTO-LOAD: Auto-load data from database on component mount
     useEffect(() => {
         if (stateName && SUPPORTED_STATES[stateName]) {
+            console.log('🚀 Component mounted - attempting auto-load...');
+
             const autoLoad = async () => {
                 try {
+                    console.log('📊 Auto-loading state legislation from database...');
                     await fetchFromDatabase(1);
+                    console.log('✅ Auto-load completed successfully');
                 } catch (err) {
                     console.error('❌ Auto-load failed:', err);
-                    setAllBills([]);
+                    // Don't show error for auto-load failure, just log it
+                    setStateOrders([]);
                     setHasData(false);
                 }
             };
 
+            // Small delay to ensure component is fully mounted
             const timeoutId = setTimeout(autoLoad, 100);
+
             return () => clearTimeout(timeoutId);
         }
-    }, [stateName, fetchFromDatabase]);
+    }, [stateName, fetchFromDatabase]); // Depend on stateName and fetchFromDatabase
 
-    // Review status handler
+    // NEW: Enhanced review status handler using database
     const handleToggleReviewStatus = async (bill) => {
         try {
+            console.log('🔍 Frontend: Bill object:', bill);
+            console.log('🔍 Frontend: Available IDs:', {
+                id: bill.id,
+                bill_id: bill.bill_id,
+                bill_number: bill.bill_number
+            });
+
+            // The ID being sent should be the database ID (bill.id), not bill_id
+            const idToSend = bill.id || bill.bill_id;
+            console.log('🔍 Frontend: ID being sent to API:', idToSend);
             const newStatus = await toggleReviewStatus(bill);
-            setAllBills(prevOrders =>
+
+            // Update the local state to reflect the change immediately
+            setStateOrders(prevOrders =>
                 prevOrders.map(order =>
                     (order.id === bill.id || order.bill_id === bill.bill_id)
                         ? { ...order, reviewed: newStatus }
@@ -1568,19 +1737,32 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             );
         } catch (error) {
             console.error('Error toggling review status:', error);
+            // Optionally show an error message to the user
         }
     };
 
-    // Highlighting function
+    // FIXED: Enhanced highlighting function - exactly matching ExecutiveOrdersPage pattern
     const handleStateBillHighlight = useCallback(async (bill) => {
+        console.log('🌟 StatePage highlight handler called for:', bill.title);
+
         const billId = getStateBillId(bill);
-        if (!billId) return;
+        if (!billId) {
+            console.error('❌ No valid bill ID found for highlighting');
+            return;
+        }
 
         const isCurrentlyHighlighted = localHighlights.has(billId);
+        console.log('🌟 Current highlight status:', isCurrentlyHighlighted, 'Bill ID:', billId);
+
+        // Add to loading state
         setHighlightLoading(prev => new Set([...prev, billId]));
 
         try {
             if (isCurrentlyHighlighted) {
+                // REMOVE highlight
+                console.log('🗑️ Attempting to remove highlight for:', billId);
+
+                // Optimistic UI update
                 setLocalHighlights(prev => {
                     const newSet = new Set(prev);
                     newSet.delete(billId);
@@ -1592,13 +1774,20 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 });
 
                 if (!response.ok) {
+                    console.error('❌ Failed to remove highlight from backend');
+                    // Revert optimistic update
                     setLocalHighlights(prev => new Set([...prev, billId]));
                 } else {
+                    console.log('✅ Successfully removed highlight from backend');
                     if (stableHandlers?.handleItemHighlight) {
                         stableHandlers.handleItemHighlight(bill, 'state_legislation');
                     }
                 }
             } else {
+                // ADD highlight
+                console.log('⭐ Attempting to add highlight for:', billId);
+
+                // Optimistic UI update
                 setLocalHighlights(prev => new Set([...prev, billId]));
 
                 const response = await fetch(`${API_URL}/api/highlights`, {
@@ -1615,13 +1804,18 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                     })
                 });
 
-                if (!response.ok && response.status !== 409) {
-                    setLocalHighlights(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(billId);
-                        return newSet;
-                    });
+                if (!response.ok) {
+                    console.error('❌ Failed to add highlight');
+                    if (response.status !== 409) { // 409 means already exists
+                        // Revert optimistic update
+                        setLocalHighlights(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(billId);
+                            return newSet;
+                        });
+                    }
                 } else {
+                    console.log('✅ Successfully added highlight to backend');
                     if (stableHandlers?.handleItemHighlight) {
                         stableHandlers.handleItemHighlight(bill, 'state_legislation');
                     }
@@ -1630,6 +1824,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
         } catch (error) {
             console.error('❌ Error managing highlight:', error);
+            // Revert optimistic update on error
             if (isCurrentlyHighlighted) {
                 setLocalHighlights(prev => new Set([...prev, billId]));
             } else {
@@ -1640,6 +1835,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 });
             }
         } finally {
+            // Remove from loading state
             setHighlightLoading(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(billId);
@@ -1648,18 +1844,23 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         }
     }, [localHighlights, stableHandlers, getStateBillId]);
 
-    // Check if bill is highlighted
+    // Enhanced check if bill is highlighted (using local state)
     const isStateBillHighlighted = useCallback((bill) => {
         const billId = getStateBillId(bill);
         if (!billId) return false;
 
+        // Check local state first for immediate UI feedback
         const localHighlighted = localHighlights.has(billId);
+
+        // Also check stable handlers as fallback
         const stableHighlighted = stableHandlers?.isItemHighlighted?.(bill) || false;
 
-        return localHighlighted || stableHighlighted;
+        const isHighlighted = localHighlighted || stableHighlighted;
+
+        return isHighlighted;
     }, [localHighlights, stableHandlers, getStateBillId]);
 
-    // Check if bill highlight is loading
+    // Check if bill is currently being highlighted/unhighlighted
     const isBillHighlightLoading = useCallback((bill) => {
         const billId = getStateBillId(bill);
         return billId ? highlightLoading.has(billId) : false;
@@ -1672,7 +1873,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             education: allFilterCounts.education || 0,
             engineering: allFilterCounts.engineering || 0,
             healthcare: allFilterCounts.healthcare || 0,
-            all_practice_areas: allFilterCounts.all_practice_areas || 0, // Actual count of all_practice_areas category
+            all_practice_areas: allFilterCounts.total || 0, // All practice areas shows total count
             reviewed: allFilterCounts.reviewed || 0,
             not_reviewed: allFilterCounts.not_reviewed || 0,
             total: allFilterCounts.total || 0
@@ -1696,27 +1897,32 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
         };
     }, [allFilterCounts]);
 
-    // Close dropdown on outside click
+    // Click outside to close dropdown
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
                 setShowFilterDropdown(false);
-            }
-            if (fetchDropdownRef.current && !fetchDropdownRef.current.contains(event.target)) {
-                setShowFetchDropdown(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Fetch existing data
-    const fetchExistingData = useCallback(async () => {
+    // Fetch existing data on component mount
+    useEffect(() => {
+        if (stateName && SUPPORTED_STATES[stateName]) {
+            fetchExistingData();
+        }
+    }, [stateName]);
+
+    const fetchExistingData = async () => {
         setStateLoading(true);
         setStateError(null);
 
         try {
             const stateAbbr = SUPPORTED_STATES[stateName];
+            console.log('🔍 Fetching data for state:', stateName, 'Abbreviation:', stateAbbr);
+
             const urls = [
                 `${API_URL}/api/state-legislation?state=${stateAbbr}`,
                 `${API_URL}/api/state-legislation?state=${stateName}`
@@ -1726,10 +1932,15 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             let data;
 
             for (const url of urls) {
+                console.log('🔍 Trying URL:', url);
                 response = await fetch(url);
+
                 if (response.ok) {
                     data = await response.json();
+                    console.log('🔍 Response data:', data);
+
                     if (data.results && data.results.length > 0) {
+                        console.log('✅ Found data with URL:', url);
                         break;
                     }
                 }
@@ -1741,17 +1952,21 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
             const results = data?.results || [];
 
+            // Transform bills with enhanced compatibility and CLEANED META VALUES
             const transformedBills = results.map((bill, index) => {
                 const uniqueId = getStateBillId(bill) || `fallback-${index}`;
 
                 return {
+                    // Core identification
                     id: uniqueId,
                     bill_id: uniqueId,
+
+                    // Standard bill fields with CLEANED VALUES
                     title: bill?.title || 'Untitled Bill',
-                    status: cleanStatus(bill?.status),
-                    category: cleanCategory(bill?.category),
+                    status: cleanStatus(bill?.status), // ✅ CLEANED STATUS
+                    category: cleanCategory(bill?.category), // ✅ CLEANED CATEGORY
                     description: bill?.description || bill?.ai_summary || 'No description available',
-                    tags: [cleanCategory(bill?.category)].filter(Boolean),
+                    tags: [cleanCategory(bill?.category)].filter(Boolean), // ✅ CLEANED TAGS
                     summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
                     bill_number: bill?.bill_number,
                     state: bill?.state || stateName,
@@ -1761,48 +1976,105 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                     ai_potential_impact: bill?.ai_potential_impact,
                     introduced_date: bill?.introduced_date,
                     last_action_date: bill?.last_action_date,
-                    reviewed: bill?.reviewed || false,
+
+                    // Highlights page compatibility
                     executive_order_number: bill?.bill_number || uniqueId,
                     signing_date: bill?.introduced_date,
                     ai_summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : bill?.description || 'No summary available',
+
+                    // Backend compatibility
                     order_type: 'state_legislation',
                     source_page: 'state-legislation'
                 };
             });
 
+            // Sort bills by date (newest first) for reverse chronological order
             transformedBills.sort((a, b) => {
                 const dateA = parseDate(a.introduced_date || a.last_action_date);
                 const dateB = parseDate(b.introduced_date || b.last_action_date);
-                return dateB.getTime() - dateA.getTime();
+                return dateB.getTime() - dateA.getTime(); // Newest first
             });
 
-            setAllBills(transformedBills);
+            console.log('🔍 Transformed bills:', transformedBills.length, 'bills');
+            setStateOrders(transformedBills);
             setHasData(transformedBills.length > 0);
         } catch (error) {
             console.error('❌ Error fetching existing state legislation:', error);
             setStateError(error.message);
             setHasData(false);
-            setAllBills([]);
+            setStateOrders([]);
         } finally {
             setStateLoading(false);
         }
-    }, [stateName, getStateBillId]);
+    };
 
-    // Filtered orders
+    // Enhanced topic-based fetch function with category tracking
+    const handleQuickFetchByTopic = async (topic, description) => {
+        if (fetchingData) return;
+
+        setFetchingData(true);
+        setLastFetchedCategory(topic); // Track the category for styling
+        setFetchStatus(`🔍 Searching for ${description} legislation in ${stateName}...`);
+
+        try {
+            const stateAbbr = SUPPORTED_STATES[stateName];
+            const response = await fetch(`${API_URL}/api/legiscan/search-and-analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: topic,
+                    state: stateAbbr,
+                    limit: 50,
+                    save_to_db: true
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success !== false) {
+                const billsCount = data.bills_analyzed || 0;
+                setFetchStatus(
+                    `✅ Successfully found and analyzed ${billsCount} ${description.toLowerCase()} bills! Refreshing data...`
+                );
+
+                setTimeout(() => {
+                    fetchFromDatabase(1);
+                }, 1000);
+            } else {
+                setFetchStatus(`❌ Error: ${data.message || 'Unknown error'}`);
+            }
+
+        } catch (error) {
+            console.error('Error fetching by topic:', error);
+            setFetchStatus(`❌ Error: ${error.message}`);
+        } finally {
+            setFetchingData(false);
+            setTimeout(() => {
+                setFetchStatus(null);
+                setLastFetchedCategory('civic'); // Reset to default
+            }, 8000);
+        }
+    };
+
     const filteredStateOrders = useMemo(() => {
-        if (!Array.isArray(allBills)) {
+        if (!Array.isArray(stateOrders)) {
             return [];
         }
 
-        let filtered = allBills;
+        let filtered = stateOrders;
 
-        const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
+        // Apply category filters
+        const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed', 'all_practice_areas'].includes(f));
         
-        if (categoryFilters.length > 0) {
-            // Show only items matching selected categories (including all_practice_areas as its own category)
+        // Handle "All Practice Areas" filter - if selected, show all categories (no category filtering)
+        if (selectedFilters.includes('all_practice_areas')) {
+            // Don't apply any category filtering - show all categories
+        } else if (categoryFilters.length > 0) {
+            // Apply specific category filters
             filtered = filtered.filter(bill => categoryFilters.includes(cleanCategory(bill?.category)));
         }
 
+        // Apply review status filters - NOW USING DATABASE VALUES
         const hasReviewedFilter = selectedFilters.includes('reviewed');
         const hasNotReviewedFilter = selectedFilters.includes('not_reviewed');
 
@@ -1814,68 +2086,32 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             filtered = filtered.filter(bill => !isItemReviewed(bill));
         }
 
+        // Apply search filter
+        if (stateSearchTerm.trim()) {
+            const search = stateSearchTerm.toLowerCase().trim();
+            filtered = filtered.filter(bill => {
+                const title = (bill?.title || '').toLowerCase();
+                const description = (bill?.description || '').toLowerCase();
+                const summary = (bill?.summary || '').toLowerCase();
+                const billNumber = (bill?.bill_number || '').toString().toLowerCase();
+
+                return title.includes(search) ||
+                    description.includes(search) ||
+                    summary.includes(search) ||
+                    billNumber.includes(search);
+            });
+        }
+
+        // Ensure the data is sorted newest first (this should already be done in fetchExistingData)
         filtered.sort((a, b) => {
             const dateA = parseDate(a.introduced_date || a.last_action_date);
             const dateB = parseDate(b.introduced_date || b.last_action_date);
-            return dateB.getTime() - dateA.getTime();
+            return dateB.getTime() - dateA.getTime(); // Newest first
         });
 
         return filtered;
-    }, [allBills, selectedFilters, getStateBillId, isItemReviewed]);
+    }, [stateOrders, selectedFilters, stateSearchTerm, getStateBillId, isItemReviewed]);
 
-    // Fetch functions for different time periods
-    const fetchStateLegislation = useCallback(async (days) => {
-        try {
-            setFetchLoading(true);
-            setShowFetchDropdown(false);
-            
-            const stateAbbr = SUPPORTED_STATES[stateName];
-            if (!stateAbbr) {
-                console.error('❌ No state abbreviation found for:', stateName);
-                return;
-            }
-            
-            console.log(`🔄 Fetching ${stateName} legislation for last ${days} days...`);
-            
-            // Create a query string for the time period
-            const queryString = days === 7 ? "recent bills" : 
-                               days === 30 ? "bills last month" : 
-                               "bills last 3 months";
-            
-            // Call LegiScan API through backend with correct payload
-            const response = await fetch(`${API_URL}/api/legiscan/search-and-analyze`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    query: queryString,
-                    state: stateAbbr,
-                    limit: days === 7 ? 100 : days === 30 ? 300 : 500,
-                    save_to_db: true,
-                    process_one_by_one: true,
-                    with_ai_analysis: true,
-                    enhanced_ai: true
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Failed to fetch legislation: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            console.log(`✅ Fetched ${data.bills?.length || 0} bills from LegiScan`);
-            
-            // Refresh the data from database to show new items
-            await fetchFromDatabase(1);
-            
-        } catch (error) {
-            console.error('❌ Error fetching legislation:', error);
-            setStateError(`Failed to fetch legislation: ${error.message}`);
-        } finally {
-            setFetchLoading(false);
-        }
-    }, [stateName, fetchFromDatabase]);
 
     // Pagination calculations
     const totalItems = filteredStateOrders.length;
@@ -1883,6 +2119,10 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const currentPageItems = filteredStateOrders.slice(startIndex, endIndex);
+
+
+    // Get dynamic styles for fetch status bar
+    const fetchStatusStyles = getCategoryStyles(lastFetchedCategory);
 
     // Early returns for invalid states
     if (!stateName) {
@@ -1912,108 +2152,214 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
             {/* Scroll to Top Button */}
             <ScrollToTopButton />
 
-            {/* ===================================== */}
-            {/* HEADER SECTION - TITLE AND DESCRIPTION ONLY */}
-            {/* ===================================== */}
+            {/* Page Header */}
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-2">
-                    <FileText/>
-                    <h2 className="text-2xl font-bold text-gray-800">{stateName} Legislation</h2>
+                <FileText/>
+                <h2 className="text-2xl font-bold text-gray-800">{stateName} Legislation</h2>
                 </div>
                 <p className="text-gray-600">
-                    Access the latest legislation and bills from {stateName} with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of new legislation. Direct links to official source documents are included for detailed review.
+                Access the latest legislation and bills from {stateName} with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of new legislation. Direct links to official source documents are included for detailed review.
                 </p> 
             </div>
-
+            
             {/* ===================================== */}
-            {/* FETCH AND FILTER SECTION */}
+            {/* SEARCH AND FILTER SECTION (Updated to match ExecutiveOrdersPage) */}
             {/* ===================================== */}
-            <div className="mb-6">
-                <div className="flex items-start gap-4">
-                    {/* Fetch Button with Sliding Options */}
-                    <div className="relative flex-shrink-0" ref={fetchDropdownRef}>
-                        <button
-                            type="button"
-                            onClick={() => setShowFetchDropdown(!showFetchDropdown)}
-                            disabled={fetchLoading}
-                            className={`flex items-center gap-2 px-6 py-3 border rounded-lg font-medium transition-all duration-300 ${
-                                fetchLoading
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'
-                                    : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
-                            }`}
-                        >
-                            {fetchLoading ? (
-                                <>
-                                    <RefreshIcon size={16} className="animate-spin" />
-                                    <span>Fetching...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Download size={16} />
-                                    <span>Fetch State Legislation</span>
-                                </>
-                            )}
-                        </button>
+            <div className="mb-8">
+                <div className="flex gap-4 items-center">
+                    {/* FilterDropdown Component - Matching ExecutiveOrdersPage */}
+                    <FilterDropdown
+                        ref={filterDropdownRef}
+                        selectedFilters={selectedFilters}
+                        showFilterDropdown={showFilterDropdown}
+                        onToggleDropdown={() => setShowFilterDropdown(!showFilterDropdown)}
+                        onToggleFilter={toggleFilter}
+                        onClearAllFilters={clearAllFilters}
+                        counts={filterCounts}
+                        additionalFilters={[
+                            {
+                                title: "Review Status",
+                                filters: [
+                                    {
+                                        key: 'reviewed',
+                                        label: 'Reviewed',
+                                        icon: Check,
+                                        activeClass: 'bg-green-100 text-green-700 font-medium',
+                                        iconClass: 'text-green-600'
+                                    },
+                                    {
+                                        key: 'not_reviewed',
+                                        label: 'Not Reviewed',
+                                        icon: AlertTriangle,
+                                        activeClass: 'bg-red-100 text-red-700 font-medium',
+                                        iconClass: 'text-red-600'
+                                    }
+                                ]
+                            }
+                        ]}
+                    />
 
-                        {/* Sliding Dropdown Options */}
-                        {showFetchDropdown && (
-                            <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
-                                <div className="py-1">
-                                    <button
-                                        onClick={() => fetchStateLegislation(7)}
-                                        className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors duration-200 flex items-center gap-2"
-                                    >
-                                        <Clock size={16} />
-                                        <span>Last 7 Days</span>
-                                    </button>
-                                    <button
-                                        onClick={() => fetchStateLegislation(30)}
-                                        className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors duration-200 flex items-center gap-2"
-                                    >
-                                        <Calendar size={16} />
-                                        <span>Last 30 Days</span>
-                                    </button>
-                                    <button
-                                        onClick={() => fetchStateLegislation(90)}
-                                        className="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors duration-200 flex items-center gap-2"
-                                    >
-                                        <Calendar size={16} />
-                                        <span>Last 90 Days</span>
-                                    </button>
-                                </div>
+                    {/* Search Bar */}
+                    <div className="flex-1 relative">
+                        <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder={`Search ${stateName} legislation titles, bill numbers, summaries...`}
+                            value={stateSearchTerm}
+                            onChange={(e) => setStateSearchTerm(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
+                        />
+                        {stateSearchTerm && (
+                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                    {stateOrders.length} found
+                                </span>
                             </div>
                         )}
                     </div>
 
-                    {/* Spacer to push filters to the right */}
-                    <div className="flex-grow"></div>
+                    {/* Clear Filters Button */}
+                    {(selectedFilters.length > 0 || stateSearchTerm) && (
+                        <button
+                            type="button"
+                            onClick={clearAllFilters}
+                            className="px-4 py-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-all duration-300 flex-shrink-0"
+                        >
+                            Clear All
+                        </button>
+                    )}
+                </div>
+            </div>
 
-                    {/* Right side - Clear Filters and Filter Button */}
-                    <div className="flex gap-4 items-center">
-                        {/* Clear Filters Button */}
-                        {selectedFilters.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={clearAllFilters}
-                                className="px-4 py-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-all duration-300 flex-shrink-0"
-                            >
-                                Clear Filters
-                            </button>
-                        )}
-
-                        {/* Filter Dropdown */}
-                        <FilterDropdown
-                            ref={filterDropdownRef}
-                            selectedFilters={selectedFilters}
-                            showFilterDropdown={showFilterDropdown}
-                            onToggleDropdown={() => setShowFilterDropdown(!showFilterDropdown)}
-                            onToggleFilter={toggleFilter}
-                            onClearAllFilters={clearAllFilters}
-                            counts={filterCounts}
-                            showReviewStatus={true}
-                            className="relative"
-                        />
+            {/* Topic-Based Quick Pick Fetch Section */}
+            <div className="mb-8">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div
+                        className="p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors duration-200"
+                        onClick={() => setIsFetchExpanded(!isFetchExpanded)}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Download size={20} className="text-blue-600" />
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-800">Fetch {stateName} Legislation</h3>
+                                    <p className="text-sm text-gray-600">
+                                        {isFetchExpanded ? 'Quick access to fetch bills by topic' : 'Click to expand fetch controls'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {fetchStatus && (
+                                    <div className="text-sm text-blue-600 font-medium max-w-xs truncate">
+                                        {fetchStatus}
+                                    </div>
+                                )}
+                                {fetchingData && (
+                                    <RotateCw size={16} className="animate-spin text-blue-600" />
+                                )}
+                                <ChevronDown
+                                    size={20}
+                                    className={`text-gray-500 transition-transform duration-200 ${isFetchExpanded ? 'rotate-180' : ''}`}
+                                />
+                            </div>
+                        </div>
                     </div>
+
+                    {isFetchExpanded && (
+                        <div className="p-6">
+                            {/* Dynamic Fetch Status Bar with Category-Based Styling */}
+                            {fetchStatus && (
+                                <div className={`mb-6 p-4 ${fetchStatusStyles.background} ${fetchStatusStyles.border} border rounded-md`}>
+                                    <p className={`${fetchStatusStyles.text} text-sm font-medium`}>{fetchStatus}</p>
+                                </div>
+                            )}
+
+                            <div className="mb-4">
+                                <h4 className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
+                                    <BookOpen size={16} className="text-blue-600" />
+                                    Quick Fetch by Topic
+                                </h4>
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <button
+                                        onClick={() => handleQuickFetchByTopic('civic', 'Civic')}
+                                        disabled={fetchingData}
+                                        className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-105 ${fetchingData
+                                                ? 'opacity-50 cursor-not-allowed'
+                                                : 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50'
+                                            } border-gray-200 bg-white text-gray-700`}
+                                    >
+                                        <div className="font-medium mb-2 text-blue-600 flex items-center justify-center gap-2">
+                                            <Building size={16} />
+                                            Civic
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            Government & public policy
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleQuickFetchByTopic('education', 'Education')}
+                                        disabled={fetchingData}
+                                        className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-105 ${fetchingData
+                                                ? 'opacity-50 cursor-not-allowed'
+                                                : 'hover:shadow-lg hover:border-orange-300 hover:bg-orange-50'
+                                            } border-gray-200 bg-white text-gray-700`}
+                                    >
+                                        <div className="font-medium mb-2 text-orange-600 flex items-center justify-center gap-2">
+                                            <GraduationCap size={16} />
+                                            Education
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            Schools & learning
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleQuickFetchByTopic('engineering', 'Engineering')}
+                                        disabled={fetchingData}
+                                        className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-105 ${fetchingData
+                                                ? 'opacity-50 cursor-not-allowed'
+                                                : 'hover:shadow-lg hover:border-green-300 hover:bg-green-50'
+                                            } border-gray-200 bg-white text-gray-700`}
+                                    >
+                                        <div className="font-medium mb-2 text-green-600 flex items-center justify-center gap-2">
+                                            <Wrench size={16} />
+                                            Engineering
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            Infrastructure & technology
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleQuickFetchByTopic('healthcare', 'Healthcare')}
+                                        disabled={fetchingData}
+                                        className={`p-4 text-sm rounded-lg border transition-all duration-300 text-center transform hover:scale-105 ${fetchingData
+                                                ? 'opacity-50 cursor-not-allowed'
+                                                : 'hover:shadow-lg hover:border-red-300 hover:bg-red-50'
+                                            } border-gray-200 bg-white text-gray-700`}
+                                    >
+                                        <div className="font-medium mb-2 text-red-600 flex items-center justify-center gap-2">
+                                            <Stethoscope size={16} />
+                                            Healthcare
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            Medical & health policy
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {fetchingData && (
+                                <div className="flex items-center justify-center pt-4 border-t border-gray-200">
+                                    <RotateCw size={20} className="animate-spin text-blue-600 mr-3" />
+                                    <span className="text-sm text-blue-600 font-medium">Searching and analyzing legislation with AI...</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -2044,6 +2390,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                     const isReviewed = isItemReviewed(bill);
                                     const isExpanded = isBillExpanded(bill);
 
+                                    // Calculate the overall position for reverse numbering (highest to lowest)
                                     const overallIndex = startIndex + index;
                                     const reverseNumber = totalItems - overallIndex;
 
@@ -2051,7 +2398,10 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                         <div key={bill.id || index} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
                                             {/* Bill Header */}
                                             <div className="flex items-start justify-between px-6 pt-6 pb-2">
-                                                <div className="flex-1">
+                                                <div
+                                                    className="flex-1 pr-4 cursor-pointer hover:bg-gray-50 transition-all duration-300 rounded-md p-2 -ml-2 -mt-2"
+                                                    onClick={() => toggleBillExpansion(bill)}
+                                                >
                                                     <h3 className="text-lg font-semibold text-gray-900 mb-3">
                                                         {reverseNumber}. {cleanBillTitle(bill.title)}
                                                     </h3>
@@ -2081,14 +2431,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                             {bill.status}
                                                         </span>
                                                         <span>-</span>
-                                                        <EditableCategoryTag 
-                                                            category={bill.category}
-                                                            itemId={getStateBillId(bill)}
-                                                            itemType="state_legislation"
-                                                            onCategoryChange={handleCategoryUpdate}
-                                                            disabled={stateLoading}
-                                                            isUpdating={false}
-                                                        />
+                                                        <CustomCategoryTag category={bill.category} />
                                                         <span>-</span>
                                                         <ReviewStatusTag isReviewed={isReviewed} />
                                                     </div>
@@ -2096,7 +2439,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
 
                                                 {/* Action Buttons */}
                                                 <div className="flex items-center gap-2">
-                                                    {/* Review Status Button */}
+                                                    {/* NEW: Database-driven Review Status Button */}
                                                     <button
                                                         onClick={(e) => {
                                                             e.preventDefault();
@@ -2119,7 +2462,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                         )}
                                                     </button>
 
-                                                    {/* Highlight button */}
+                                                    {/* Enhanced Highlight button with loading state */}
                                                     <button
                                                         type="button"
                                                         className={`p-2 rounded-md transition-all duration-300 ${isStateBillHighlighted(bill)
@@ -2130,6 +2473,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                             e.preventDefault();
                                                             e.stopPropagation();
                                                             if (!isBillHighlightLoading(bill)) {
+                                                                console.log('🌟 Highlighting bill:', bill.title);
                                                                 await handleStateBillHighlight(bill);
                                                             }
                                                         }}
@@ -2174,6 +2518,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                             {/* AI Summary - Always show if available */}
                                             {bill.summary && bill.summary !== 'No AI summary available' && (
                                                 <div className="mb-4 mt-2 mx-6">
+                                                    <div className="mb-4 mx-6">
                                                         <div className="bg-purple-50 p-4 rounded-md border border-purple-200">
                                                             <div className="flex items-center gap-2 mb-2">
                                                                 <h4 className="font-semibold text-purple-800">Azure AI Executive Summary</h4>
@@ -2194,8 +2539,8 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                                 </div>
                                                             </div>
                                                         </div>
+                                                    </div>
                                                 </div>
-
                                             )}
 
                                             {/* Expanded Content Section */}
@@ -2237,7 +2582,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                         </div>
                                                     )}
 
-                                                    {/* Action Buttons */}
+                                                    {/* Action Buttons - Now in expanded section */}
                                                     <div className="px-6 pb-6">
                                                         <div className="flex gap-2">
                                                             {bill.legiscan_url && (
@@ -2245,7 +2590,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                                     href={bill.legiscan_url}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-100 transition-all duration-300"
+                                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 transition-all duration-300"
                                                                 >
                                                                     <ExternalLink size={16} />
                                                                     <span>View on LegiScan</span>
@@ -2253,15 +2598,12 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                             )}
                                                             <button
                                                                 type="button"
-                                                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ${
-                                                                    copiedBills.has(billId) 
-                                                                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                                }`}
+                                                                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 transition-all duration-300"
                                                                 onClick={(e) => {
                                                                     e.preventDefault();
                                                                     e.stopPropagation();
 
+                                                                    // Create bill report
                                                                     const billReport = [
                                                                         bill.title,
                                                                         'Bill #' + (bill.bill_number || 'N/A'),
@@ -2278,50 +2620,20 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                                                         bill.legiscan_url ? 'LegiScan URL: ' + bill.legiscan_url : ''
                                                                     ].filter(line => line.length > 0).join('\n');
 
-                                                                    const copySuccess = async () => {
-                                                                        try {
-                                                                            if (copyToClipboard && typeof copyToClipboard === 'function') {
-                                                                                copyToClipboard(billReport);
-                                                                            } else if (navigator.clipboard) {
-                                                                                await navigator.clipboard.writeText(billReport);
-                                                                            } else {
-                                                                                const textArea = document.createElement('textarea');
-                                                                                textArea.value = billReport;
-                                                                                document.body.appendChild(textArea);
-                                                                                textArea.select();
-                                                                                document.execCommand('copy');
-                                                                                document.body.removeChild(textArea);
-                                                                            }
-                                                                            
-                                                                            setCopiedBills(prev => new Set([...prev, billId]));
-                                                                            
-                                                                            setTimeout(() => {
-                                                                                setCopiedBills(prev => {
-                                                                                    const newSet = new Set(prev);
-                                                                                    newSet.delete(billId);
-                                                                                    return newSet;
-                                                                                });
-                                                                            }, 2000);
-                                                                            
-                                                                        } catch (error) {
-                                                                            console.error('❌ Failed to copy to clipboard:', error);
-                                                                        }
-                                                                    };
-
-                                                                    copySuccess();
+                                                                    // Try to copy to clipboard
+                                                                    if (copyToClipboard && typeof copyToClipboard === 'function') {
+                                                                        copyToClipboard(billReport);
+                                                                        console.log('✅ Copied bill report to clipboard');
+                                                                    } else if (navigator.clipboard) {
+                                                                        navigator.clipboard.writeText(billReport).catch(console.error);
+                                                                        console.log('✅ Copied bill report to clipboard (fallback)');
+                                                                    } else {
+                                                                        console.log('❌ Copy to clipboard not available');
+                                                                    }
                                                                 }}
                                                             >
-                                                                {copiedBills.has(billId) ? (
-                                                                    <>
-                                                                        <Check size={16} />
-                                                                        <span>Copied</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Copy size={16} />
-                                                                        <span>Copy Details</span>
-                                                                    </>
-                                                                )}
+                                                                <Copy size={16} />
+                                                                <span>Copy Details</span>
                                                             </button>
                                                         </div>
                                                     </div>
@@ -2333,10 +2645,10 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                             </div>
                         ) : hasData ? (
                             <div className="text-center py-12">
-                                <FileText size={48} className="mx-auto mb-4 text-gray-300" />
+                                <Search size={48} className="mx-auto mb-4 text-gray-300" />
                                 <h3 className="text-lg font-semibold text-gray-800 mb-2">No Results Found</h3>
                                 <p className="text-gray-600 mb-4">
-                                    No bills match your current filter criteria.
+                                    No bills match your current search criteria.
                                 </p>
                                 <button
                                     type="button"
@@ -2351,7 +2663,7 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                                 <FileText size={48} className="mx-auto mb-4 text-gray-300" />
                                 <h3 className="text-lg font-semibold text-gray-800 mb-2">No Legislation Found</h3>
                                 <p className="text-gray-600 mb-4">
-                                    No legislation data is currently available for {stateName}.
+                                    No legislation data is currently available for {stateName}. Use the fetch options above to get the latest bills by topic.
                                 </p>
                             </div>
                         )}
@@ -2370,28 +2682,31 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                 </div>
             </div>
 
-            {/* Filter Results Summary */}
-            {!stateLoading && !stateError && selectedFilters.length > 0 && (
+            {/* Search/Filter Results Summary (matching ExecutiveOrdersPage) */}
+            {!stateLoading && !stateError && (selectedFilters.length > 0 || stateSearchTerm) && (
                 <div className="mt-4 text-center">
                     <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
                         <span>
-                            {allBills.length === 0 ? 'No results' : `${totalItems} total results`} for:
+                            {stateOrders.length === 0 ? 'No results' : `${pagination.count} total results`} for:
                             {selectedFilters.length > 0 && (
                                 <span className="font-medium ml-1">
                                     {selectedFilters.map(f => EXTENDED_FILTERS.find(ef => ef.key === f)?.label || f).join(', ')}
                                 </span>
                             )}
+                            {stateSearchTerm && (
+                                <span className="font-medium ml-1">"{stateSearchTerm}"</span>
+                            )}
                         </span>
-                        {totalItems > 25 && (
+                        {pagination.count > 25 && (
                             <span className="text-xs bg-blue-100 px-2 py-1 rounded">
-                                {totalPages} pages
+                                {pagination.total_pages} pages
                             </span>
                         )}
                     </div>
                 </div>
             )}
 
-            {/* Universal CSS Styles */}
+            {/* Universal CSS Styles - Same as ExecutiveOrdersPage */}
             <style>{`
                 .bg-purple-50 .text-violet-800,
                 .bg-blue-50 .text-blue-800, 
@@ -2639,29 +2954,6 @@ const StatePage = ({ stateName, stableHandlers, copyToClipboard, makeApiCall }) 
                     font-size: 14px;
                     line-height: 1.5;
                     color: inherit;
-                }
-
-                /* Custom CSS to force dropdown to open to the left */
-                .filter-dropdown-right .absolute {
-                    right: 0 !important;
-                    left: auto !important;
-                }
-
-                .filter-dropdown-right .origin-top-right {
-                    transform-origin: top right !important;
-                }
-
-                /* Target the specific dropdown structure */
-                .filter-dropdown-right > div[class*="absolute"] {
-                    right: 0 !important;
-                    left: auto !important;
-                }
-
-                /* If the FilterDropdown uses specific classes, override them */
-                .filter-dropdown-right [role="menu"],
-                .filter-dropdown-right .dropdown-menu {
-                    right: 0 !important;
-                    left: auto !important;
                 }
             `}</style>
         </div>

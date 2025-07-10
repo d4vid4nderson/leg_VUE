@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { ChevronDown, LayoutGrid, ScrollText, FileText, Check, AlertTriangle, Filter } from 'lucide-react';
-import { FILTERS } from '../utils/constants';
+import { FILTERS, getFilterActiveClass, getFilterIconClass } from '../utils/constants';
 
 const FilterDropdown = forwardRef(({
   selectedFilters = [],
@@ -9,82 +9,42 @@ const FilterDropdown = forwardRef(({
   onToggleFilter,
   onClearAllFilters,
   counts = {},
-  showContentTypes = false,
-  showReviewStatus = false,
+  additionalFilters = [], // For custom sections
+  showContentTypes = false, // New prop to show Content Types section
+  showReviewStatus = false, // New prop to show Review Status section
   className = ""
 }, ref) => {
 
   const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
 
-  // Handle "All Practice Areas" filter logic
-  const handleFilterToggle = (filterKey) => {
-    // Simply toggle the filter - no special handling for all_practice_areas
-    onToggleFilter(filterKey);
-  };
-
-  // Check if "All Practice Areas" should appear active
-  const isAllPracticeAreasActive = () => {
-    return selectedFilters.includes('all_practice_areas');
-  };
-
-  // Get the display text for the filter button
-  const getFilterButtonText = () => {
-    if (selectedFilters.length === 0) return 'Filters';
-    if (selectedFilters.length === 1) {
-      // Special handling for all_practice_areas
-      if (selectedFilters[0] === 'all_practice_areas') {
-        return 'All Practice Areas';
-      }
-      const filter = FILTERS.find(f => f.key === selectedFilters[0]);
-      return filter?.label || 'Filter';
+  // Extended filters that include all possible filter types
+  const EXTENDED_FILTERS = [
+    ...FILTERS,
+    {
+      key: 'executive_order',
+      label: 'Executive Orders',
+      icon: ScrollText,
+      type: 'order_type'
+    },
+    {
+      key: 'state_legislation',
+      label: 'State Legislation',
+      icon: FileText,
+      type: 'order_type'
+    },
+    {
+      key: 'reviewed',
+      label: 'Reviewed',
+      icon: Check,
+      type: 'review_status'
+    },
+    {
+      key: 'not_reviewed',
+      label: 'Not Reviewed',
+      icon: AlertTriangle,
+      type: 'review_status'
     }
-    return `${selectedFilters.length} Filters`;
-  };
-
-  // Get count for all_practice_areas category specifically
-  const getAllPracticeAreasCount = () => {
-    return counts.all_practice_areas || 0;
-  };
-
-  // Get filter style classes based on filter key
-  const getFilterStyles = (filterKey, isActive) => {
-    if (!isActive) return 'text-gray-600 hover:bg-gray-50';
-    
-    const styleMap = {
-      'civic': 'bg-blue-100 text-blue-700 font-medium',
-      'education': 'bg-orange-100 text-orange-700 font-medium',
-      'engineering': 'bg-green-100 text-green-700 font-medium',
-      'healthcare': 'bg-red-100 text-red-700 font-medium',
-      'not-applicable': 'bg-gray-100 text-gray-700 font-medium',
-      'executive_order': 'bg-blue-100 text-blue-700 font-medium',
-      'state_legislation': 'bg-green-100 text-green-700 font-medium',
-      'reviewed': 'bg-green-100 text-green-700 font-medium',
-      'not_reviewed': 'bg-yellow-100 text-yellow-700 font-medium',
-      'all_practice_areas': 'bg-teal-100 text-teal-700 font-medium'
-    };
-    
-    return styleMap[filterKey] || 'bg-gray-100 text-gray-700 font-medium';
-  };
-
-  // Get icon color based on filter key
-  const getIconColor = (filterKey, isActive) => {
-    if (!isActive) return 'text-gray-400';
-    
-    const colorMap = {
-      'civic': 'text-blue-600',
-      'education': 'text-orange-600',
-      'engineering': 'text-green-600',
-      'healthcare': 'text-red-600',
-      'not-applicable': 'text-gray-600',
-      'executive_order': 'text-blue-600',
-      'state_legislation': 'text-green-600',
-      'reviewed': 'text-green-600',
-      'not_reviewed': 'text-yellow-600',
-      'all_practice_areas': 'text-teal-600'
-    };
-    
-    return colorMap[filterKey] || 'text-gray-600';
-  };
+  ];
 
   return (
     <div className={`relative ${className}`} ref={ref}>
@@ -99,8 +59,17 @@ const FilterDropdown = forwardRef(({
       >
         <div className="flex items-center gap-2 min-w-0">
           <Filter size={16} className="flex-shrink-0" />
-          <span className="truncate">
-            {getFilterButtonText()}
+          <span className={`truncate ${
+            selectedFilters.length === 0
+              ? 'text-gray-600'
+              : ''
+          }`}>
+            {selectedFilters.length === 0
+              ? 'Filters'
+              : selectedFilters.length === 1
+              ? EXTENDED_FILTERS.find(f => f.key === selectedFilters[0])?.label || 'Filter'
+              : `${selectedFilters.length} Filters`
+            }
           </span>
           {selectedFilters.length > 0 && (
             <span className="bg-blue-200 text-blue-800 text-xs px-1.5 py-0.5 rounded-full flex-shrink-0">
@@ -113,55 +82,53 @@ const FilterDropdown = forwardRef(({
 
       {/* Dropdown Content */}
       {showFilterDropdown && (
-        <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-          <div>
-            <div className="px-4 py-3 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-800">Filter Options</h3>
-                {selectedFilters.length > 0 && (
-                  <button
-                    onClick={() => {
-                      onClearAllFilters();
-                      onToggleDropdown();
-                    }}
-                    className="text-sm text-red-600 hover:text-red-700"
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
+        <div className="absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-800">Filter Options</h3>
+              {selectedFilters.length > 0 && (
+                <button
+                  onClick={() => {
+                    onClearAllFilters();
+                    onToggleDropdown();
+                  }}
+                  className="text-sm text-red-600 hover:text-red-700"
+                >
+                  Clear All
+                </button>
+              )}
             </div>
 
             {/* Practice Areas Section */}
-            <div className="pt-2">
-              <div className="px-4 py-2 text-sm font-semibold text-gray-700">
-                Practice Areas
-              </div>
-              
-              {/* All Practice Areas Option */}
-              <button
-                onClick={() => handleFilterToggle('all_practice_areas')}
-                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                  isAllPracticeAreasActive()
-                    ? 'bg-blue-100 text-blue-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Practice Areas</h4>
+              <div className="space-y-1">
+                {/* All Practice Areas Option - FIXED */}
+                <button
+                  onClick={() => onToggleFilter('all_practice_areas')}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-300 ${
+                    selectedFilters.includes('all_practice_areas')
+                      ? 'bg-teal-100 text-teal-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
                 >
-                <div className="flex items-center gap-3">
-                  <LayoutGrid size={16} />
-                  <span>All Practice Areas</span>
-                </div>
-                <span className="text-xs text-gray-500">({getAllPracticeAreasCount()})</span>
-              </button>
+                  <div className="flex items-center gap-2">
+                    <LayoutGrid 
+                      size={14} 
+                      className={selectedFilters.includes('all_practice_areas') ? 'text-teal-600' : 'text-gray-400'} 
+                    />
+                    All Practice Areas
+                  </div>
+                  {counts.all_practice_areas > 0 && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      selectedFilters.includes('all_practice_areas') ? 'bg-white bg-opacity-50' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {counts.all_practice_areas}
+                    </span>
+                  )}
+                </button>
 
-              {/* Individual Practice Area Filters */}
-              {FILTERS
-                .filter(filter => 
-                  filter.label !== 'All Practice Areas' && 
-                  filter.key !== 'all_practice_areas' &&
-                  filter.key !== 'not-applicable'
-                )
-                .map((filter) => {
+                {FILTERS.map((filter) => {
                   const IconComponent = filter.icon;
                   const isActive = selectedFilters.includes(filter.key);
                   const count = counts[filter.key] || 0;
@@ -169,62 +136,42 @@ const FilterDropdown = forwardRef(({
                   return (
                     <button
                       key={filter.key}
-                      onClick={() => handleFilterToggle(filter.key)}
-                      className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                      onClick={() => onToggleFilter(filter.key)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-300 ${
                         isActive
                           ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
                             filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
                             filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
                             filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
-                            'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-700 hover:bg-gray-100'
+                            'bg-gray-100 text-gray-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-50'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <IconComponent size={16} />
-                        <span>{filter.label}</span>
+                      <div className="flex items-center gap-2">
+                        <IconComponent 
+                          size={14} 
+                          className={isActive ? 
+                            filter.key === 'civic' ? 'text-blue-600' :
+                            filter.key === 'education' ? 'text-orange-600' :
+                            filter.key === 'engineering' ? 'text-green-600' :
+                            filter.key === 'healthcare' ? 'text-red-600' :
+                            'text-gray-600'
+                            : 'text-gray-400'
+                          } 
+                        />
+                        {filter.label}
                       </div>
-                      <span className="text-xs text-gray-500">({count})</span>
+                      {count > 0 && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          isActive ? 'bg-white bg-opacity-50' : 'bg-gray-200 text-gray-600'
+                        }`}>
+                          {count}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
-
-              {/* Review Status Section */}
-              {showReviewStatus && (
-                <>
-                  <div className="px-4 py-2 text-sm font-semibold text-gray-700">
-                    Review Status
-                  </div>
-                  <button
-                    onClick={() => handleFilterToggle('reviewed')}
-                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                      selectedFilters.includes('reviewed')
-                        ? 'bg-green-100 text-green-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Check size={16} />
-                      <span>Reviewed</span>
-                    </div>
-                    <span className="text-xs text-gray-500">({counts?.reviewed || 0})</span>
-                  </button>
-                  <button
-                    onClick={() => handleFilterToggle('not_reviewed')}
-                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                      selectedFilters.includes('not_reviewed')
-                        ? 'bg-red-100 text-red-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle size={16} />
-                      <span>Not Reviewed</span>
-                    </div>
-                    <span className="text-xs text-gray-500">({counts?.not_reviewed || 0})</span>
-                  </button>
-                </>
-              )}
+              </div>
             </div>
 
             {/* Content Types Section */}
@@ -233,21 +180,23 @@ const FilterDropdown = forwardRef(({
                 <h4 className="text-sm font-medium text-gray-700 mb-2">Content Types</h4>
                 <div className="space-y-1">
                   <button
-                    onClick={() => handleFilterToggle('executive_order')}
+                    onClick={() => onToggleFilter('executive_order')}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-300 ${
-                      getFilterStyles('executive_order', selectedFilters.includes('executive_order'))
+                      selectedFilters.includes('executive_order')
+                        ? 'bg-blue-100 text-blue-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <ScrollText 
                         size={14} 
-                        className={getIconColor('executive_order', selectedFilters.includes('executive_order'))}
+                        className={selectedFilters.includes('executive_order') ? 'text-blue-600' : 'text-gray-400'} 
                       />
                       Executive Orders
                     </div>
                     {counts.executive_order > 0 && (
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        selectedFilters.includes('executive_order') ? 'bg-white bg-opacity-50' : 'bg-gray-200 text-gray-600'
+                        selectedFilters.includes('executive_order') ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-600'
                       }`}>
                         {counts.executive_order}
                       </span>
@@ -255,27 +204,74 @@ const FilterDropdown = forwardRef(({
                   </button>
 
                   <button
-                    onClick={() => handleFilterToggle('state_legislation')}
+                    onClick={() => onToggleFilter('state_legislation')}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-300 ${
-                      getFilterStyles('state_legislation', selectedFilters.includes('state_legislation'))
+                      selectedFilters.includes('state_legislation')
+                        ? 'bg-green-100 text-green-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <FileText 
                         size={14} 
-                        className={getIconColor('state_legislation', selectedFilters.includes('state_legislation'))}
+                        className={selectedFilters.includes('state_legislation') ? 'text-green-600' : 'text-gray-400'} 
                       />
                       State Legislation
                     </div>
                     {counts.state_legislation > 0 && (
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        selectedFilters.includes('state_legislation') ? 'bg-white bg-opacity-50' : 'bg-gray-200 text-gray-600'
+                        selectedFilters.includes('state_legislation') ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'
                       }`}>
                         {counts.state_legislation}
                       </span>
                     )}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Custom Additional Filters */}
+            {additionalFilters.length > 0 && (
+              <div>
+                {additionalFilters.map((section, sectionIndex) => (
+                  <div key={sectionIndex} className={sectionIndex > 0 ? "border-t border-gray-200 pt-4 mt-4" : ""}>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">{section.title}</h4>
+                    <div className="space-y-1">
+                      {section.filters.map(filter => {
+                        const IconComponent = filter.icon;
+                        const isActive = isFilterActive(filter.key);
+                        const count = counts[filter.key] || 0;
+                        
+                        return (
+                          <button
+                            key={filter.key}
+                            onClick={() => onToggleFilter(filter.key)}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-all duration-300 ${
+                              isActive
+                                ? filter.activeClass || 'bg-teal-100 text-teal-700 font-medium'
+                                : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <IconComponent 
+                                size={14} 
+                                className={filter.iconClass || 'text-teal-600'}
+                              />
+                              <span>{filter.label}</span>
+                            </div>
+                            {count > 0 && (
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                isActive ? 'bg-white bg-opacity-50' : 'bg-gray-200 text-gray-600'
+                              }`}>
+                                {count}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
