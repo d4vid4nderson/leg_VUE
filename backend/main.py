@@ -38,6 +38,56 @@ load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# Wait for environment variables to be resolved
+def wait_for_env_vars(var_names, max_attempts=30, delay_seconds=2):
+    """Wait for critical environment variables to be available"""
+    logger.info(f"Waiting for environment variables to be resolved: {', '.join(var_names)}")
+    
+    missing_vars = set(var_names)
+    attempt = 0
+    
+    while missing_vars and attempt < max_attempts:
+        attempt += 1
+        still_missing = set()
+        
+        for var in missing_vars:
+            if os.getenv(var):
+                logger.info(f"✅ Environment variable resolved: {var}")
+            else:
+                still_missing.add(var)
+                
+        missing_vars = still_missing
+        
+        if missing_vars:
+            logger.info(f"⏳ Waiting for variables ({attempt}/{max_attempts}): {', '.join(missing_vars)}")
+            time.sleep(delay_seconds)
+    
+    if missing_vars:
+        logger.warning(f"⚠️ Some environment variables never resolved: {', '.join(missing_vars)}")
+    else:
+        logger.info("✅ All environment variables successfully resolved")
+    
+    return len(missing_vars) == 0
+
+# Wait for critical variables before proceeding
+critical_vars = [
+    "LEGISCAN_API_KEY", 
+    "AZURE_ENDPOINT",
+    "AZURE_KEY",
+    "AZURE_MODEL_NAME",
+    "AZURE_SQL_DATABASE",
+    "AZURE_SQL_PASSWORD",
+    "AZURE_SQL_SERVER",
+    "AZURE_SQL_USERNAME",
+    "FRONTEND_URL"
+]
+
+logger.info("🔄 Starting application - waiting for environment variables to be resolved...")
+wait_for_env_vars(critical_vars)
+logger.info("✅ Environment variables resolved - proceeding with application initialization")
+
+
 # ===============================
 # ENHANCED AI INTEGRATION
 # ===============================
