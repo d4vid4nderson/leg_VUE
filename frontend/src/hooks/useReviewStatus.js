@@ -9,9 +9,10 @@ import API_URL from '../config/api';
  * 
  * @param {Array} items - The array of items to manage review status for
  * @param {String} itemType - The type of items ('state_legislation' or 'executive_order')
+ * @param {Function} onStatusUpdate - Optional callback to update the main state when review status changes
  * @returns {Object} - Review status management functions and state
  */
-const useReviewStatus = (items = [], itemType = 'state_legislation') => {
+const useReviewStatus = (items = [], itemType = 'state_legislation', onStatusUpdate = null) => {
   const [reviewedItems, setReviewedItems] = useState(new Set());
   const [reviewLoading, setReviewLoading] = useState(new Set());
 
@@ -77,8 +78,16 @@ const useReviewStatus = (items = [], itemType = 'state_legislation') => {
     setReviewLoading(prev => new Set([...prev, itemId]));
     
     try {
+      // For API calls, we need to remove the 'eo-' or 'state-' prefix that getItemId adds
+      let apiId = itemId;
+      if (itemType === 'executive_order' && itemId.startsWith('eo-')) {
+        apiId = itemId.replace('eo-', '');
+      } else if (itemType === 'state_legislation' && itemId.startsWith('state-')) {
+        apiId = itemId.replace('state-', '');
+      }
+      
       // Format: /api/{item_type}/{id}/review
-      const endpoint = `${API_URL}/api/${itemType === 'state_legislation' ? 'state-legislation' : 'executive-orders'}/${itemId}/review`;
+      const endpoint = `${API_URL}/api/${itemType === 'state_legislation' ? 'state-legislation' : 'executive-orders'}/${apiId}/review`;
       
       console.log(`🔍 CALLING API: ${endpoint} with reviewed=${newStatus}`);
       
@@ -105,6 +114,11 @@ const useReviewStatus = (items = [], itemType = 'state_legislation') => {
         return newSet;
       });
       
+      // Call the parent component's update callback if provided
+      if (onStatusUpdate && typeof onStatusUpdate === 'function') {
+        onStatusUpdate(apiId, newStatus);
+      }
+      
       console.log(`✅ Successfully ${newStatus ? 'marked' : 'unmarked'} item ${itemId} as reviewed`);
       return newStatus;
       
@@ -119,7 +133,7 @@ const useReviewStatus = (items = [], itemType = 'state_legislation') => {
         return newSet;
       });
     }
-  }, [reviewedItems, getItemId, itemType]);
+  }, [reviewedItems, getItemId, itemType, onStatusUpdate]);
 
   // Check if an item is reviewed
   const isItemReviewed = useCallback((item) => {

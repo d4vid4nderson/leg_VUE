@@ -103,7 +103,7 @@ const FilterDropdown = React.forwardRef(({
             <div className="mb-3">
               <h4 className="text-sm font-medium text-gray-700 mb-2">Practice Areas</h4>
               <div className="space-y-0.5">
-                {/* All Practice Areas - FIXED: Now uses teal colors and LayoutGrid icon */}
+                {/* All Practice Areas */}
                 <button
                   type="button"
                   onClick={() => onToggleFilter('all_practice_areas')}
@@ -274,7 +274,7 @@ const FilterDropdown = React.forwardRef(({
 // UTILITY FUNCTIONS
 // =====================================
 const getExecutiveOrderNumber = (order) => {
-  // FIXED: Prioritize the actual EO number field over document numbers
+  // Prioritize the actual EO number field over document numbers
   if (order.id && /^\d{4,5}$/.test(order.id.toString())) {
     return order.id; // This contains the actual EO number like "14147"
   }
@@ -324,7 +324,7 @@ const formatDate = (dateStr) => {
   }
 };
 
-// FIXED: Executive Order ID generation (consistent with backend)
+// Executive Order ID generation (consistent with backend)
 const getExecutiveOrderId = (order) => {
   if (!order) return null;
   
@@ -347,7 +347,7 @@ const getExecutiveOrderId = (order) => {
   return null;
 };
 
-// FIXED: State Legislation ID generation (consistent with backend)
+// State Legislation ID generation (consistent with backend)
 const getStateLegislationId = (order) => {
   if (!order) return null;
   
@@ -366,7 +366,7 @@ const getStateLegislationId = (order) => {
   return null;
 };
 
-// FIXED: Universal ID function with proper type detection
+// Universal ID function with proper type detection
 const getUniversalOrderId = (order) => {
   if (!order) return null;
   
@@ -400,11 +400,9 @@ const getUniversalOrderId = (order) => {
   return null;
 };
 
-// FIXED: Handle Backend ID Format Conversion with better debugging
+// Handle Backend ID Format Conversion with better debugging
 const normalizeBackendId = (orderId, orderType) => {
   if (!orderId) return orderId;
-  
-  console.log('🔍 normalizeBackendId input:', { orderId, orderType });
   
   if (orderType === 'executive_order') {
     // For executive orders, we need to check what format the backend expects
@@ -415,12 +413,10 @@ const normalizeBackendId = (orderId, orderType) => {
       normalizedId = orderId.replace('eo-', '');
     }
     
-    console.log('🔍 normalizeBackendId output for executive_order:', normalizedId);
     return normalizedId.toString();
   }
   
   // For state legislation, use as-is
-  console.log('🔍 normalizeBackendId output for state_legislation:', orderId.toString());
   return orderId.toString();
 };
 
@@ -482,11 +478,11 @@ const getDateForSorting = (item) => {
   }
 };
 
-// Category Tag Component - Fixed to handle "all_practice_areas" with teal color and LayoutGrid icon
+// Category Tag Component
 const CategoryTag = ({ category }) => {
   if (!category) return null;
   
-  // Handle "all_practice_areas" specifically - use teal color and LayoutGrid icon
+  // Handle "all_practice_areas" specifically
   if (category === 'all_practice_areas') {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
@@ -507,7 +503,7 @@ const CategoryTag = ({ category }) => {
     );
   }
   
-  // Get pill-style backgrounds based on category (matching executive orders page)
+  // Get pill-style backgrounds based on category
   const getPillStyles = (cat) => {
     switch (cat) {
       case 'civic':
@@ -756,7 +752,9 @@ const formatUniversalContent = (content) => {
   }}>{textContent}</div>;
 };
 
-// Simplified and robust API service for highlights
+// =====================================
+// ENHANCED API SERVICE FOR HIGHLIGHTS
+// =====================================
 class HighlightsAPI {
   static async getHighlights(userId = 1) {
     try {
@@ -780,15 +778,7 @@ class HighlightsAPI {
         highlights = data.results;
       }
       
-      // DEBUG: Log what IDs are actually stored in the database
       console.log('✅ Found highlights:', highlights.length);
-      if (highlights.length > 0) {
-        console.log('🔍 DEBUG: Sample highlight IDs from database:');
-        highlights.slice(0, 3).forEach((h, idx) => {
-          console.log(`   ${idx + 1}. order_id: "${h.order_id}", order_type: "${h.order_type}"`);
-        });
-      }
-      
       return highlights;
     } catch (error) {
       console.error('Error fetching highlights:', error);
@@ -819,7 +809,7 @@ class HighlightsAPI {
     }
   }
 
-  // Fixed API call to get ALL executive orders (no pagination limit)
+  // Get ALL executive orders (no pagination limit)
   static async getAllExecutiveOrders() {
     try {
       console.log('🔍 Fetching ALL executive orders (no pagination limit)...');
@@ -839,7 +829,6 @@ class HighlightsAPI {
       }
       
       const data = await response.json();
-      console.log('📊 Executive orders API response:', data);
       
       let orders = [];
       if (Array.isArray(data)) {
@@ -924,15 +913,6 @@ class HighlightsAPI {
 
           if (response.ok) {
             const data = await response.json();
-            console.log(`📊 State legislation API response from ${url}:`, {
-              isArray: Array.isArray(data),
-              length: Array.isArray(data) ? data.length : 'N/A',
-              hasResults: !!(data.results),
-              resultsLength: data.results ? data.results.length : 'N/A',
-              hasData: !!(data.data),
-              dataLength: data.data ? data.data.length : 'N/A',
-              total: data.total || 'not specified'
-            });
 
             let orders = [];
             if (Array.isArray(data)) {
@@ -1032,8 +1012,157 @@ class HighlightsAPI {
   }
 }
 
-// Enhanced hook for managing highlights
-const useHighlights = (userId = 1) => {
+// =====================================
+// DEBUG FUNCTIONS
+// =====================================
+const debugHighlightMatching = async () => {
+  console.log('🔍 ========== HIGHLIGHTS DEBUG SESSION ==========');
+  
+  try {
+    // Step 1: Get raw highlights from backend
+    const backendHighlights = await HighlightsAPI.getHighlights(1);
+    console.log('📋 Backend highlights:', backendHighlights);
+    
+    // Step 2: Get all orders from database
+    const [executiveOrders, stateLegislation] = await Promise.all([
+      HighlightsAPI.getAllExecutiveOrders(),
+      HighlightsAPI.getAllStateLegislation()
+    ]);
+    
+    console.log(`📊 Database orders: ${executiveOrders.length} EOs, ${stateLegislation.length} state bills`);
+    
+    // Step 3: Show what IDs are stored in highlights database
+    const storedHighlightIds = backendHighlights.map(h => ({
+      order_id: h.order_id,
+      order_type: h.order_type,
+      stored_as: typeof h.order_id
+    }));
+    console.log('🏪 Stored highlight IDs:', storedHighlightIds);
+    
+    // Step 4: Show what IDs are generated by frontend for executive orders
+    const frontendEOIds = executiveOrders.slice(0, 10).map(eo => ({
+      title: eo.title?.substring(0, 30),
+      generated_id: getUniversalOrderId({ ...eo, order_type: 'executive_order' }),
+      eo_number: eo.executive_order_number,
+      document_number: eo.document_number,
+      id_field: eo.id
+    }));
+    console.log('🔧 Frontend EO IDs (sample):', frontendEOIds);
+    
+    // Step 5: Show what IDs are generated by frontend for state legislation
+    const frontendStateIds = stateLegislation.slice(0, 10).map(bill => ({
+      title: bill.title?.substring(0, 30),
+      generated_id: getUniversalOrderId({ ...bill, order_type: 'state_legislation' }),
+      bill_number: bill.bill_number,
+      bill_id: bill.bill_id,
+      id_field: bill.id
+    }));
+    console.log('🔧 Frontend State IDs (sample):', frontendStateIds);
+    
+    // Step 6: Attempt to match highlights with orders using ENHANCED MATCHING
+    const matchResults = backendHighlights.map(highlight => {
+      const orderId = highlight.order_id;
+      const orderType = highlight.order_type;
+      
+      let foundMatch = null;
+      
+      if (orderType === 'executive_order') {
+        foundMatch = executiveOrders.find(eo => {
+          const strategies = [
+            // Direct field matches
+            eo.executive_order_number === orderId,
+            eo.document_number === orderId,
+            eo.id === orderId,
+            eo.eo_number === orderId,
+            
+            // Generated ID matches
+            getUniversalOrderId({ ...eo, order_type: 'executive_order' }) === orderId,
+            
+            // Normalized ID matches
+            normalizeBackendId(getUniversalOrderId({ ...eo, order_type: 'executive_order' }), 'executive_order') === orderId,
+            
+            // Prefix variations
+            `eo-${eo.executive_order_number}` === orderId,
+            `eo-${eo.document_number}` === orderId,
+            `eo-${eo.id}` === orderId,
+            
+            // Remove prefix variations
+            eo.executive_order_number === orderId.replace('eo-', ''),
+            eo.document_number === orderId.replace('eo-', ''),
+            eo.id === orderId.replace('eo-', ''),
+            
+            // String/number type variations
+            String(eo.executive_order_number) === String(orderId),
+            String(eo.document_number) === String(orderId),
+            String(eo.id) === String(orderId)
+          ];
+          
+          return strategies.some(Boolean);
+        });
+      } else if (orderType === 'state_legislation') {
+        foundMatch = stateLegislation.find(bill => {
+          const strategies = [
+            // Direct field matches
+            bill.bill_id === orderId,
+            bill.id === orderId,
+            bill.bill_number === orderId,
+            
+            // Generated ID matches
+            getUniversalOrderId({ ...bill, order_type: 'state_legislation' }) === orderId,
+            
+            // State-prefix variations
+            `${bill.state}-${bill.bill_number}` === orderId,
+            
+            // String/number type variations
+            String(bill.bill_id) === String(orderId),
+            String(bill.id) === String(orderId),
+            String(bill.bill_number) === String(orderId)
+          ];
+          
+          return strategies.some(Boolean);
+        });
+      }
+      
+      return {
+        highlight_id: orderId,
+        highlight_type: orderType,
+        found_match: !!foundMatch,
+        match_title: foundMatch?.title?.substring(0, 40) || 'NO MATCH'
+      };
+    });
+    
+    console.log('🎯 Match Results:', matchResults);
+    
+    const matchedCount = matchResults.filter(r => r.found_match).length;
+    const unmatchedCount = matchResults.filter(r => !r.found_match).length;
+    
+    console.log(`📊 SUMMARY: ${matchedCount} matched, ${unmatchedCount} unmatched highlights`);
+    
+    if (unmatchedCount > 0) {
+      console.log('❌ UNMATCHED HIGHLIGHTS:');
+      matchResults.filter(r => !r.found_match).forEach(r => {
+        console.log(`   • ${r.highlight_id} (${r.highlight_type})`);
+      });
+    }
+    
+    return {
+      backendHighlights: backendHighlights.length,
+      databaseOrders: executiveOrders.length + stateLegislation.length,
+      matched: matchedCount,
+      unmatched: unmatchedCount,
+      details: matchResults
+    };
+    
+  } catch (error) {
+    console.error('❌ Debug session failed:', error);
+    return { error: error.message };
+  }
+};
+
+// =====================================
+// ENHANCED HIGHLIGHTS HOOK
+// =====================================
+const useHighlightsEnhanced = (userId = 1) => {
   const [highlights, setHighlights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
@@ -1041,150 +1170,145 @@ const useHighlights = (userId = 1) => {
   const loadHighlights = async () => {
     try {
       setLoading(true);
-      
-      console.log('🔍 useHighlights: Starting highlights load process...');
+      console.log('🔍 useHighlightsEnhanced: Starting enhanced highlights load...');
       
       // Step 1: Get highlighted order IDs from backend
       const fetchedHighlights = await HighlightsAPI.getHighlights(userId);
-      console.log('📋 useHighlights: Raw highlights from API:', fetchedHighlights);
+      console.log('📋 Raw highlights from backend:', fetchedHighlights.length);
       
       if (fetchedHighlights.length === 0) {
-        console.log('📋 useHighlights: No highlights found in backend');
         setHighlights([]);
         setLastRefresh(Date.now());
         return;
       }
       
-      // CRITICAL DEBUG: Show what highlighted IDs we got from backend
-      const highlightedOrderIds = new Set();
-      fetchedHighlights.forEach((highlight) => {
-        if (highlight.order_id) {
-          highlightedOrderIds.add(highlight.order_id);
-        }
-      });
+      // Step 2: Get ALL orders from database
+      const [executiveOrders, stateLegislation] = await Promise.all([
+        HighlightsAPI.getAllExecutiveOrders(),
+        HighlightsAPI.getAllStateLegislation()
+      ]);
       
-      console.log('🚨 CRITICAL DEBUG - Highlighted order IDs from backend:', Array.from(highlightedOrderIds));
-      console.log('🚨 CRITICAL DEBUG - Total highlighted IDs count:', highlightedOrderIds.size);
+      console.log(`📊 Database content: ${executiveOrders.length} EOs, ${stateLegislation.length} state bills`);
       
-      // Step 2: Get ALL orders (executive orders + state legislation)
-      const allOrders = await HighlightsAPI.getAllOrders();
-      console.log(`📊 useHighlights: Got ${allOrders.length} total orders from database`);
-      
-      if (allOrders.length === 0) {
-        console.log('⚠️ No orders found in database - this might be an API issue');
-        setHighlights([]);
-        setLastRefresh(Date.now());
-        return;
-      }
-      
-      // Step 3: Transform ALL orders using consistent logic
-      const allTransformedOrders = allOrders.map((order, index) => {
-        // Determine order type based on available fields
-        const isExecutiveOrder = !!(order.executive_order_number || order.document_number || order.eo_number);
-        const isStateLegislation = !!(order.bill_number && !isExecutiveOrder);
-        
-        let orderType = 'unknown';
-        if (isExecutiveOrder) {
-          orderType = 'executive_order';
-        } else if (isStateLegislation) {
-          orderType = 'state_legislation';
-        }
-        
-        const transformedOrder = {
-          // Use consistent ID generation
-          id: getUniversalOrderId({ ...order, order_type: orderType, index }),
-          bill_id: getUniversalOrderId({ ...order, order_type: orderType, index }),
-          
-          // Common fields
-          title: order.title || order.bill_title || 'Untitled',
-          category: order.category || 'civic',
-          ai_summary: order.ai_summary || order.ai_executive_summary || '',
-          ai_talking_points: order.ai_talking_points || order.ai_key_points || '',
-          ai_business_impact: order.ai_business_impact || order.ai_potential_impact || '',
-          ai_processed: !!(order.ai_summary || order.ai_executive_summary),
-          
-          // Order type specific fields
-          order_type: orderType,
-          
-          // Executive Order specific
-          ...(orderType === 'executive_order' && {
-            eo_number: order.executive_order_number || order.document_number || 'Unknown',
-            executive_order_number: order.executive_order_number || order.document_number || 'Unknown',
-            summary: order.description || order.summary || '',
-            signing_date: order.signing_date || order.introduced_date || '',
-            publication_date: order.publication_date || order.last_action_date || '',
-            html_url: order.html_url || order.legiscan_url || '',
-            pdf_url: order.pdf_url || '',
-            formatted_publication_date: formatDate(order.publication_date || order.last_action_date),
-            formatted_signing_date: formatDate(order.signing_date || order.introduced_date),
-            president: order.president || 'Donald Trump',
-            source: 'Database (Federal Register + Azure AI)'
-          }),
-          
-          // State Legislation specific
-          ...(orderType === 'state_legislation' && {
-            bill_number: order.bill_number,
-            state: order.state || 'Unknown',
-            status: order.status || 'Active',
-            description: order.description || order.ai_summary || 'No description available',
-            legiscan_url: order.legiscan_url || '',
-            introduced_date: order.introduced_date,
-            last_action_date: order.last_action_date,
-            formatted_signing_date: formatDate(order.introduced_date),
-            source: order.state ? `${order.state} Legislature` : 'State Legislature'
-          }),
-          
-          is_highlighted: true,
-          index: index
-        };
-        
-        return transformedOrder;
-      });
-      
-      console.log(`📊 useHighlights: Transformed ${allTransformedOrders.length} orders`);
-      
-      // Step 4: FIXED matching logic using the same approach as debug
-      const highlightedEONumbers = [];
-      const highlightedStateLegislationIds = [];
-      
-      highlightedOrderIds.forEach(highlightedId => {
-        if (typeof highlightedId === 'string' && highlightedId.startsWith('eo-')) {
-          const rawNumber = highlightedId.replace('eo-', '');
-          highlightedEONumbers.push(rawNumber);
-        } else if (typeof highlightedId === 'string' && /^\d{4,5}$/.test(highlightedId)) {
-          // Direct EO number without prefix
-          highlightedEONumbers.push(highlightedId);
-        } else {
-          // State legislation ID
-          highlightedStateLegislationIds.push(highlightedId);
-        }
-      });
-      
-      console.log('🎯 Looking for these EO numbers:', highlightedEONumbers);
-      console.log('🎯 Looking for these state legislation IDs:', highlightedStateLegislationIds);
-      
-      // Step 5: Match orders using the corrected logic
+      // Step 3: Create comprehensive matching using multiple ID strategies
       const matchedOrders = [];
       
-      allTransformedOrders.forEach((order) => {
-        const orderId = getUniversalOrderId(order);
+      fetchedHighlights.forEach((highlight, index) => {
+        const orderId = highlight.order_id;
+        const orderType = highlight.order_type;
         
-        if (order.order_type === 'executive_order') {
-          if (orderId && highlightedEONumbers.includes(orderId)) {
-            console.log(`✅ FIXED MATCH: "${order.title?.substring(0, 50)}..." with ID "${orderId}" (executive_order)`);
-            matchedOrders.push(order);
+        console.log(`🎯 Matching highlight ${index + 1}: ${orderId} (${orderType})`);
+        
+        let matchedOrder = null;
+        
+        if (orderType === 'executive_order') {
+          // Try multiple matching strategies for executive orders
+          matchedOrder = executiveOrders.find(eo => {
+            const strategies = [
+              // Direct field matches
+              eo.executive_order_number === orderId,
+              eo.document_number === orderId,
+              eo.id === orderId,
+              eo.eo_number === orderId,
+              
+              // Generated ID matches
+              getUniversalOrderId({ ...eo, order_type: 'executive_order' }) === orderId,
+              
+              // Normalized ID matches
+              normalizeBackendId(getUniversalOrderId({ ...eo, order_type: 'executive_order' }), 'executive_order') === orderId,
+              
+              // Prefix variations
+              `eo-${eo.executive_order_number}` === orderId,
+              `eo-${eo.document_number}` === orderId,
+              `eo-${eo.id}` === orderId,
+              
+              // Remove prefix variations
+              eo.executive_order_number === orderId.replace('eo-', ''),
+              eo.document_number === orderId.replace('eo-', ''),
+              eo.id === orderId.replace('eo-', ''),
+              
+              // String/number type variations
+              String(eo.executive_order_number) === String(orderId),
+              String(eo.document_number) === String(orderId),
+              String(eo.id) === String(orderId)
+            ];
+            
+            return strategies.some(Boolean);
+          });
+          
+          if (matchedOrder) {
+            console.log(`✅ EO Match found: "${matchedOrder.title?.substring(0, 40)}..."`);
+            
+            const transformedOrder = {
+              ...matchedOrder,
+              id: getUniversalOrderId({ ...matchedOrder, order_type: 'executive_order' }),
+              order_type: 'executive_order',
+              title: cleanOrderTitle(matchedOrder.title),
+              ai_processed: !!(matchedOrder.ai_summary || matchedOrder.ai_executive_summary),
+              ai_summary: matchedOrder.ai_summary || matchedOrder.ai_executive_summary || '',
+              ai_talking_points: matchedOrder.ai_talking_points || matchedOrder.ai_key_points || '',
+              ai_business_impact: matchedOrder.ai_business_impact || matchedOrder.ai_potential_impact || '',
+              formatted_signing_date: formatDate(matchedOrder.signing_date || matchedOrder.introduced_date),
+              formatted_publication_date: formatDate(matchedOrder.publication_date || matchedOrder.last_action_date),
+              is_highlighted: true
+            };
+            
+            matchedOrders.push(transformedOrder);
           }
-        } else if (order.order_type === 'state_legislation') {
-          if (orderId && highlightedStateLegislationIds.includes(orderId)) {
-            console.log(`✅ FIXED MATCH: "${order.title?.substring(0, 50)}..." with ID "${orderId}" (state_legislation)`);
-            matchedOrders.push(order);
+          
+        } else if (orderType === 'state_legislation') {
+          // Try multiple matching strategies for state legislation
+          matchedOrder = stateLegislation.find(bill => {
+            const strategies = [
+              // Direct field matches
+              bill.bill_id === orderId,
+              bill.id === orderId,
+              bill.bill_number === orderId,
+              
+              // Generated ID matches
+              getUniversalOrderId({ ...bill, order_type: 'state_legislation' }) === orderId,
+              
+              // State-prefix variations
+              `${bill.state}-${bill.bill_number}` === orderId,
+              
+              // String/number type variations
+              String(bill.bill_id) === String(orderId),
+              String(bill.id) === String(orderId),
+              String(bill.bill_number) === String(orderId)
+            ];
+            
+            return strategies.some(Boolean);
+          });
+          
+          if (matchedOrder) {
+            console.log(`✅ State Match found: "${matchedOrder.title?.substring(0, 40)}..."`);
+            
+            const transformedOrder = {
+              ...matchedOrder,
+              id: getUniversalOrderId({ ...matchedOrder, order_type: 'state_legislation' }),
+              order_type: 'state_legislation',
+              title: cleanOrderTitle(matchedOrder.title || matchedOrder.bill_title),
+              ai_processed: !!(matchedOrder.ai_summary || matchedOrder.ai_executive_summary),
+              ai_summary: matchedOrder.ai_summary || matchedOrder.ai_executive_summary || '',
+              ai_talking_points: matchedOrder.ai_talking_points || matchedOrder.ai_key_points || '',
+              ai_business_impact: matchedOrder.ai_business_impact || matchedOrder.ai_potential_impact || '',
+              formatted_signing_date: formatDate(matchedOrder.introduced_date || matchedOrder.last_action_date),
+              source: matchedOrder.state ? `${matchedOrder.state} Legislature` : 'State Legislature',
+              is_highlighted: true
+            };
+            
+            matchedOrders.push(transformedOrder);
           }
+        }
+        
+        if (!matchedOrder) {
+          console.log(`❌ No match found for: ${orderId} (${orderType})`);
         }
       });
       
-      console.log(`✅ useHighlights: Found ${matchedOrders.length} matching highlighted orders`);
+      console.log(`✅ Final matched orders: ${matchedOrders.length} of ${fetchedHighlights.length} highlights`);
       
-      // Sort matched orders by date - newest first
+      // Sort by date - newest first
       matchedOrders.sort((a, b) => {
         const dateA = new Date(getDateForSorting(a));
         const dateB = new Date(getDateForSorting(b));
@@ -1195,7 +1319,7 @@ const useHighlights = (userId = 1) => {
       setLastRefresh(Date.now());
       
     } catch (error) {
-      console.error('❌ Error loading highlights:', error);
+      console.error('❌ Error in useHighlightsEnhanced:', error);
       setHighlights([]);
       setLastRefresh(Date.now());
     } finally {
@@ -1218,6 +1342,14 @@ const useHighlights = (userId = 1) => {
       throw error;
     }
   };
+  
+  // Local-only version for when API call has already been made
+  const removeHighlightLocally = (highlight) => {
+    const orderId = getUniversalOrderId(highlight);
+    console.log('🗑️ Removing highlight locally (no API call):', orderId);
+    setHighlights(prev => prev.filter(item => getUniversalOrderId(item) !== orderId));
+    setLastRefresh(Date.now());
+  };
 
   const refreshHighlights = async () => {
     console.log('🔄 Refreshing highlights...');
@@ -1232,10 +1364,13 @@ const useHighlights = (userId = 1) => {
     highlights,
     loading,
     removeHighlight,
+    removeHighlightLocally,
     refreshHighlights,
-    lastRefresh
+    lastRefresh,
+    debugHighlightMatching // Add debug function
   };
 };
+
 
 // Scroll to Top Button Component
 const ScrollToTopButton = () => {
@@ -1378,7 +1513,9 @@ const PaginationControls = ({
   );
 };
 
-// Main HighlightsPage Component
+// =====================================
+// MAIN HIGHLIGHTS PAGE COMPONENT
+// =====================================
 const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
@@ -1407,71 +1544,38 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     highlights,
     loading,
     removeHighlight,
+    removeHighlightLocally,
     refreshHighlights,
-    lastRefresh
-  } = useHighlights(1);
+    lastRefresh,
+    debugHighlightMatching
+  } = useHighlightsEnhanced(1);
 
-  // Sync display highlights with hook highlights - PREVENT unhighlighted items from appearing
+  // Sync display highlights with hook highlights
   useEffect(() => {
-    // Only sync during initial load, never during active operations
-    // And filter out any items that are not actually highlighted
-    if (highlightLoading.size === 0) {
-      console.log('🔄 Syncing displayHighlights with hook highlights:', highlights.length);
-      
-      // Filter the highlights to only include items that are actually highlighted
-      const actuallyHighlightedItems = highlights.filter(item => {
-        const itemId = getUniversalOrderId(item);
-        const backendId = normalizeBackendId(itemId, item.order_type);
-        
-        // Check if the item is in our local highlights set
-        const isLocallyHighlighted = localHighlights.has(itemId) || 
-                                   localHighlights.has(backendId) || 
-                                   localHighlights.has(`eo-${itemId}`) || 
-                                   localHighlights.has(`eo-${backendId}`);
-        
-        // Also check using the stable handlers
-        const isStablyHighlighted = stableHandlers?.isItemHighlighted?.(item) || false;
-        
-        const shouldInclude = isLocallyHighlighted || isStablyHighlighted;
-        
-        if (!shouldInclude) {
-          console.log(`🚫 Filtering out unhighlighted item: "${item.title?.substring(0, 50)}..." (ID: ${itemId})`);
-        }
-        
-        return shouldInclude;
-      });
-      
-      console.log(`🔄 Filtered highlights: ${actuallyHighlightedItems.length} of ${highlights.length} items`);
-      setDisplayHighlights(actuallyHighlightedItems);
-    }
-  }, [highlights, highlightLoading, localHighlights, stableHandlers]);
+    console.log('🔄 Syncing displayHighlights with hook highlights:', highlights.length);
+    setDisplayHighlights(highlights);
+  }, [highlights]);
 
-  // UPDATED: Load existing highlights with proper ID handling and debugging
+  // Load existing highlights with proper ID handling
   useEffect(() => {
     const loadExistingHighlights = async () => {
       try {
         console.log('🔍 HighlightsPage: Loading existing highlights...');
         const fetchedHighlights = await HighlightsAPI.getHighlights(1);
         
-        console.log('🔍 DEBUG: Raw highlights from backend:', fetchedHighlights);
-        
         const orderIds = new Set();
-        fetchedHighlights.forEach((highlight, index) => {
+        fetchedHighlights.forEach((highlight) => {
           if (highlight && highlight.order_id) {
             const rawId = highlight.order_id;
-            console.log(`🔍 DEBUG: Highlight ${index + 1}: order_id="${rawId}", order_type="${highlight.order_type}"`);
-            
             orderIds.add(rawId);
             
             // For executive orders, handle both prefixed and non-prefixed versions
             if (highlight.order_type === 'executive_order') {
               if (typeof rawId === 'string' && rawId.startsWith('eo-')) {
                 const numberOnly = rawId.replace('eo-', '');
-                orderIds.add(numberOnly); // Add the number-only version
-                console.log(`🔍 DEBUG: Added both "${rawId}" and "${numberOnly}" for EO`);
+                orderIds.add(numberOnly);
               } else if (/^\d{4,5}$/.test(rawId.toString())) {
-                orderIds.add(`eo-${rawId}`); // Add the prefixed version
-                console.log(`🔍 DEBUG: Added both "${rawId}" and "eo-${rawId}" for EO`);
+                orderIds.add(`eo-${rawId}`);
               }
             }
           }
@@ -1487,7 +1591,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     loadExistingHighlights();
   }, []);
 
-  // FIXED: Filter functions with proper "All Practice Areas" handling
+  // Filter functions with proper "All Practice Areas" handling
   const toggleFilter = (filterKey) => {
     console.log('🔄 toggleFilter called with:', filterKey);
     setSelectedFilters(prev => {
@@ -1495,18 +1599,14 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       
       if (filterKey === 'all_practice_areas') {
         console.log('🔄 All practice areas clicked');
-        // If "All Practice Areas" is clicked, toggle it and remove all category filters
         if (prev.includes('all_practice_areas')) {
-          // If currently selected, deselect it
           newFilters = prev.filter(f => f !== 'all_practice_areas');
         } else {
-          // If not selected, select it and remove all individual category filters
           newFilters = prev.filter(f => !['civic', 'healthcare', 'education', 'engineering'].includes(f));
           newFilters.push('all_practice_areas');
         }
       } else if (['civic', 'healthcare', 'education', 'engineering'].includes(filterKey)) {
         console.log('🔄 Category filter clicked:', filterKey);
-        // If a specific category is clicked, remove "all_practice_areas" and toggle the category
         const withoutAllPracticeAreas = prev.filter(f => f !== 'all_practice_areas');
         if (withoutAllPracticeAreas.includes(filterKey)) {
           newFilters = withoutAllPracticeAreas.filter(f => f !== filterKey);
@@ -1515,7 +1615,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         }
       } else {
         console.log('🔄 Other filter clicked:', filterKey);
-        // For other filters (content types), normal toggle behavior
         if (prev.includes(filterKey)) {
           newFilters = prev.filter(f => f !== filterKey);
         } else {
@@ -1535,26 +1634,24 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     setCurrentPage(1);
   };
 
-  // FIXED: Filter counts calculation - properly counts items tagged as "all_practice_areas"
+  // Filter counts calculation
   const filterCounts = useMemo(() => {
     const counts = {
       civic: 0,
       healthcare: 0,
       education: 0,
       engineering: 0,
-      all_practice_areas: 0, // Count items specifically tagged as "all_practice_areas"
+      all_practice_areas: 0,
       executive_order: 0,
       state_legislation: 0,
       total: 0
     };
 
     displayHighlights.forEach(highlight => {
-      // Count individual categories including "all_practice_areas"
       if (highlight.category && counts.hasOwnProperty(highlight.category)) {
         counts[highlight.category]++;
       }
       
-      // Count order types
       if (highlight.order_type === 'executive_order') {
         counts.executive_order++;
       } else if (highlight.order_type === 'state_legislation') {
@@ -1562,33 +1659,26 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       }
     });
 
-    // Total should show all items for the "All Practice Areas" button display
     counts.total = displayHighlights.length;
-
     return counts;
   }, [displayHighlights]);
 
-  // FIXED: Comprehensive filtering logic with proper "All Practice Areas" handling
+  // Comprehensive filtering logic
   const filteredHighlights = useMemo(() => {
     let filtered = [...displayHighlights];
 
-    // Apply category filters
     const categoryFilters = selectedFilters.filter(f => 
       !['executive_order', 'state_legislation', 'all_practice_areas'].includes(f)
     );
     
-    // If "All Practice Areas" is selected OR no category filters are applied, show all categories
     const hasAllPracticeAreas = selectedFilters.includes('all_practice_areas');
     
     if (!hasAllPracticeAreas && categoryFilters.length > 0) {
-      // Only filter by specific categories if "All Practice Areas" is not selected
       filtered = filtered.filter(highlight => 
         categoryFilters.includes(highlight?.category)
       );
     }
-    // If "All Practice Areas" is selected or no category filters, show all items (no filtering by category)
 
-    // Apply order type filters (these work independently of practice area filters)
     const hasExecutiveOrderFilter = selectedFilters.includes('executive_order');
     const hasStateLegislationFilter = selectedFilters.includes('state_legislation');
     
@@ -1598,7 +1688,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       filtered = filtered.filter(highlight => highlight.order_type === 'state_legislation');
     }
 
-    // SORT BY DATE - NEWEST FIRST
     filtered.sort((a, b) => {
       const dateA = new Date(getDateForSorting(a));
       const dateB = new Date(getDateForSorting(b));
@@ -1625,9 +1714,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       console.log('🔄 Starting manual refresh...');
       await refreshHighlights();
       
-      // The useEffect will automatically sync displayHighlights with the refreshed highlights
-      
-      // Refresh local highlights as well
       const fetchedHighlights = await HighlightsAPI.getHighlights(1);
       const orderIds = new Set();
       fetchedHighlights.forEach((highlight) => {
@@ -1654,7 +1740,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   }, [totalPages]);
 
-  // COMPREHENSIVE DEBUG: Enhanced highlighting function with extensive logging
+  // Enhanced highlighting function with extensive logging
   const handleOrderHighlight = useCallback(async (order) => {
     console.log('🌟 ========== UNHIGHLIGHT DEBUG START ==========');
     console.log('🌟 Order to unhighlight:', {
@@ -1676,27 +1762,17 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       return;
     }
     
-    // Normalize the ID for backend operations
     const backendOrderId = normalizeBackendId(orderId, order.order_type);
     console.log('🔍 Normalized backend ID:', backendOrderId);
-    console.log('🔍 ID Mapping Summary:', { 
-      originalOrderId: orderId, 
-      backendOrderId, 
-      orderType: order.order_type 
-    });
     
-    // Check current highlight status
     const isCurrentlyHighlighted = localHighlights.has(orderId) || localHighlights.has(backendOrderId);
     console.log('🌟 Current highlight status:', isCurrentlyHighlighted);
-    console.log('🌟 Local highlights set contains:', Array.from(localHighlights));
     
-    // Add to loading state
     setHighlightLoading(prev => new Set([...prev, orderId]));
     
     try {
       if (isCurrentlyHighlighted) {
         console.log('🗑️ ========== STARTING UNHIGHLIGHT PROCESS ==========');
-        console.log('🗑️ Attempting to remove highlight for backend ID:', backendOrderId);
         
         // IMMEDIATELY remove from display for instant UI feedback
         setDisplayHighlights(prev => {
@@ -1712,7 +1788,6 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           newSet.delete(backendOrderId);
           newSet.delete(`eo-${backendOrderId}`);
           console.log('🗑️ Updated local highlights, removed:', [orderId, backendOrderId, `eo-${backendOrderId}`]);
-          console.log('🗑️ Local highlights now:', Array.from(newSet));
           return newSet;
         });
         
@@ -1764,17 +1839,10 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           });
           setLocalHighlights(prev => new Set([...prev, orderId, backendOrderId]));
         } else {
-          console.log('✅ Backend deletion successful - NOT calling additional cleanup functions');
-          
-          // DO NOT call removeHighlight hook as it might make another DELETE call
-          // DO NOT call refreshGlobalHighlights as it might trigger more API calls
-          
-          console.log('✅ Unhighlight process completed successfully');
+          console.log('✅ Backend deletion successful');
+          // Update the hook's state without making another API call
+          removeHighlightLocally(order);
         }
-      } else {
-        console.log('⭐ Item is not currently highlighted - this should not happen on highlights page');
-        // ADD highlight logic (shouldn't happen on highlights page but keeping for completeness)
-        // ... existing add logic ...
       }
       
     } catch (error) {
@@ -1803,34 +1871,23 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     }
   }, [localHighlights, stableHandlers, removeHighlight]);
 
-  // UPDATED: Improved highlight status check with better debugging
+  // Improved highlight status check
   const isOrderHighlighted = useCallback((order) => {
     const orderId = getUniversalOrderId(order);
     if (!orderId) {
-      console.log('🔍 isOrderHighlighted: No orderId found');
       return false;
     }
     
     const backendOrderId = normalizeBackendId(orderId, order.order_type);
     
-    // Check multiple ID variations in local highlights
     const localHighlighted = localHighlights.has(orderId) || 
                             localHighlights.has(backendOrderId) ||
                             localHighlights.has(`eo-${orderId}`) ||
                             localHighlights.has(`eo-${backendOrderId}`);
     
-    // Also check stable handlers as fallback
     const stableHighlighted = stableHandlers?.isItemHighlighted?.(order) || false;
     
-    const finalResult = localHighlighted || stableHighlighted;
-    
-    // Debug logging for unhighlighted items that are still showing
-    if (!finalResult && order.title) {
-      console.log(`🔍 isOrderHighlighted: Item "${order.title.substring(0, 30)}..." is NOT highlighted (orderId: ${orderId}, backendId: ${backendOrderId})`);
-      console.log('🔍 Local highlights set:', Array.from(localHighlights));
-    }
-    
-    return finalResult;
+    return localHighlighted || stableHighlighted;
   }, [localHighlights, stableHandlers]);
 
   // Check if order is currently being highlighted/unhighlighted
@@ -1870,22 +1927,19 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const hasHighlights = displayHighlights && displayHighlights.length > 0;
 
   return (
-
-
     <div className="pt-6">
+      
       {/* Scroll to Top Button */}
       <ScrollToTopButton />
 
-
       <HR1PolicyBanner 
         onClick={() => {
-          navigate('/hr1'); // Adjust this route to match your routing setup
+          navigate('/hr1');
         }}
+        expirationDate="2025-08-01"
       />
 
       {/* Header */}
-
-
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
           <Star />
@@ -1896,7 +1950,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         </p>
       </div>
 
-      {/* Controls Section - Refresh button left aligned, Filters right aligned */}
+      {/* Controls Section */}
       <div className="mb-8">
         <div className="flex justify-between items-center">
           {/* Left side - Refresh Button and Status */}
@@ -2313,7 +2367,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                                   highlight.legiscan_url ? `LegiScan URL: ${highlight.legiscan_url}` : ''
                                 ].filter(line => line.length > 0).join('\n');
                                 
-                                // Enhanced copy functionality with feedback (matching ExecutiveOrdersPage pattern)
+                                // Enhanced copy functionality with feedback
                                 const copySuccess = async () => {
                                   try {
                                     if (copyToClipboard && typeof copyToClipboard === 'function') {
@@ -2413,82 +2467,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
 
       {/* Universal CSS Styles */}
       <style>{`
-        /* Filter-specific CSS to ensure colors work */
-        .filter-civic-active {
-          background-color: rgb(219 234 254) !important;
-          color: rgb(29 78 216) !important;
-        }
-        
-        .filter-education-active {
-          background-color: rgb(254 215 170) !important;
-          color: rgb(194 65 12) !important;
-        }
-        
-        .filter-engineering-active {
-          background-color: rgb(220 252 231) !important;
-          color: rgb(21 128 61) !important;
-        }
-        
-        .filter-healthcare-active {
-          background-color: rgb(254 226 226) !important;
-          color: rgb(185 28 28) !important;
-        }
-        
-        .filter-civic-icon {
-          color: rgb(37 99 235) !important;
-        }
-        
-        .filter-education-icon {
-          color: rgb(234 88 12) !important;
-        }
-        
-        .filter-engineering-icon {
-          color: rgb(22 163 74) !important;
-        }
-        
-        .filter-healthcare-icon {
-          color: rgb(220 38 38) !important;
-        }
-        
-        .filter-civic-count {
-          background-color: rgb(191 219 254) !important;
-          color: rgb(29 78 216) !important;
-        }
-        
-        .filter-education-count {
-          background-color: rgb(251 191 36) !important;
-          color: rgb(194 65 12) !important;
-        }
-        
-        .filter-engineering-count {
-          background-color: rgb(187 247 208) !important;
-          color: rgb(21 128 61) !important;
-        }
-        
-        .filter-healthcare-count {
-          background-color: rgb(252 165 165) !important;
-          color: rgb(185 28 28) !important;
-        }
-
-        .bg-purple-50 .text-violet-800,
-        .bg-blue-50 .text-blue-800, 
-        .bg-green-50 .text-green-800 {
-          word-break: normal;
-          overflow-wrap: anywhere;
-          white-space: pre-wrap;
-          text-align: justify;
-        }
-
-        .numbered-item {
-          page-break-inside: avoid;
-          break-inside: avoid;
-        }
-
-        .numbered-text {
-          word-break: normal;
-          overflow-wrap: anywhere;
-        }
-
+        /* Universal content styling */
         .universal-ai-content,
         .universal-structured-content,
         .universal-text-content {
@@ -2530,147 +2509,11 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           color: inherit;
         }
 
-        .universal-bullet-content {
-          margin: 8px 0;
-        }
-
-        .bullet-item {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          margin-bottom: 6px;
-          font-size: 14px;
-          line-height: 1.5;
-        }
-
-        .bullet-item:last-child {
-          margin-bottom: 0;
-        }
-
-        .bullet-point {
-          font-weight: 600;
-          font-size: 16px;
-          color: currentColor;
-          min-width: 12px;
-          flex-shrink: 0;
-          margin-top: 1px;
-        }
-
-        .bullet-text {
-          flex: 1;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
-
-        .numbered-list-content ol {
-          margin: 8px 0;
-          padding-left: 0;
-          list-style: none;
-          counter-reset: talking-points;
-        }
-
-        .numbered-list-content li {
-          position: relative;
-          padding-left: 24px;
-          margin-bottom: 6px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-          counter-increment: talking-points;
-        }
-
-        .numbered-list-content li:before {
-          content: counter(talking-points) ".";
-          position: absolute;
-          left: 0;
-          top: 0;
-          font-weight: 600;
-          font-size: 14px;
-          color: currentColor;
-          min-width: 20px;
-        }
-
-        .numbered-list-content li:last-child {
-          margin-bottom: 0;
-        }
-
-        .universal-ai-content p {
-          margin: 0 0 8px 0;
-          font-size: 14px;
-          line-height: 1.5;
-        }
-
-        .universal-ai-content p:last-child {
-          margin-bottom: 0;
-        }
-
-        .universal-ai-content ol,
-        .universal-ai-content ul {
-          margin: 8px 0;
-          padding-left: 20px;
-          font-size: 14px;
-        }
-
-        .universal-ai-content li {
-          margin-bottom: 4px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
-
-        .universal-ai-content li:last-child {
-          margin-bottom: 0;
-        }
-
-        .universal-ai-content strong {
-          font-weight: 600;
-          font-size: 14px;
-        }
-
-        .business-impact-sections {
-          margin: 8px 0;
-        }
-
-        .business-impact-section {
-          margin-bottom: 12px;
-        }
-
-        .business-impact-section:last-child {
-          margin-bottom: 0;
-        }
-
-        .section-header {
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          color: inherit;
-        }
-
-        .section-items {
-          margin: 0;
-          padding: 0;
-          list-style: none;
-        }
-
-        .section-item {
-          margin-bottom: 4px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
-        }
-
-        .section-item:last-child {
-          margin-bottom: 0;
-        }
-
         .text-purple-800 .universal-ai-content,
         .text-purple-800 .universal-structured-content,
         .text-purple-800 .universal-text-content,
         .text-purple-800 .number-bullet,
-        .text-purple-800 .numbered-text,
-        .text-purple-800 .bullet-point,
-        .text-purple-800 .bullet-text {
+        .text-purple-800 .numbered-text {
           color: #5b21b6;
         }
 
@@ -2678,9 +2521,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         .text-blue-800 .universal-structured-content,
         .text-blue-800 .universal-text-content,
         .text-blue-800 .number-bullet,
-        .text-blue-800 .numbered-text,
-        .text-blue-800 .bullet-point,
-        .text-blue-800 .bullet-text {
+        .text-blue-800 .numbered-text {
           color: #1e40af;
         }
 
@@ -2688,24 +2529,8 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
         .text-green-800 .universal-structured-content,
         .text-green-800 .universal-text-content,
         .text-green-800 .number-bullet,
-        .text-green-800 .numbered-text,
-        .text-green-800 .bullet-point,
-        .text-green-800 .bullet-text {
+        .text-green-800 .numbered-text {
           color: #166534;
-        }
-
-        .section-header {
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          color: inherit;
-        }
-
-        .section-item {
-          margin-bottom: 4px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: inherit;
         }
       `}</style>
     </div>

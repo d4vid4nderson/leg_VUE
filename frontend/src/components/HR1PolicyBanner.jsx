@@ -1,7 +1,15 @@
 import React from 'react';
 import { AlertTriangle, ArrowRight, Landmark, TrendingUp } from 'lucide-react';
 
-const HR1PolicyBanner = ({ onClick }) => {
+const HR1PolicyBanner = ({ onClick, expirationDate }) => {
+  // Check if the banner should be shown based on expiration date
+  const isExpired = expirationDate && new Date() > new Date(expirationDate);
+  
+  // Don't render if expired
+  if (isExpired) {
+    return null;
+  }
+
   return (
     <div className="bg-gradient-to-r from-red-600 via-red-500 to-orange-400 text-white shadow-lg mb-6 rounded-lg overflow-hidden">
       <div className="px-4 py-3">

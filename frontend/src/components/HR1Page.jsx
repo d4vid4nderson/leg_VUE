@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Building, Shield, Stethoscope, Wheat, DollarSign, GraduationCap, Landmark, Cog, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building, Shield, Stethoscope, Wheat, DollarSign, GraduationCap, Landmark, Cog, ChevronDown, ChevronUp } from 'lucide-react';
 
 const HR1PolicyPage = () => {
   const [expandedSections, setExpandedSections] = useState({});
@@ -51,19 +51,10 @@ const HR1PolicyPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-4">
+    <div className="pt-6">
         {/* Header - Now contained within the same width constraints */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg mb-8">
           <div className="px-8 py-6">
-            <button 
-              onClick={() => window.history.back()}
-              className="flex items-center space-x-2 text-blue-100 hover:text-white mb-4 transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span>Back to Highlights</span>
-            </button>
-            
             <div className="flex items-center space-x-3 mb-4">
               <Landmark className="h-8 w-8" />
               <h1 className="text-3xl font-bold">H.R. 1 - Major Policy Changes</h1>
@@ -255,7 +246,6 @@ const HR1PolicyPage = () => {
             Pivot toward defense and traditional energy. Reduce dependence on federal education and green energy work!
           </p>
         </div>
-      </div>
     </div>
   );
 };

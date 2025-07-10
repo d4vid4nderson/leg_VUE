@@ -23,7 +23,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowUp,
-  LayoutGrid
+  LayoutGrid,
+  Download
 } from 'lucide-react';
 
 import { 
@@ -456,7 +457,7 @@ const FilterDropdown = React.forwardRef(({
       <button
         type="button"
         onClick={onToggleDropdown}
-        className={`flex items-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 ${
+        className={`flex items-center justify-between px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 w-48 ${
           selectedFilters.length > 0
             ? 'bg-blue-100 text-blue-700 border-blue-300'
             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -475,130 +476,108 @@ const FilterDropdown = React.forwardRef(({
       </button>
 
       {showFilterDropdown && (
-        <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[320px] max-w-[400px]">
-          <div className="p-3">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-semibold text-gray-800">Filter Options</h3>
-              {selectedFilters.length > 0 && (
+        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+          <div>
+            {/* Dropdown Title */}
+            <div className="px-4 py-3 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Filter Options</h3>
+            </div>
+
+            {/* Clear All Button */}
+            {selectedFilters.length > 0 && (
+              <div className="px-4 py-2 border-b border-gray-200">
                 <button
-                  type="button"
                   onClick={onClearAllFilters}
-                  className="text-sm text-red-600 hover:text-red-700 font-medium"
+                  className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
                 >
-                  Clear All
-                </button>
-              )}
-            </div>
-
-            <div className="mb-3">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Practice Areas</h4>
-              <div className="space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => handleFilterToggle('all_practice_areas')}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md transition-all duration-200 ${
-                    getFilterStyles('all_practice_areas', isAllPracticeAreasActive())
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <LayoutGrid 
-                      size={14} 
-                      className={getIconColor('all_practice_areas', isAllPracticeAreasActive())} 
-                    />
-                    <span className="text-sm">All Practice Areas</span>
-                  </div>
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                    isAllPracticeAreasActive()
-                      ? 'bg-white bg-opacity-50' 
-                      : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {getAllPracticeAreasCount()}
-                  </span>
-                </button>
-
-                {CATEGORY_FILTERS.map((filter) => {
-                  const IconComponent = filter.icon;
-                  const isActive = selectedFilters.includes(filter.key);
-                  const count = counts?.[filter.key] || 0;
-                  
-                  return (
-                    <button
-                      key={filter.key}
-                      type="button"
-                      onClick={() => handleFilterToggle(filter.key)}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md transition-all duration-200 ${
-                        getFilterStyles(filter.key, isActive)
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <IconComponent 
-                          size={14} 
-                          className={getIconColor(filter.key, isActive)} 
-                        />
-                        <span className="text-sm">{filter.label}</span>
-                      </div>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        isActive 
-                          ? 'bg-white bg-opacity-50' 
-                          : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Review Status</h4>
-              <div className="space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => handleFilterToggle('reviewed')}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md transition-all duration-200 ${
-                    getFilterStyles('reviewed', selectedFilters.includes('reviewed'))
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Check 
-                      size={14} 
-                      className={getIconColor('reviewed', selectedFilters.includes('reviewed'))} 
-                    />
-                    <span className="text-sm">Reviewed</span>
-                  </div>
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                    selectedFilters.includes('reviewed')
-                      ? 'bg-white bg-opacity-50' 
-                      : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {counts?.reviewed || 0}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleFilterToggle('not_reviewed')}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md transition-all duration-200 ${
-                    getFilterStyles('not_reviewed', selectedFilters.includes('not_reviewed'))
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle 
-                      size={14} 
-                      className={getIconColor('not_reviewed', selectedFilters.includes('not_reviewed'))} 
-                    />
-                    <span className="text-sm">Not Reviewed</span>
-                  </div>
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                    selectedFilters.includes('not_reviewed')
-                      ? 'bg-white bg-opacity-50' 
-                      : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {counts?.not_reviewed || 0}
-                  </span>
+                  Clear All Filters ({selectedFilters.length})
                 </button>
               </div>
+            )}
+            
+            {/* Practice Areas Section */}
+            <div className="pt-2">
+              <div className="px-4 py-2 text-sm font-semibold text-gray-700">
+                Practice Areas
+              </div>
+              
+              {/* All Practice Areas Option */}
+              <button
+                onClick={() => handleFilterToggle('all_practice_areas')}
+                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                  isAllPracticeAreasActive()
+                    ? 'bg-blue-100 text-blue-700 font-medium'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <LayoutGrid size={16} />
+                  <span>All Practice Areas</span>
+                </div>
+                <span className="text-xs text-gray-500">({getAllPracticeAreasCount()})</span>
+              </button>
+
+              {/* Individual Category Filters */}
+              {CATEGORY_FILTERS.map((filter) => {
+                const IconComponent = filter.icon;
+                const isActive = selectedFilters.includes(filter.key);
+                const count = counts?.[filter.key] || 0;
+                
+                return (
+                  <button
+                    key={filter.key}
+                    onClick={() => handleFilterToggle(filter.key)}
+                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                      isActive
+                        ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
+                          filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
+                          filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
+                          filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
+                          'bg-blue-100 text-blue-700 font-medium'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <IconComponent size={16} />
+                      <span>{filter.label}</span>
+                    </div>
+                    <span className="text-xs text-gray-500">({count})</span>
+                  </button>
+                );
+              })}
+
+              {/* Review Status Section */}
+              <div className="px-4 py-2 text-sm font-semibold text-gray-700">
+                Review Status
+              </div>
+              <button
+                onClick={() => handleFilterToggle('reviewed')}
+                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                  selectedFilters.includes('reviewed')
+                    ? 'bg-green-100 text-green-700 font-medium'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Check size={16} />
+                  <span>Reviewed</span>
+                </div>
+                <span className="text-xs text-gray-500">({counts?.reviewed || 0})</span>
+              </button>
+              <button
+                onClick={() => handleFilterToggle('not_reviewed')}
+                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                  selectedFilters.includes('not_reviewed')
+                    ? 'bg-red-100 text-red-700 font-medium'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <AlertTriangle size={16} />
+                  <span>Not Reviewed</span>
+                </div>
+                <span className="text-xs text-gray-500">({counts?.not_reviewed || 0})</span>
+              </button>
             </div>
           </div>
         </div>
@@ -915,6 +894,24 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
+  // Callback to update review status in the main state
+  const handleReviewStatusUpdate = useCallback((itemId, newReviewStatus) => {
+    setAllOrders(prevOrders => 
+      prevOrders.map(order => {
+        const currentOrderId = getExecutiveOrderNumber(order);
+        // Check multiple possible ID formats
+        if (currentOrderId === itemId || 
+            order.document_number === itemId || 
+            order.eo_number === itemId ||
+            order.executive_order_number === itemId) {
+          console.log(`🔄 Updating order ${currentOrderId} review status: ${order.reviewed} → ${newReviewStatus}`);
+          return { ...order, reviewed: newReviewStatus };
+        }
+        return order;
+      })
+    );
+  }, []);
+
   // Database-driven review status using useReviewStatus hook
   const {
     toggleReviewStatus,
@@ -922,7 +919,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     isItemReviewLoading,
     reviewedItems,
     reviewCounts
-  } = useReviewStatus(allOrders, 'executive_order');
+  } = useReviewStatus(allOrders, 'executive_order', handleReviewStatusUpdate);
 
   // Debug logging for review status initialization
   useEffect(() => {
@@ -1406,6 +1403,15 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       return;
     }
     
+    // For backend API calls, we need to strip the 'eo-' prefix
+    const backendOrderId = orderId.startsWith('eo-') ? orderId.replace('eo-', '') : orderId;
+    
+    console.log('🆔 Order ID mapping:', {
+      frontend: orderId,
+      backend: backendOrderId,
+      orderNumber: order.executive_order_number || order.document_number || order.eo_number
+    });
+    
     const isCurrentlyHighlighted = localHighlights.has(orderId);
     console.log('🌟 Current highlight status:', isCurrentlyHighlighted, 'Order ID:', orderId);
     
@@ -1421,7 +1427,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
           return newSet;
         });
         
-        const response = await fetch(`${API_URL}/api/highlights/${orderId}?user_id=1`, {
+        const response = await fetch(`${API_URL}/api/highlights/${backendOrderId}?user_id=1`, {
           method: 'DELETE',
         });
         
@@ -1444,7 +1450,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             user_id: 1,
-            order_id: orderId,
+            order_id: backendOrderId,
             order_type: 'executive_order',
             notes: null,
             priority_level: 1,
@@ -1749,10 +1755,8 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               disabled={fetchingData || loading}
               className={`px-6 py-3 rounded-lg border transition-all duration-300 text-center transform hover:scale-104 relative flex items-center gap-2 ${
                 fetchingData || loading
-                  ? 'opacity-50 cursor-not-allowed' 
-                  : countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0
-                  ? 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50 border-blue-200 bg-blue-50'
-                  : 'hover:shadow-lg hover:border-blue-300 hover:bg-blue-50 border-gray-200 bg-white'
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' 
+                  : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 hover:border-blue-300'
               }`}
             >
               {/* Notification badge if new orders available */}
@@ -1763,10 +1767,8 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 </div>
               )}
               
-              <Sparkles size={16} className="text-blue-600" />
-              <span className={`font-medium ${
-                countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0 ? 'text-blue-600' : 'text-blue-600'
-              }`}>
+              <Download size={16} />
+              <span className="font-medium">
                 {countCheckStatus.needsFetch && countCheckStatus.newOrdersAvailable > 0 
                   ? 'Fetch New Executive Orders' 
                   : 'Fetch Executive Orders'
@@ -1864,7 +1866,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                     disabled={fetchingData}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300 flex items-center gap-2"
                   >
-                    <Sparkles size={16} />
+                    <Download size={16} />
                     Fetch Executive Orders
                   </button>
                 )}
@@ -2077,7 +2079,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   disabled={fetchingData}
                                   className="px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-all duration-300 flex items-center gap-2"
                                 >
-                                  <Sparkles size={14} />
+                                  <Download size={14} />
                                   Fetch Orders
                                 </button>
                               </div>

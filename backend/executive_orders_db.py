@@ -25,7 +25,7 @@ def check_executive_orders_table():
             
             if not table_exists:
                 logger.warning("⚠️ executive_orders table doesn't exist, creating...")
-                # Create the table
+                # Create the table WITH reviewed column
                 cursor.execute("""
                     CREATE TABLE dbo.executive_orders (
                         id INT IDENTITY(1,1) PRIMARY KEY,
@@ -55,6 +55,7 @@ def check_executive_orders_table():
                         content NVARCHAR(MAX),
                         tags NVARCHAR(MAX),
                         ai_analysis NVARCHAR(MAX),
+                        reviewed BIT DEFAULT 0,
                         created_at DATETIME DEFAULT GETUTCDATE(),
                         last_updated DATETIME DEFAULT GETUTCDATE(),
                         last_scraped_at DATETIME DEFAULT GETUTCDATE(),
@@ -67,6 +68,7 @@ def check_executive_orders_table():
                 cursor.execute("CREATE INDEX idx_eo_number ON dbo.executive_orders (eo_number)")
                 cursor.execute("CREATE INDEX idx_category ON dbo.executive_orders (category)")
                 cursor.execute("CREATE INDEX idx_signing_date ON dbo.executive_orders (signing_date)")
+                cursor.execute("CREATE INDEX idx_reviewed ON dbo.executive_orders (reviewed)")
                 logger.info("✅ Indexes created for executive_orders table")
                 
                 return True, []
@@ -81,6 +83,14 @@ def check_executive_orders_table():
             
             columns = [row[0] for row in cursor.fetchall()]
             logger.info(f"✅ executive_orders table exists with {len(columns)} columns")
+            
+            # Check if reviewed column exists, add it if missing
+            if 'reviewed' not in columns:
+                logger.info("🔧 Adding missing reviewed column...")
+                cursor.execute("ALTER TABLE dbo.executive_orders ADD reviewed BIT DEFAULT 0")
+                cursor.execute("CREATE INDEX idx_reviewed ON dbo.executive_orders (reviewed)")
+                logger.info("✅ Added reviewed column")
+            
             return True, columns
             
     except Exception as e:
@@ -89,11 +99,11 @@ def check_executive_orders_table():
 
 
 def get_executive_orders_from_db(limit=None, offset=0, filters=None):
-    """Get executive orders from database with filters and pagination - FIXED to handle unlimited queries"""
+    """Get executive orders from database with filters and pagination - INCLUDES reviewed column"""
     try:
         logger.info(f"🔍 Getting executive orders: limit={limit}, offset={offset}, filters={filters}")
         
-        # Build query
+        # Build query - IMPORTANT: Include reviewed column
         base_query = """
         SELECT 
             id, document_number, eo_number, title, summary, 
@@ -102,7 +112,8 @@ def get_executive_orders_from_db(limit=None, offset=0, filters=None):
             ai_summary, ai_executive_summary, ai_key_points, ai_talking_points, 
             ai_business_impact, ai_potential_impact, ai_version,
             source, raw_data_available, processing_status, error_message,
-            created_at, last_updated, last_scraped_at, tags
+            created_at, last_updated, last_scraped_at, tags,
+            reviewed
         FROM dbo.executive_orders
         """
         
@@ -134,7 +145,7 @@ def get_executive_orders_from_db(limit=None, offset=0, filters=None):
         total_count = execute_query(count_query, params, fetch_one=True)[0]
         logger.info(f"📊 Total matching records: {total_count}")
         
-        # FIXED: Only add pagination if limit is specified
+        # Add pagination if limit is specified
         if limit is not None and limit > 0:
             logger.info(f"📄 Applying pagination: OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY")
             base_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
@@ -171,13 +182,17 @@ def get_executive_orders_from_db(limit=None, offset=0, filters=None):
                 if result.get('publication_date'):
                     result['formatted_publication_date'] = result['publication_date']
                 
+                # Ensure reviewed is boolean
+                if 'reviewed' in result:
+                    result['reviewed'] = bool(result['reviewed'])
+                
                 results.append(result)
         
         logger.info(f"✅ Retrieved {len(results)} executive orders from database")
         
         # Calculate pagination info
         if limit is not None and limit > 0:
-            total_pages = max(1, (total_count + limit - 1) // limit)  # Ceiling division
+            total_pages = max(1, (total_count + limit - 1) // limit)
             current_page = (offset // limit) + 1 if limit > 0 else 1
             has_more = len(results) == limit
         else:
@@ -190,7 +205,7 @@ def get_executive_orders_from_db(limit=None, offset=0, filters=None):
             'results': results,
             'count': len(results),
             'total': total_count,
-            'total_count': total_count,  # Add this for consistency
+            'total_count': total_count,
             'total_pages': total_pages,
             'current_page': current_page,
             'has_more': has_more
@@ -208,10 +223,9 @@ def get_executive_orders_from_db(limit=None, offset=0, filters=None):
             'total': 0
         }
 
-# Fixed save_executive_orders_to_db function - resolves duplicate column issue
 
 def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
-    """Save executive orders to database with fixed column duplication issue"""
+    """Save executive orders to database - INCLUDES reviewed column handling"""
     if not orders:
         return {"total_processed": 0, "inserted": 0, "updated": 0, "errors": 0, "error_details": []}
     
@@ -256,7 +270,7 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                         update_fields = []
                         params = []
                         
-                        # Build dynamic update - FIXED: Handle last_updated properly
+                        # Build dynamic update
                         for key, value in order.items():
                             # Skip these fields for update
                             if key in ['id', 'document_number', 'created_at']:
@@ -267,7 +281,7 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                                 update_fields.append(f"{key} = ?")
                                 params.append(value)
                         
-                        # FIXED: Only add last_updated if it wasn't already in the data
+                        # Only add last_updated if it wasn't already in the data
                         if 'last_updated' not in order:
                             update_fields.append("last_updated = ?")
                             params.append(datetime.now())
@@ -282,7 +296,7 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                         results["updated"] += 1
                         logger.info(f"🔄 Updated EO {eo_number}")
                     else:
-                        # INSERT new order - FIXED: Handle timestamps properly
+                        # INSERT new order
                         insert_fields = ['document_number']
                         params = [document_number]
                         
@@ -297,7 +311,12 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                                 insert_fields.append(key)
                                 params.append(value)
                         
-                        # FIXED: Only add timestamps if they weren't already in the data
+                        # Add default reviewed value if not provided
+                        if 'reviewed' not in order and 'reviewed' not in insert_fields:
+                            insert_fields.append('reviewed')
+                            params.append(False)  # Default to not reviewed
+                        
+                        # Add timestamps if not provided
                         current_time = datetime.now()
                         
                         if 'created_at' not in order and 'created_at' not in insert_fields:
@@ -371,51 +390,64 @@ def get_executive_order_by_number(eo_number: str) -> Optional[Dict]:
         logger.error(f"❌ Error getting executive order by number {eo_number}: {e}")
         return None
     
-def update_executive_order_category_in_db(eo_number: str, category: str) -> Dict:
-    """Update the category for a specific executive order"""
+def update_executive_order_review_status(eo_id: str, reviewed: bool) -> Dict:
+    """Update the review status for a specific executive order"""
+    conn = None
+    cursor = None
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Update the category
-            update_query = """
-                UPDATE dbo.executive_orders 
-                SET category = ?, last_updated = ? 
-                WHERE eo_number = ? OR document_number = ?
-            """
-            
-            cursor.execute(update_query, [
-                category, 
-                datetime.now(), 
-                eo_number, 
-                eo_number
-            ])
-            
-            rows_affected = cursor.rowcount
-            conn.commit()
-            
-            if rows_affected > 0:
-                logger.info(f"✅ Updated category for EO {eo_number} to {category}")
-                return {
-                    "success": True,
-                    "message": f"Category updated to {category}",
-                    "rows_affected": rows_affected
-                }
-            else:
-                logger.warning(f"⚠️ No rows updated for EO {eo_number}")
-                return {
-                    "success": False,
-                    "message": f"Executive order {eo_number} not found",
-                    "rows_affected": 0
-                }
+        # Use get_database_connection directly instead of the context manager
+        from database_connection import get_database_connection
+        
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        
+        # Update the review status
+        # Only compare with id column if the value is numeric
+        update_query = """
+            UPDATE dbo.executive_orders 
+            SET reviewed = ?, last_updated = ? 
+            WHERE eo_number = ? OR document_number = ?
+        """
+        
+        cursor.execute(update_query, [
+            reviewed, 
+            datetime.now(), 
+            eo_id, 
+            eo_id
+        ])
+        
+        rows_affected = cursor.rowcount
+        conn.commit()
+        
+        if rows_affected > 0:
+            logger.info(f"✅ Updated review status for EO {eo_id} to {reviewed}")
+            return {
+                "success": True,
+                "message": f"Review status updated to {reviewed}",
+                "rows_affected": rows_affected
+            }
+        else:
+            logger.warning(f"⚠️ No rows updated for EO {eo_id}")
+            return {
+                "success": False,
+                "message": f"Executive order {eo_id} not found",
+                "rows_affected": 0
+            }
                 
     except Exception as e:
-        logger.error(f"❌ Error updating category for EO {eo_number}: {e}")
+        logger.error(f"❌ Error updating review status for EO {eo_id}: {e}")
+        if conn:
+            conn.rollback()
         return {
             "success": False,
             "message": f"Database error: {str(e)}",
             "rows_affected": 0
         }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 def create_highlights_table():
     """Create the user highlights table if it doesn't exist"""
