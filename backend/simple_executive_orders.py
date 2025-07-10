@@ -24,34 +24,41 @@ class SimpleExecutiveOrders:
         })
         # Cache for existing orders to avoid repeated database queries
         self._existing_orders_cache = None
-    
+
     def get_existing_orders_from_database(self):
-        """Get existing order identifiers - MATCHES YOUR EXACT dbo.executive_orders TABLE"""
+        """Get existing order identifiers - FIXED for direct connection"""
         try:
             if hasattr(self, '_existing_orders_cache') and self._existing_orders_cache is not None:
                 return self._existing_orders_cache
             
             from database_connection import get_db_connection
             
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
+            # Get direct connection - NOT using context manager
+            conn = get_db_connection()
+            if not conn:
+                logger.error("❌ Failed to establish database connection")
+                return set()
                 
-                # Query using your EXACT column names from the screenshot
-                cursor.execute("""
-                    SELECT DISTINCT eo_number, document_number 
-                    FROM dbo.executive_orders 
-                    WHERE (eo_number IS NOT NULL OR document_number IS NOT NULL)
-                """)
-                
-                existing_orders = set()
-                for row in cursor.fetchall():
-                    eo_number, doc_number = row
-                    if eo_number:
-                        existing_orders.add(str(eo_number).strip())
-                    if doc_number:
-                        existing_orders.add(str(doc_number).strip())
-                
-                cursor.close()
+            cursor = conn.cursor()
+            
+            # Query using your EXACT column names from the screenshot
+            cursor.execute("""
+                SELECT DISTINCT eo_number, document_number 
+                FROM dbo.executive_orders 
+                WHERE (eo_number IS NOT NULL OR document_number IS NOT NULL)
+            """)
+            
+            existing_orders = set()
+            for row in cursor.fetchall():
+                eo_number, doc_number = row
+                if eo_number:
+                    existing_orders.add(str(eo_number).strip())
+                if doc_number:
+                    existing_orders.add(str(doc_number).strip())
+            
+            # Close cursor and connection
+            cursor.close()
+            conn.close()
             
             self._existing_orders_cache = existing_orders
             logger.info(f"📊 SCHEMA MATCH: Loaded {len(existing_orders)} existing orders from dbo.executive_orders")
@@ -59,61 +66,79 @@ class SimpleExecutiveOrders:
             
         except Exception as e:
             logger.error(f"❌ SCHEMA MATCH ERROR: {e}")
+            import traceback
+            traceback.print_exc()
             return set()
 
+
     def check_database_for_existing_orders(self):
-        """Check database status - MATCHES YOUR EXACT dbo.executive_orders TABLE"""
+        """Check database status - FIXED for direct connection"""
         try:
             from database_connection import get_db_connection
             
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
+            # Get direct connection - NOT using context manager
+            conn = get_db_connection()
+            if not conn:
+                logger.error("❌ Failed to establish database connection")
+                return {
+                    'table_exists': False,
+                    'count': 0,
+                    'latest_date': None,
+                    'latest_eo_number': None,
+                    'needs_fetch': True,
+                    'message': 'Database connection failed'
+                }
                 
-                # Check if your executive_orders table exists
-                cursor.execute("""
-                    SELECT COUNT(*) 
-                    FROM INFORMATION_SCHEMA.TABLES 
-                    WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
-                """)
-                
-                table_exists = cursor.fetchone()[0] > 0
-                
-                if not table_exists:
-                    cursor.close()
-                    return {
-                        'table_exists': False,
-                        'count': 0,
-                        'latest_date': None,
-                        'latest_eo_number': None,
-                        'needs_fetch': True,
-                        'message': 'dbo.executive_orders table does not exist'
-                    }
-                
-                # Get total count from your table
-                cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
-                existing_count = cursor.fetchone()[0]
-                
-                # Get latest order using your exact column names
-                cursor.execute("""
-                    SELECT TOP 1 signing_date, eo_number, title
-                    FROM dbo.executive_orders 
-                    ORDER BY signing_date DESC, created_at DESC
-                """)
-                
-                latest_row = cursor.fetchone()
-                latest_date = None
-                latest_eo_number = None
-                latest_title = None
-                
-                if latest_row:
-                    latest_date = latest_row[0]
-                    latest_eo_number = latest_row[1]
-                    latest_title = latest_row[2]
-                    
-                    if latest_date and hasattr(latest_date, 'strftime'):
-                        latest_date = latest_date.strftime('%Y-%m-%d')
-                
+            cursor = conn.cursor()
+            
+            # Check if your executive_orders table exists
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
+            """)
+            
+            table_exists = cursor.fetchone()[0] > 0
+            
+            if not table_exists:
                 cursor.close()
+                conn.close()
+                return {
+                    'table_exists': False,
+                    'count': 0,
+                    'latest_date': None,
+                    'latest_eo_number': None,
+                    'needs_fetch': True,
+                    'message': 'dbo.executive_orders table does not exist'
+                }
+            
+            # Get total count from your table
+            cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+            existing_count = cursor.fetchone()[0]
+            
+            # Get latest order using your exact column names
+            cursor.execute("""
+                SELECT TOP 1 signing_date, eo_number, title
+                FROM dbo.executive_orders 
+                ORDER BY signing_date DESC, created_at DESC
+            """)
+            
+            latest_row = cursor.fetchone()
+            latest_date = None
+            latest_eo_number = None
+            latest_title = None
+            
+            if latest_row:
+                latest_date = latest_row[0]
+                latest_eo_number = latest_row[1]
+                latest_title = latest_row[2]
+                
+                if latest_date and hasattr(latest_date, 'strftime'):
+                    latest_date = latest_date.strftime('%Y-%m-%d')
+            
+            # Close cursor and connection
+            cursor.close()
+            conn.close()
             
             logger.info(f"📊 dbo.executive_orders status:")
             logger.info(f"   - Total records: {existing_count}")
@@ -131,6 +156,8 @@ class SimpleExecutiveOrders:
             
         except Exception as e:
             logger.error(f"❌ Database check failed: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'table_exists': False,
                 'count': 0,
@@ -773,41 +800,56 @@ def fetch_all_executive_orders_simple() -> Dict:
     
     return result
 
+
 def check_executive_orders_table():
-    """Check if table exists"""
+    """Check if table exists - FIXED direct connection handling"""
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
+        # Get direct connection - NOT using context manager
+        conn = get_db_connection()
+        if not conn:
+            logger.error("❌ Failed to establish database connection")
+            return False, []
             
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
+        """)
+        
+        table_exists = cursor.fetchone()[0] > 0
+        
+        if table_exists:
             cursor.execute("""
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.TABLES 
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
+                ORDER BY ORDINAL_POSITION
             """)
             
-            table_exists = cursor.fetchone()[0] > 0
+            columns = [row[0] for row in cursor.fetchall()]
             
-            if table_exists:
-                cursor.execute("""
-                    SELECT COLUMN_NAME
-                    FROM INFORMATION_SCHEMA.COLUMNS
-                    WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
-                    ORDER BY ORDINAL_POSITION
-                """)
-                
-                columns = [row[0] for row in cursor.fetchall()]
-                cursor.close()
-                
-                logger.info(f"✅ executive_orders table verified: {len(columns)} columns")
-                return True, columns
-            else:
-                cursor.close()
-                logger.warning("⚠️ executive_orders table not found")
-                return False, []
+            # Close cursor and connection
+            cursor.close()
+            conn.close()
             
+            logger.info(f"✅ executive_orders table verified: {len(columns)} columns")
+            return True, columns
+        else:
+            # Close cursor and connection
+            cursor.close()
+            conn.close()
+            
+            logger.warning("⚠️ executive_orders table not found")
+            return False, []
+        
     except Exception as e:
         logger.error(f"❌ Table check error: {e}")
+        import traceback
+        traceback.print_exc()
         return False, []
+
 
 async def get_federal_register_count_lightweight(simple_eo_instance):
     """Get count from Federal Register"""
@@ -861,14 +903,23 @@ async def check_executive_orders_count_integration():
             "message": f"Error: {str(e)}"
         }
 
-# Test functions remain the same...
 async def test_database_integration():
-    """Test database"""
+    """Test database - FIXED direct connection handling"""
     try:
         print("🧪 Testing database...")
-        with get_db_connection() as conn:
-            print("✅ Database connection works")
         
+        # Get direct connection - NOT using context manager
+        conn = get_db_connection()
+        if not conn:
+            print("❌ Failed to establish database connection")
+            return False
+            
+        print("✅ Database connection works")
+        
+        # Close connection after verifying it works
+        conn.close()
+        
+        # Check if table exists
         exists, columns = check_executive_orders_table()
         print(f"✅ Table exists: {exists}")
         if columns:
@@ -877,6 +928,8 @@ async def test_database_integration():
         return exists
     except Exception as e:
         print(f"❌ Database test failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 async def test_federal_register_direct():

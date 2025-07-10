@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 import pyodbc
 import requests
+from status_endpoints import router as status_router
 from ai_status import check_azure_ai_configuration
 from database_azure_fixed import save_legislation_to_azure_sql, test_azure_sql_connection
 from database_connection import execute_query, get_database_connection, get_db_cursor, test_database_connection, get_db_connection
@@ -22,7 +23,7 @@ from dotenv import load_dotenv
 from executive_orders_db import (
     add_highlight_direct, create_highlights_table, get_executive_order_by_number,
     get_executive_orders_from_db, get_user_highlights_direct, remove_highlight_direct,
-    save_executive_orders_to_db, update_executive_order_category_in_db, get_database_count
+    save_executive_orders_to_db, update_executive_order_category_in_db
 )
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -222,24 +223,53 @@ except ImportError as e:
     logger.warning(f"⚠️ Simple Executive Orders API not available: {e}")
     SIMPLE_EO_AVAILABLE = False
 
-# LegiScan API integration
+# LegiScan API integration - FIXED with better error handling
 try:
     from legiscan_api import LegiScanAPI
+
+    # Environment detection
+    raw_env = os.getenv("ENVIRONMENT", "development")
+    environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
+
+    
+    # First check if API key is in environment
+    LEGISCAN_API_KEY = os.getenv('LEGISCAN_API_KEY')
+    if not LEGISCAN_API_KEY:
+        logger.warning("⚠️ LEGISCAN_API_KEY not found in environment variables")
+        
+        # For testing, check common variations
+        for var_name in ['LEGISCAN_API_KEY', 'legiscan_api_key', 'LEGISCAN_KEY']:
+            value = os.getenv(var_name)
+            if value:
+                LEGISCAN_API_KEY = value
+                logger.info(f"✅ Found LegiScan API key in alternate variable: {var_name}")
+                break
+                
+        # Last resort - hardcode for testing only (remove in production)
+        if not LEGISCAN_API_KEY and environment != "production":
+            LEGISCAN_API_KEY = 'e3bd77ddffa618452dbe7e9bd3ea3a35'  # Testing only
+            logger.warning("⚠️ Using hardcoded LegiScan API key for testing")
+    
+    # Set in environment for LegiScanAPI class to use
+    os.environ['LEGISCAN_API_KEY'] = LEGISCAN_API_KEY
+    
     LEGISCAN_AVAILABLE = True
     logger.info("✅ LegiScan API imported successfully")
     
+    # Test initialization - but handle errors more gracefully
     try:
         test_legiscan = LegiScanAPI()
-        logger.info("✅ LegiScan API can be initialized")
         LEGISCAN_INITIALIZED = True
+        logger.info("✅ LegiScan API initialized successfully")
     except Exception as e:
-        logger.warning(f"⚠️ LegiScan API import successful but initialization failed: {e}")
+        logger.warning(f"⚠️ LegiScan API initialization failed: {e}")
         LEGISCAN_INITIALIZED = False
         
 except ImportError as e:
     logger.warning(f"❌ LegiScan API import failed: {e}")
     LEGISCAN_AVAILABLE = False
     LEGISCAN_INITIALIZED = False
+
 
 # ===============================
 # UNLIMITED FEDERAL REGISTER FETCH
@@ -281,22 +311,22 @@ async def get_federal_register_count():
         logger.error(f"❌ Error getting Federal Register count: {e}")
         return 0
 
-async def get_database_count():
-    """Get total count from database"""
+def get_database_count():
+    """Get the count of executive orders in the database"""
     try:
         conn = get_database_connection()
+        if not conn:
+            logger.error("❌ Cannot get database connection for count check")
+            return 0
+            
         cursor = conn.cursor()
-        
-        # FIXED: Remove president filter - just count all executive orders
         cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
-        
         count = cursor.fetchone()[0]
+        
         cursor.close()
         conn.close()
         
-        logger.info(f"📊 Database has {count} executive orders")
         return count
-        
     except Exception as e:
         logger.error(f"❌ Error getting database count: {e}")
         return 0
@@ -1377,7 +1407,6 @@ def transform_orders_for_save(orders):
             'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         
-        # FIX: Complete the append operation
         transformed_orders.append(transformed_order)
     
     return transformed_orders
@@ -1385,6 +1414,8 @@ def transform_orders_for_save(orders):
 # ===============================
 # FASTAPI APP SETUP
 # ===============================
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown"""
@@ -1403,27 +1434,38 @@ raw_env = os.getenv("ENVIRONMENT", "development")
 environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
 
 # CORS setup
-frontend_url = os.getenv("FRONTEND_URL", "")
 if environment == "production":
     cors_origins = [
         "https://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
-        "http://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io"
+        "http://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
     ]
+    logger.info(f"✅ CORS configured for production: {cors_origins}")
 else:
-    cors_origins = ["*"]
+    cors_origins = ["*"]  # Development allows all origins
+    logger.info(f"✅ CORS configured for development: all origins allowed")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-    max_age=86400
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=86400  # Cache preflight requests for 24 hours
 )
+
+# Import your routers
+from status_endpoints import router as status_router
+# Import any other routers you have
+
+# Include the routers in the main app
+app.include_router(status_router)
+# Include any other routers
 
 @app.options("/{path:path}")
 async def options_handler(path: str):
     return {}
+
+
 
 # ===============================
 # CORE API ENDPOINTS
@@ -1888,8 +1930,8 @@ async def check_executive_orders_count():
         # Get count from Federal Register API
         federal_register_count = await get_federal_register_count()
         
-        # Get count from database
-        database_count = await get_database_count()
+        # Get count from database - FIXED: removed await since not async
+        database_count = get_database_count()
         
         # Calculate difference
         new_orders_available = max(0, federal_register_count - database_count)
@@ -1918,6 +1960,17 @@ async def check_executive_orders_count():
             "needs_fetch": False,
             "message": "Error checking for updates"
         }
+
+
+def log_detailed_error(message, error=None):
+    """Log detailed error information including stack trace"""
+    logger.error(f"❌ {message}")
+    if error:
+        logger.error(f"  Error type: {type(error).__name__}")
+        logger.error(f"  Error message: {str(error)}")
+        import traceback
+        error_traceback = traceback.format_exc()
+        logger.error(f"  Traceback:\n{error_traceback}")
 
 # ===============================
 # CATEGORY & REVIEW UPDATE ENDPOINTS
@@ -1996,95 +2049,50 @@ async def update_executive_order_category(order_id: str, request: dict):
         )
 
 
-@app.patch("/api/executive-orders/{id}/review-v2")
-async def update_executive_order_review_v2(id: str, request: dict):
-    """Super simple version - copy exact pattern from working endpoints"""
-    try:
-        reviewed = request.get('reviewed')
-        if reviewed is None:
-            raise HTTPException(status_code=400, detail="reviewed field is required")
-        
-        print(f"🔍 BACKEND: Quick update for '{id}' to reviewed={reviewed}")
-        
-        # Import exactly what your working endpoints use
-        from database_connection import get_database_connection
-        
-        conn = get_database_connection()
-        cursor = conn.cursor()
-        
-        # Simple update query that tries all possible ID fields
-        cursor.execute("""
-            UPDATE dbo.executive_orders 
-            SET reviewed = ?, last_updated = GETUTCDATE() 
-            WHERE document_number = ? OR eo_number = ?
-        """, reviewed, id, id)
-        
-        rows_affected = cursor.rowcount
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        if rows_affected > 0:
-            print(f"✅ BACKEND: Updated {rows_affected} rows for '{id}'")
-            return {
-                "success": True,
-                "message": f"Review status updated to {reviewed}",
-                "id": id,
-                "reviewed": reviewed
-            }
-        else:
-            raise HTTPException(status_code=404, detail=f"Executive order not found: {id}")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating executive order review status: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update review status: {str(e)}")
-
-
-# Alternative approach - use the existing database function that already works
-@app.patch("/api/executive-orders/{id}/review-alt")
-async def update_executive_order_review_alternative(id: str, request: dict):
-    """Alternative approach using existing database functions"""
-    try:
-        reviewed = request.get('reviewed')
-        if reviewed is None:
-            raise HTTPException(status_code=400, detail="reviewed field is required")
-        
-        print(f"🔍 BACKEND: Received executive order ID: '{id}'")
-        print(f"🔍 BACKEND: Setting reviewed to: {reviewed}")
-        
-        # Use the existing update function that already works
-        result = update_executive_order_category_in_db(id, None)  # This function already exists and works
-        
-        # Since that function is for category, let's create a specific review function
-        # Or we can use execute_query which you already have imported
-        
-        # Try using execute_query directly
-        update_query = """
-            UPDATE dbo.executive_orders 
-            SET reviewed = ?, last_updated = GETUTCDATE()
-            WHERE document_number = ? OR eo_number = ? OR id = TRY_CAST(? AS INT)
-        """
-        
-        result = execute_query(update_query, [reviewed, id, id, id])
-        
-        if result:
-            print(f"✅ BACKEND: Successfully updated executive order {id} review status to {reviewed}")
-            return {
-                "success": True,
-                "message": f"Review status updated to {reviewed}",
-                "id": id,
-                "reviewed": reviewed
-            }
-        else:
-            raise HTTPException(status_code=404, detail=f"Executive order not found: {id}")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating executive order review status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to update review status: {str(e)}")
+#@app.patch("/api/executive-orders/{id}/review-v2")
+#async def update_executive_order_review_v2(id: str, request: dict):
+#    """Super simple version - copy exact pattern from working endpoints"""
+#    try:
+#        reviewed = request.get('reviewed')
+#        if reviewed is None:
+#            raise HTTPException(status_code=400, detail="reviewed field is required")
+#        
+#        print(f"🔍 BACKEND: Quick update for '{id}' to reviewed={reviewed}")
+#        
+#        # Import exactly what your working endpoints use
+#        from database_connection import get_database_connection
+#        
+#        conn = get_database_connection()
+#        cursor = conn.cursor()
+#        
+#        # Simple update query that tries all possible ID fields
+#        cursor.execute("""
+#            UPDATE dbo.executive_orders 
+#            SET reviewed = ?, last_updated = GETUTCDATE() 
+#            WHERE document_number = ? OR eo_number = ?
+#        """, reviewed, id, id)
+#        
+#        rows_affected = cursor.rowcount
+#        conn.commit()
+#        cursor.close()
+#        conn.close()
+#        
+#        if rows_affected > 0:
+#            print(f"✅ BACKEND: Updated {rows_affected} rows for '{id}'")
+#            return {
+#                "success": True,
+#                "message": f"Review status updated to {reviewed}",
+#                "id": id,
+#                "reviewed": reviewed
+#            }
+#        else:
+#            raise HTTPException(status_code=404, detail=f"Executive order not found: {id}")
+#        
+#    except HTTPException:
+#        raise
+#    except Exception as e:
+#        logger.error(f"Error updating executive order review status: {str(e)}")
+#        raise HTTPException(status_code=500, detail=f"Failed to update review status: {str(e)}")
 
 
 # Alternative approach - use the existing database function that already works
@@ -2284,6 +2292,7 @@ async def get_state_legislation_endpoint(
             "error": f"Error fetching state legislation: {str(e)}"
         }
 
+
 @app.post("/api/legiscan/search-and-analyze")
 async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
     """
@@ -2293,7 +2302,27 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
         logger.info(f"🔍 BACKEND: search-and-analyze called:")
         logger.info(f"   - state: {request.state}, query: '{request.query}', limit: {request.limit}")
         
-        # Check if we should use enhanced AI processing
+        # Check if LegiScan API is available
+        if not LEGISCAN_AVAILABLE:
+            logger.error("LegiScan API not imported correctly")
+            raise HTTPException(
+                status_code=503, 
+                detail="LegiScan API not available - check if legiscan_api.py file exists"
+            )
+        
+        if not LEGISCAN_INITIALIZED:
+            logger.error("LegiScan API not initialized - possible API key issue")
+            # Print environment var for debugging (masked)
+            api_key = os.getenv('LEGISCAN_API_KEY', '')
+            masked_key = f"{api_key[:4]}..." if len(api_key) > 4 else "not set"
+            logger.error(f"API key status: {masked_key}")
+            
+            raise HTTPException(
+                status_code=503, 
+                detail="LegiScan API not initialized - check LEGISCAN_API_KEY in .env file"
+            )
+        
+        # Use enhanced AI if available, otherwise traditional processing
         use_enhanced_ai = getattr(request, 'enhanced_ai', True) and enhanced_ai_client
         
         if use_enhanced_ai:
@@ -2301,7 +2330,9 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
             
             try:
                 enhanced_legiscan = EnhancedLegiScanClient()
+                logger.info("✅ BACKEND: Enhanced LegiScan client initialized")
             except Exception as e:
+                logger.error(f"Enhanced LegiScan initialization failed: {e}")
                 raise HTTPException(
                     status_code=503, 
                     detail=f"Enhanced LegiScan initialization failed: {str(e)}"
@@ -2311,9 +2342,13 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
             db_manager = None
             if request.save_to_db and AZURE_SQL_AVAILABLE:
                 try:
-                    conn = get_azure_sql_connection()
+                    # FIXED: Get direct connection without context manager
+                    conn = get_db_connection()
                     if conn:
                         db_manager = StateLegislationDatabaseManager(conn)
+                        logger.info("✅ BACKEND: Enhanced database manager created")
+                    else:
+                        logger.warning("⚠️ BACKEND: Database connection failed, proceeding without saving")
                 except Exception as e:
                     logger.warning(f"⚠️ BACKEND: Database manager creation failed: {e}")
             
@@ -2361,23 +2396,12 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
         else:
             logger.info("📊 BACKEND: Using traditional LegiScan processing")
             
-            # Check if traditional LegiScan API is available
-            if not LEGISCAN_AVAILABLE:
-                raise HTTPException(
-                    status_code=503, 
-                    detail="LegiScan API not available - check if legiscan_api.py file exists"
-                )
-            
-            if not LEGISCAN_INITIALIZED:
-                raise HTTPException(
-                    status_code=503, 
-                    detail="LegiScan API not initialized - check LEGISCAN_API_KEY in .env file"
-                )
-            
             # Initialize traditional LegiScan API
             try:
                 legiscan_api = LegiScanAPI()
+                logger.info("✅ BACKEND: Traditional LegiScan API initialized successfully")
             except Exception as e:
+                logger.error(f"Traditional LegiScan API initialization failed: {e}")
                 raise HTTPException(
                     status_code=503, 
                     detail=f"LegiScan API initialization failed: {str(e)}"
@@ -2396,7 +2420,8 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
                 
                 # Get database connection and create manager
                 try:
-                    conn = get_azure_sql_connection()
+                    # FIXED: Get direct connection without context manager
+                    conn = get_db_connection()
                     if not conn:
                         raise HTTPException(status_code=503, detail="Database connection failed")
                     
@@ -2420,6 +2445,7 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
                         bills_saved = processing.get('total_saved', 0)
                 
                 except Exception as e:
+                    logger.error(f"One-by-one processing failed: {e}")
                     raise HTTPException(status_code=500, detail=f"One-by-one processing failed: {str(e)}")
                     
             else:
@@ -2436,6 +2462,7 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
                     
                     try:
                         bills_saved = save_state_legislation_to_db(bills)
+                        logger.info(f"✅ BACKEND: Successfully saved {bills_saved} bills to database")
                     except Exception as e:
                         logger.warning(f"❌ BACKEND: Database save failed: {e}")
             
@@ -2472,8 +2499,11 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ BACKEND: Error in search-and-analyze: {e}")
+        logger.error(f"Unexpected error in search-and-analyze endpoint: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Search and analyze failed: {str(e)}")
+
 
 @app.post("/api/legiscan/enhanced-search-and-analyze")
 async def enhanced_search_and_analyze_endpoint(request: LegiScanSearchRequest):
