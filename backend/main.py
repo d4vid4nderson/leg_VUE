@@ -28,6 +28,9 @@ from executive_orders_db import (
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from legiscan_api import LegiScanAPI
+from openai import AsyncAzureOpenAI
+
 
 load_dotenv(override=True)
 
@@ -38,13 +41,12 @@ logger = logging.getLogger(__name__)
 # ===============================
 # ENHANCED AI INTEGRATION
 # ===============================
-try:
-    from openai import AsyncAzureOpenAI
-    OPENAI_AVAILABLE = True
-    logger.info("✅ OpenAI library available")
-except ImportError:
-    logger.warning("❌ OpenAI library not available - install with: pip install openai")
-    OPENAI_AVAILABLE = False
+#try:
+#    OPENAI_AVAILABLE = True
+#    logger.info("✅ OpenAI library available")
+#except ImportError:
+#    logger.warning("❌ OpenAI library not available - install with: pip install openai")
+#    OPENAI_AVAILABLE = False
 
 # Configuration
 AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT", "https://david-mabholqy-swedencentral.openai.azure.com/")
@@ -54,16 +56,15 @@ LEGISCAN_API_KEY = os.getenv('LEGISCAN_API_KEY')
 
 # Initialize Enhanced Azure OpenAI client
 enhanced_ai_client = None
-if OPENAI_AVAILABLE and AZURE_KEY:
-    try:
-        enhanced_ai_client = AsyncAzureOpenAI(
-            azure_endpoint=AZURE_ENDPOINT,
-            api_key=AZURE_KEY,
-            api_version="2024-12-01-preview"
-        )
-        logger.info("✅ Enhanced AI client initialized successfully")
-    except Exception as e:
-        logger.warning(f"❌ Enhanced AI client initialization failed: {e}")
+try:
+    enhanced_ai_client = AsyncAzureOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        api_key=AZURE_KEY,
+        api_version="2024-12-01-preview"
+    )
+    logger.info("✅ Enhanced AI client initialized successfully")
+except Exception as e:
+    logger.warning(f"❌ Enhanced AI client initialization failed: {e}")
 
 # Enhanced Enums
 class PromptType(Enum):
@@ -224,51 +225,51 @@ except ImportError as e:
     SIMPLE_EO_AVAILABLE = False
 
 # LegiScan API integration - FIXED with better error handling
-try:
-    from legiscan_api import LegiScanAPI
-
-    # Environment detection
-    raw_env = os.getenv("ENVIRONMENT", "development")
-    environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
-
-    
-    # First check if API key is in environment
-    LEGISCAN_API_KEY = os.getenv('LEGISCAN_API_KEY')
-    if not LEGISCAN_API_KEY:
-        logger.warning("⚠️ LEGISCAN_API_KEY not found in environment variables")
-        
-        # For testing, check common variations
-        for var_name in ['LEGISCAN_API_KEY', 'legiscan_api_key', 'LEGISCAN_KEY']:
-            value = os.getenv(var_name)
-            if value:
-                LEGISCAN_API_KEY = value
-                logger.info(f"✅ Found LegiScan API key in alternate variable: {var_name}")
-                break
-                
-        # Last resort - hardcode for testing only (remove in production)
-        if not LEGISCAN_API_KEY and environment != "production":
-            LEGISCAN_API_KEY = 'e3bd77ddffa618452dbe7e9bd3ea3a35'  # Testing only
-            logger.warning("⚠️ Using hardcoded LegiScan API key for testing")
-    
-    # Set in environment for LegiScanAPI class to use
-    os.environ['LEGISCAN_API_KEY'] = LEGISCAN_API_KEY
-    
-    LEGISCAN_AVAILABLE = True
-    logger.info("✅ LegiScan API imported successfully")
-    
-    # Test initialization - but handle errors more gracefully
-    try:
-        test_legiscan = LegiScanAPI()
-        LEGISCAN_INITIALIZED = True
-        logger.info("✅ LegiScan API initialized successfully")
-    except Exception as e:
-        logger.warning(f"⚠️ LegiScan API initialization failed: {e}")
-        LEGISCAN_INITIALIZED = False
-        
-except ImportError as e:
-    logger.warning(f"❌ LegiScan API import failed: {e}")
-    LEGISCAN_AVAILABLE = False
-    LEGISCAN_INITIALIZED = False
+#try:
+#    from legiscan_api import LegiScanAPI
+#
+#    # Environment detection
+#    raw_env = os.getenv("ENVIRONMENT", "development")
+#    environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
+#
+#    
+#    # First check if API key is in environment
+#    LEGISCAN_API_KEY = os.getenv('LEGISCAN_API_KEY')
+#    if not LEGISCAN_API_KEY:
+#        logger.warning("⚠️ LEGISCAN_API_KEY not found in environment variables")
+#        
+#        # For testing, check common variations
+#        for var_name in ['LEGISCAN_API_KEY', 'legiscan_api_key', 'LEGISCAN_KEY']:
+#            value = os.getenv(var_name)
+#            if value:
+#                LEGISCAN_API_KEY = value
+#                logger.info(f"✅ Found LegiScan API key in alternate variable: {var_name}")
+#                break
+#                
+#        # Last resort - hardcode for testing only (remove in production)
+#        if not LEGISCAN_API_KEY and environment != "production":
+#            LEGISCAN_API_KEY = 'e3bd77ddffa618452dbe7e9bd3ea3a35'  # Testing only
+#            logger.warning("⚠️ Using hardcoded LegiScan API key for testing")
+#    
+#    # Set in environment for LegiScanAPI class to use
+#    os.environ['LEGISCAN_API_KEY'] = LEGISCAN_API_KEY
+#    
+#    LEGISCAN_AVAILABLE = True
+#    logger.info("✅ LegiScan API imported successfully")
+#    
+#    # Test initialization - but handle errors more gracefully
+#    try:
+#        test_legiscan = LegiScanAPI()
+#        LEGISCAN_INITIALIZED = True
+#        logger.info("✅ LegiScan API initialized successfully")
+#    except Exception as e:
+#        logger.warning(f"⚠️ LegiScan API initialization failed: {e}")
+#        LEGISCAN_INITIALIZED = False
+#        
+#except ImportError as e:
+#    logger.warning(f"❌ LegiScan API import failed: {e}")
+#    LEGISCAN_AVAILABLE = False
+#    LEGISCAN_INITIALIZED = False
 
 
 # ===============================
