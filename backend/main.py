@@ -47,6 +47,8 @@ logger = logging.getLogger(__name__)
 #except ImportError:
 #    logger.warning("❌ OpenAI library not available - install with: pip install openai")
 #    OPENAI_AVAILABLE = False
+OPENAI_AVAILABLE = True
+
 
 # Configuration
 AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT", "https://david-mabholqy-swedencentral.openai.azure.com/")
@@ -270,6 +272,15 @@ except ImportError as e:
 #    logger.warning(f"❌ LegiScan API import failed: {e}")
 #    LEGISCAN_AVAILABLE = False
 #    LEGISCAN_INITIALIZED = False
+
+
+LEGISCAN_AVAILABLE = False
+LEGISCAN_INITIALIZED = False
+
+if LEGISCAN_API_KEY:
+    LEGISCAN_AVAILABLE = True
+    LEGISCAN_INITIALIZED = True
+
 
 
 # ===============================
