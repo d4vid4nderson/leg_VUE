@@ -1433,16 +1433,17 @@ app = FastAPI(
 raw_env = os.getenv("ENVIRONMENT", "development")
 environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
 
-# CORS setup
-if environment == "production":
-    cors_origins = [
-        "https://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
-        "http://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
-    ]
-    logger.info(f"✅ CORS configured for production: {cors_origins}")
-else:
-    cors_origins = ["*"]  # Development allows all origins
-    logger.info(f"✅ CORS configured for development: all origins allowed")
+## CORS setup
+#if environment == "production":
+#    cors_origins = [
+#        "https://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
+#        "http://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
+#    ]
+#    logger.info(f"✅ CORS configured for production: {cors_origins}")
+#else:
+#    cors_origins = ["*"]  # Development allows all origins
+#    logger.info(f"✅ CORS configured for development: all origins allowed")
+cors_origins = ["*"]  # Development allows all origins
 
 app.add_middleware(
     CORSMiddleware,
