@@ -212,11 +212,12 @@ def check_azure_sql_connection():
                 except Exception as user_error:
                     print(f"  Could not determine user: {user_error}")
                 
-                # Try to get database version
+                # Try to get database version - FIXED f-string
                 try:
                     cursor.execute("SELECT @@VERSION")
                     version = cursor.fetchone()
-                    print(f"  SQL Server version: {version[0].split('\n')[0]}")
+                    version_parts = version[0].split('\n')
+                    print(f"  SQL Server version: {version_parts[0]}")
                 except Exception as version_error:
                     print(f"  Could not get version: {version_error}")
                 
