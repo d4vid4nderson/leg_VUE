@@ -177,7 +177,7 @@ stages:
       vmImage: $(vmImageName)
     steps:
     - task: AzureCLI@2
-      displayName: Run Test Script in Container
+      displayName: Prepare Test Script
       inputs:
         azureSubscription: $(azureSubscription)
         scriptType: bash
@@ -187,31 +187,100 @@ stages:
           echo "Waiting for deployments to stabilize..."
           sleep 30
           
-          # Run the test script in the container and capture output
-          echo "Running test_prod.py in the backend container..."
+          # Create a one-time job that runs the test script
+          echo "Creating a temporary job to run test_prod.py..."
           
-          # Create a script to capture the output and exit code
-          cat > run_test.sh << 'EOF'
-          #!/bin/bash
+          # Get the container image
+          CONTAINER_IMAGE=$(az containerapp show \
+            --name $(backendContainerAppName) \
+            --resource-group $(resourceGroupName) \
+            --query "properties.template.containers[0].image" \
+            --output tsv)
           
-          # Run the command and capture output
-          OUTPUT=$(az containerapp exec --name $1 --resource-group $2 --command "python test_prod.py" 2>&1)
-          EXIT_CODE=$?
+          # Get the environment ID
+          ENVIRONMENT_ID=$(az containerapp show \
+            --name $(backendContainerAppName) \
+            --resource-group $(resourceGroupName) \
+            --query "properties.environmentId" \
+            --output tsv)
           
-          # Print the output
-          echo "$OUTPUT"
+          # Extract the environment name from the ID
+          ENVIRONMENT_NAME=$(echo $ENVIRONMENT_ID | awk -F'/' '{print $NF}')
           
-          # Check for success indicators in the output
-          if [[ "$OUTPUT" == *"All tests completed"* ]] && [[ "$OUTPUT" == *"✅"* ]]; then
-            echo "Test script ran successfully!"
+          echo "Container image: $CONTAINER_IMAGE"
+          echo "Environment name: $ENVIRONMENT_NAME"
+          
+          # Create a job that runs the test script
+          JOB_NAME="test-job-$(Build.BuildId)"
+          echo "Creating job: $JOB_NAME"
+          
+          az containerapp job create \
+            --name $JOB_NAME \
+            --resource-group $(resourceGroupName) \
+            --environment $ENVIRONMENT_NAME \
+            --trigger-type Manual \
+            --replica-timeout 300 \
+            --replica-retry-limit 1 \
+            --replica-completion-count 1 \
+            --parallelism 1 \
+            --image $CONTAINER_IMAGE \
+            --cpu "0.5" \
+            --memory "1Gi" \
+            --command "python test_prod.py" \
+            --env-vars "PYTHONUNBUFFERED=1" \
+            --output json > job_creation.json
+          
+          # Start the job
+          echo "Starting the test job..."
+          az containerapp job start \
+            --name $JOB_NAME \
+            --resource-group $(resourceGroupName) \
+            --output json > job_start.json
+          
+          # Wait for the job to complete (poll status)
+          echo "Waiting for job to complete..."
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          SLEEP_TIME=10
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            # Get the latest execution
+            az containerapp job execution list \
+              --name $JOB_NAME \
+              --resource-group $(resourceGroupName) \
+              --output json > job_executions.json
+            
+            # Check if there's a completed execution
+            EXECUTION_NAME=$(cat job_executions.json | jq -r '.[0].name')
+            STATUS=$(cat job_executions.json | jq -r '.[0].properties.status')
+            
+            echo "Execution: $EXECUTION_NAME, Status: $STATUS"
+            
+            if [[ "$STATUS" == "Succeeded" || "$STATUS" == "Failed" ]]; then
+              break
+            fi
+            
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Waiting for job completion... Attempt $ATTEMPT of $MAX_ATTEMPTS"
+            sleep $SLEEP_TIME
+          done
+          
+          # Get the logs
+          echo "Getting logs for execution: $EXECUTION_NAME"
+          az containerapp job execution logs \
+            --name $JOB_NAME \
+            --resource-group $(resourceGroupName) \
+            --execution-name $EXECUTION_NAME > test_logs.txt
+          
+          # Display the logs
+          echo "=== TEST RESULTS ==="
+          cat test_logs.txt
+          
+          # Check for success indicators in the logs
+          if grep -q "All tests completed" test_logs.txt && grep -q "✅" test_logs.txt; then
+            echo "✅ Test script ran successfully!"
             exit 0
           else
-            echo "Test script failed or had errors."
+            echo "❌ Test script failed or had errors."
             exit 1
           fi
-          EOF
-          
-          chmod +x run_test.sh
-          
-          # Run the test script
-          ./run_test.sh $(backendContainerAppName) $(resourceGroupName)
