@@ -12,7 +12,6 @@ resources:
   - repo: self
 
 variables:
-  # These non-secret variables can remain as pipeline variables
   backendImageName: 'legis-vue-backend'
   frontendImageName: 'legis-vue-frontend'
   tag: '$(Build.BuildId)'
@@ -23,6 +22,8 @@ variables:
   backendContainerAppName: 'legis-vue-backend'
   frontendContainerAppName: 'legis-vue-frontend'
   keyVaultName: 'kv-legislation-tracker'
+  # Note: All other variables are defined in the Azure DevOps UI with underscores
+  # e.g., FRONTEND_URL, AZURE_ENDPOINT, etc.
 
 stages:
 - stage: Build
@@ -33,15 +34,6 @@ stages:
     pool:
       vmImage: $(vmImageName)
     steps:
-    # Access Key Vault secrets at the beginning of the pipeline
-    - task: AzureKeyVault@2
-      displayName: 'Fetch secrets from Azure Key Vault'
-      inputs:
-        azureSubscription: $(azureSubscription)
-        KeyVaultName: $(keyVaultName)
-        SecretsFilter: '*'
-        RunAsPreJob: true  # Run this before other tasks to make secrets available
-
     - task: AzureCLI@2
       displayName: Build and Push Backend Image
       inputs:
@@ -64,15 +56,6 @@ stages:
     pool:
       vmImage: $(vmImageName)
     steps:
-    # Access Key Vault secrets for this job as well
-    - task: AzureKeyVault@2
-      displayName: 'Fetch secrets from Azure Key Vault'
-      inputs:
-        azureSubscription: $(azureSubscription)
-        KeyVaultName: $(keyVaultName)
-        SecretsFilter: '*'
-        RunAsPreJob: true  # Run this before other tasks to make secrets available
-
     - task: AzureCLI@2
       displayName: Build and Push Frontend Image
       inputs:
@@ -100,15 +83,6 @@ stages:
     pool:
       vmImage: $(vmImageName)
     steps:
-    # Access Key Vault secrets for this job
-    - task: AzureKeyVault@2
-      displayName: 'Fetch secrets from Azure Key Vault'
-      inputs:
-        azureSubscription: $(azureSubscription)
-        KeyVaultName: $(keyVaultName)
-        SecretsFilter: '*'
-        RunAsPreJob: true  # Run this before other tasks to make secrets available
-
     - task: AzureCLI@2
       displayName: Deploy Backend to Container App
       inputs:
@@ -127,31 +101,30 @@ stages:
           # Add environment variables directly to the container app
           echo "Configuring backend environment variables..."
           
-          # Set all variables using Key Vault secrets
-          # The syntax $(SECRET-NAME) accesses the secret values loaded from Key Vault
+          # Set all variables directly (using variables with underscores as defined in Azure DevOps UI)
           az containerapp update \
             --name $(backendContainerAppName) \
             --resource-group $(resourceGroupName) \
             --set-env-vars \
             "ENVIRONMENT=$(ENVIRONMENT)" \
-            "AZURE_ENDPOINT=$(AZURE-ENDPOINT)" \
-            "AZURE_KEY=$(AZURE-KEY)" \
-            "AZURE_MODEL_NAME=$(AZURE-MODEL-NAME)" \
-            "AZURE_SQL_SERVER=$(AZURE-SQL-SERVER)" \
-            "AZURE_SQL_DATABASE=$(AZURE-SQL-DATABASE)" \
-            "AZURE_SQL_USERNAME=$(AZURE-SQL-USERNAME)" \
-            "AZURE_SQL_PASSWORD=$(AZURE-SQL-PASSWORD)" \
-            "LEGISCAN_API_KEY=$(LEGISCAN-API-KEY)" \
-            "FRONTEND_URL=$(FRONTEND-URL)" \
-            "MANAGED_IDENTITY_CLIENT_ID=$(MANAGED-IDENTITY-CLIENT-ID)" \
-            "DEBUG_MODE=$(DEBUG-MODE)" \
-            "FROM_EMAIL=$(FROM-EMAIL)" \
-            "SENDGRID_API_KEY=$(SENDGRID-API-KEY)" \
-            "SQL_ECHO=$(SQL-ECHO)" \
-            "VITE_API_URL=$(VITE-API-URL)" \
-            "VITE_API_URL_PROD=$(VITE-API-URL-PROD)" \
-            "VITE_AZURE_CLIENT_ID=$(VITE-AZURE-CLIENT-ID)" \
-            "VITE_AZURE_TENANT_ID=$(VITE-AZURE-TENANT-ID)" \
+            "AZURE_ENDPOINT=$(AZURE_ENDPOINT)" \
+            "AZURE_KEY=$(AZURE_KEY)" \
+            "AZURE_MODEL_NAME=$(AZURE_MODEL_NAME)" \
+            "AZURE_SQL_SERVER=$(AZURE_SQL_SERVER)" \
+            "AZURE_SQL_DATABASE=$(AZURE_SQL_DATABASE)" \
+            "AZURE_SQL_USERNAME=$(AZURE_SQL_USERNAME)" \
+            "AZURE_SQL_PASSWORD=$(AZURE_SQL_PASSWORD)" \
+            "LEGISCAN_API_KEY=$(LEGISCAN_API_KEY)" \
+            "FRONTEND_URL=$(FRONTEND_URL)" \
+            "MANAGED_IDENTITY_CLIENT_ID=$(MANAGED_IDENTITY_CLIENT_ID)" \
+            "DEBUG_MODE=$(DEBUG_MODE)" \
+            "FROM_EMAIL=$(FROM_EMAIL)" \
+            "SENDGRID_API_KEY=$(SENDGRID_API_KEY)" \
+            "SQL_ECHO=$(SQL_ECHO)" \
+            "VITE_API_URL=$(VITE_API_URL)" \
+            "VITE_API_URL_PROD=$(VITE_API_URL_PROD)" \
+            "VITE_AZURE_CLIENT_ID=$(VITE_AZURE_CLIENT_ID)" \
+            "VITE_AZURE_TENANT_ID=$(VITE_AZURE_TENANT_ID)" \
             "PYTHONUNBUFFERED=1"
           
           echo "Backend container app updated successfully."
@@ -161,15 +134,6 @@ stages:
     pool:
       vmImage: $(vmImageName)
     steps:
-    # Access Key Vault secrets for this job
-    - task: AzureKeyVault@2
-      displayName: 'Fetch secrets from Azure Key Vault'
-      inputs:
-        azureSubscription: $(azureSubscription)
-        KeyVaultName: $(keyVaultName)
-        SecretsFilter: '*'
-        RunAsPreJob: true  # Run this before other tasks to make secrets available
-
     - task: AzureCLI@2
       displayName: Deploy Frontend to Container App
       inputs:
@@ -188,17 +152,17 @@ stages:
           # Add environment variables directly to the container app  
           echo "Configuring frontend environment variables..."
           
-          # Set all variables using Key Vault secrets
+          # Set all variables directly (using variables with underscores as defined in Azure DevOps UI)
           az containerapp update \
             --name $(frontendContainerAppName) \
             --resource-group $(resourceGroupName) \
             --set-env-vars \
             "ENVIRONMENT=$(ENVIRONMENT)" \
-            "FRONTEND_URL=$(FRONTEND-URL)" \
-            "VITE_API_URL=$(VITE-API-URL)" \
-            "VITE_API_URL_PROD=$(VITE-API-URL-PROD)" \
-            "VITE_AZURE_CLIENT_ID=$(VITE-AZURE-CLIENT-ID)" \
-            "VITE_AZURE_TENANT_ID=$(VITE-AZURE-TENANT-ID)"
+            "FRONTEND_URL=$(FRONTEND_URL)" \
+            "VITE_API_URL=$(VITE_API_URL)" \
+            "VITE_API_URL_PROD=$(VITE_API_URL_PROD)" \
+            "VITE_AZURE_CLIENT_ID=$(VITE_AZURE_CLIENT_ID)" \
+            "VITE_AZURE_TENANT_ID=$(VITE_AZURE_TENANT_ID)"
           
           echo "Frontend container app updated successfully."
 
@@ -212,15 +176,6 @@ stages:
     pool:
       vmImage: $(vmImageName)
     steps:
-    # Access Key Vault secrets for this job
-    - task: AzureKeyVault@2
-      displayName: 'Fetch secrets from Azure Key Vault'
-      inputs:
-        azureSubscription: $(azureSubscription)
-        KeyVaultName: $(keyVaultName)
-        SecretsFilter: '*'
-        RunAsPreJob: true  # Run this before other tasks to make secrets available
-
     - task: AzureCLI@2
       displayName: Run Test Script in Container
       inputs:
@@ -232,18 +187,42 @@ stages:
           echo "Waiting for deployments to stabilize..."
           sleep 30
           
-          # Run the test script that's already in the container
-          echo "Running test_prod.py in the backend container..."
+          # Create a test script to upload
+          echo "#!/bin/bash" > run_test.sh
+          echo "cd /app" >> run_test.sh
+          echo "python test_prod.py" >> run_test.sh
+          echo "exit \$?" >> run_test.sh
+          chmod +x run_test.sh
           
-          # Use bash -c to execute the command non-interactively
-          az containerapp exec \
-            --name $(backendContainerAppName) \
-            --resource-group $(resourceGroupName) \
-            --command "bash -c 'python test_prod.py; echo \$? > /tmp/exit_code; cat /tmp/exit_code'" \
-            --output tsv
+          # Get container info
+          CONTAINER_NAME=$(az containerapp show --name $(backendContainerAppName) --resource-group $(resourceGroupName) --query "properties.latestRevisionName" -o tsv)
+          echo "Container revision: $CONTAINER_NAME"
           
-          # Check if the command failed
-          if [ $? -ne 0 ]; then
-            echo "##vso[task.complete result=Failed;]Failed to execute command in container"
+          # Create a temporary file to copy test results
+          TEMP_FILE=$(mktemp)
+          
+          # Run the test via kubectl exec (which works better in CI environments)
+          az extension add --name k8s-extension --yes
+          az extension add --name containerapp --yes
+          
+          # Get kubeconfig and run test
+          az containerapp kubeconfig get --name $(backendContainerAppName) --resource-group $(resourceGroupName) > kubeconfig.yaml
+          
+          # Get pod name
+          POD_NAME=$(KUBECONFIG=kubeconfig.yaml kubectl get pods -l containerApp=$(backendContainerAppName) -o jsonpath='{.items[0].metadata.name}')
+          echo "Pod name: $POD_NAME"
+          
+          # Execute test via kubectl
+          KUBECONFIG=kubeconfig.yaml kubectl exec $POD_NAME -- bash -c "cd /app && python test_prod.py" > $TEMP_FILE 2>&1
+          TEST_EXIT_CODE=$?
+          
+          # Display test results
+          cat $TEMP_FILE
+          
+          # Check exit code
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "##[error]Test script failed with exit code: $TEST_EXIT_CODE"
             exit 1
           fi
+          
+          echo "Test completed successfully!"
