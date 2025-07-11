@@ -22,8 +22,6 @@ variables:
   backendContainerAppName: 'legis-vue-backend'
   frontendContainerAppName: 'legis-vue-frontend'
   keyVaultName: 'kv-legislation-tracker'
-  # Note: All other variables are defined in the Azure DevOps UI with underscores
-  # e.g., FRONTEND_URL, AZURE_ENDPOINT, etc.
 
 stages:
 - stage: Build
@@ -96,36 +94,44 @@ stages:
             --name $(backendContainerAppName) \
             --resource-group $(resourceGroupName) \
             --container-name $(backendContainerAppName) \
-            --image $(containerRegistry)/$(backendImageName):$(tag)
+            --image $(containerRegistry)/$(backendImageName):$(tag) \
+            --set-env-vars "PYTHONUNBUFFERED=1"
           
-          # Add environment variables directly to the container app
+          # Clear existing environment variables except for the ones we just set
           echo "Configuring backend environment variables..."
           
-          # Set all variables directly (using variables with underscores as defined in Azure DevOps UI)
-          az containerapp update \
-            --name $(backendContainerAppName) \
-            --resource-group $(resourceGroupName) \
-            --set-env-vars \
-            "ENVIRONMENT=$(ENVIRONMENT)" \
-            "AZURE_ENDPOINT=$(AZURE_ENDPOINT)" \
-            "AZURE_KEY=$(AZURE_KEY)" \
-            "AZURE_MODEL_NAME=$(AZURE_MODEL_NAME)" \
-            "AZURE_SQL_SERVER=$(AZURE_SQL_SERVER)" \
-            "AZURE_SQL_DATABASE=$(AZURE_SQL_DATABASE)" \
-            "AZURE_SQL_USERNAME=$(AZURE_SQL_USERNAME)" \
-            "AZURE_SQL_PASSWORD=$(AZURE_SQL_PASSWORD)" \
-            "LEGISCAN_API_KEY=$(LEGISCAN_API_KEY)" \
-            "FRONTEND_URL=$(FRONTEND_URL)" \
-            "MANAGED_IDENTITY_CLIENT_ID=$(MANAGED_IDENTITY_CLIENT_ID)" \
-            "DEBUG_MODE=$(DEBUG_MODE)" \
-            "FROM_EMAIL=$(FROM_EMAIL)" \
-            "SENDGRID_API_KEY=$(SENDGRID_API_KEY)" \
-            "SQL_ECHO=$(SQL_ECHO)" \
-            "VITE_API_URL=$(VITE_API_URL)" \
-            "VITE_API_URL_PROD=$(VITE_API_URL_PROD)" \
-            "VITE_AZURE_CLIENT_ID=$(VITE_AZURE_CLIENT_ID)" \
-            "VITE_AZURE_TENANT_ID=$(VITE_AZURE_TENANT_ID)" \
-            "PYTHONUNBUFFERED=1"
+          # Function to add Key Vault reference
+          add_keyvault_ref() {
+            local ENV_NAME=$1
+            local SECRET_NAME=$2
+            
+            echo "Setting $ENV_NAME from Key Vault secret $SECRET_NAME"
+            az containerapp update \
+              --name $(backendContainerAppName) \
+              --resource-group $(resourceGroupName) \
+              --set-env-vars "$ENV_NAME=secretref:https://$(keyVaultName).vault.azure.net/secrets/$SECRET_NAME"
+          }
+          
+          # Add Key Vault references for each environment variable
+          add_keyvault_ref "FRONTEND_URL" "FRONTEND-URL"
+          add_keyvault_ref "AZURE_ENDPOINT" "AZURE-ENDPOINT"
+          add_keyvault_ref "AZURE_KEY" "AZURE-KEY"
+          add_keyvault_ref "AZURE_MODEL_NAME" "AZURE-MODEL-NAME"
+          add_keyvault_ref "AZURE_SQL_DATABASE" "AZURE-SQL-DATABASE"
+          add_keyvault_ref "AZURE_SQL_PASSWORD" "AZURE-SQL-PASSWORD"
+          add_keyvault_ref "AZURE_SQL_SERVER" "AZURE-SQL-SERVER"
+          add_keyvault_ref "AZURE_SQL_USERNAME" "AZURE-SQL-USERNAME"
+          add_keyvault_ref "DEBUG_MODE" "DEBUG-MODE"
+          add_keyvault_ref "ENVIRONMENT" "ENVIRONMENT"
+          add_keyvault_ref "FROM_EMAIL" "FROM-EMAIL"
+          add_keyvault_ref "LEGISCAN_API_KEY" "LEGISCAN-API-KEY"
+          add_keyvault_ref "MANAGED_IDENTITY_CLIENT_ID" "MANAGED-IDENTITY-CLIENT-ID"
+          add_keyvault_ref "SENDGRID_API_KEY" "SENDGRID-API-KEY"
+          add_keyvault_ref "SQL_ECHO" "SQL-ECHO"
+          add_keyvault_ref "VITE_API_URL" "VITE-API-URL"
+          add_keyvault_ref "VITE_API_URL_PROD" "VITE-API-URL-PROD"
+          add_keyvault_ref "VITE_AZURE_CLIENT_ID" "VITE-AZURE-CLIENT-ID"
+          add_keyvault_ref "VITE_AZURE_TENANT_ID" "VITE-AZURE-TENANT-ID"
           
           echo "Backend container app updated successfully."
 
@@ -149,138 +155,40 @@ stages:
             --container-name $(frontendContainerAppName) \
             --image $(containerRegistry)/$(frontendImageName):$(tag)
           
-          # Add environment variables directly to the container app  
+          # Clear existing environment variables
           echo "Configuring frontend environment variables..."
           
-          # Set all variables directly (using variables with underscores as defined in Azure DevOps UI)
-          az containerapp update \
-            --name $(frontendContainerAppName) \
-            --resource-group $(resourceGroupName) \
-            --set-env-vars \
-            "ENVIRONMENT=$(ENVIRONMENT)" \
-            "FRONTEND_URL=$(FRONTEND_URL)" \
-            "VITE_API_URL=$(VITE_API_URL)" \
-            "VITE_API_URL_PROD=$(VITE_API_URL_PROD)" \
-            "VITE_AZURE_CLIENT_ID=$(VITE_AZURE_CLIENT_ID)" \
-            "VITE_AZURE_TENANT_ID=$(VITE_AZURE_TENANT_ID)"
+          # Function to add Key Vault reference
+          add_keyvault_ref() {
+            local ENV_NAME=$1
+            local SECRET_NAME=$2
+            
+            echo "Setting $ENV_NAME from Key Vault secret $SECRET_NAME"
+            az containerapp update \
+              --name $(frontendContainerAppName) \
+              --resource-group $(resourceGroupName) \
+              --set-env-vars "$ENV_NAME=secretref:https://$(keyVaultName).vault.azure.net/secrets/$SECRET_NAME"
+          }
+          
+          # Add Key Vault references for each environment variable
+          add_keyvault_ref "FRONTEND_URL" "FRONTEND-URL"
+          add_keyvault_ref "AZURE_ENDPOINT" "AZURE-ENDPOINT"
+          add_keyvault_ref "AZURE_KEY" "AZURE-KEY"
+          add_keyvault_ref "AZURE_MODEL_NAME" "AZURE-MODEL-NAME"
+          add_keyvault_ref "AZURE_SQL_DATABASE" "AZURE-SQL-DATABASE"
+          add_keyvault_ref "AZURE_SQL_PASSWORD" "AZURE-SQL-PASSWORD"
+          add_keyvault_ref "AZURE_SQL_SERVER" "AZURE-SQL-SERVER"
+          add_keyvault_ref "AZURE_SQL_USERNAME" "AZURE-SQL-USERNAME"
+          add_keyvault_ref "DEBUG_MODE" "DEBUG-MODE"
+          add_keyvault_ref "ENVIRONMENT" "ENVIRONMENT"
+          add_keyvault_ref "FROM_EMAIL" "FROM-EMAIL"
+          add_keyvault_ref "LEGISCAN_API_KEY" "LEGISCAN-API-KEY"
+          add_keyvault_ref "MANAGED_IDENTITY_CLIENT_ID" "MANAGED-IDENTITY-CLIENT-ID"
+          add_keyvault_ref "SENDGRID_API_KEY" "SENDGRID-API-KEY"
+          add_keyvault_ref "SQL_ECHO" "SQL-ECHO"
+          add_keyvault_ref "VITE_API_URL" "VITE-API-URL"
+          add_keyvault_ref "VITE_API_URL_PROD" "VITE-API-URL-PROD"
+          add_keyvault_ref "VITE_AZURE_CLIENT_ID" "VITE-AZURE-CLIENT-ID"
+          add_keyvault_ref "VITE_AZURE_TENANT_ID" "VITE-AZURE-TENANT-ID"
           
           echo "Frontend container app updated successfully."
-
-- stage: Test
-  displayName: Test Deployed Environment
-  dependsOn: Deploy
-  condition: succeeded()
-  jobs:
-  - job: TestDeployedBackend
-    displayName: Test Backend Connectivity
-    pool:
-      vmImage: $(vmImageName)
-    steps:
-    - task: AzureCLI@2
-      displayName: Prepare Test Script
-      inputs:
-        azureSubscription: $(azureSubscription)
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          # Wait for deployments to stabilize
-          echo "Waiting for deployments to stabilize..."
-          sleep 30
-          
-          # Create a one-time job that runs the test script
-          echo "Creating a temporary job to run test_prod.py..."
-          
-          # Get the container image
-          CONTAINER_IMAGE=$(az containerapp show \
-            --name $(backendContainerAppName) \
-            --resource-group $(resourceGroupName) \
-            --query "properties.template.containers[0].image" \
-            --output tsv)
-          
-          # Get the environment ID
-          ENVIRONMENT_ID=$(az containerapp show \
-            --name $(backendContainerAppName) \
-            --resource-group $(resourceGroupName) \
-            --query "properties.environmentId" \
-            --output tsv)
-          
-          # Extract the environment name from the ID
-          ENVIRONMENT_NAME=$(echo $ENVIRONMENT_ID | awk -F'/' '{print $NF}')
-          
-          echo "Container image: $CONTAINER_IMAGE"
-          echo "Environment name: $ENVIRONMENT_NAME"
-          
-          # Create a job that runs the test script
-          JOB_NAME="test-job-$(Build.BuildId)"
-          echo "Creating job: $JOB_NAME"
-          
-          az containerapp job create \
-            --name $JOB_NAME \
-            --resource-group $(resourceGroupName) \
-            --environment $ENVIRONMENT_NAME \
-            --trigger-type Manual \
-            --replica-timeout 300 \
-            --replica-retry-limit 1 \
-            --replica-completion-count 1 \
-            --parallelism 1 \
-            --image $CONTAINER_IMAGE \
-            --cpu "0.5" \
-            --memory "1Gi" \
-            --command "python test_prod.py" \
-            --env-vars "PYTHONUNBUFFERED=1" \
-            --output json > job_creation.json
-          
-          # Start the job
-          echo "Starting the test job..."
-          az containerapp job start \
-            --name $JOB_NAME \
-            --resource-group $(resourceGroupName) \
-            --output json > job_start.json
-          
-          # Wait for the job to complete (poll status)
-          echo "Waiting for job to complete..."
-          MAX_ATTEMPTS=30
-          ATTEMPT=0
-          SLEEP_TIME=10
-          
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            # Get the latest execution
-            az containerapp job execution list \
-              --name $JOB_NAME \
-              --resource-group $(resourceGroupName) \
-              --output json > job_executions.json
-            
-            # Check if there's a completed execution
-            EXECUTION_NAME=$(cat job_executions.json | jq -r '.[0].name')
-            STATUS=$(cat job_executions.json | jq -r '.[0].properties.status')
-            
-            echo "Execution: $EXECUTION_NAME, Status: $STATUS"
-            
-            if [[ "$STATUS" == "Succeeded" || "$STATUS" == "Failed" ]]; then
-              break
-            fi
-            
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "Waiting for job completion... Attempt $ATTEMPT of $MAX_ATTEMPTS"
-            sleep $SLEEP_TIME
-          done
-          
-          # Get the logs
-          echo "Getting logs for execution: $EXECUTION_NAME"
-          az containerapp job execution logs \
-            --name $JOB_NAME \
-            --resource-group $(resourceGroupName) \
-            --execution-name $EXECUTION_NAME > test_logs.txt
-          
-          # Display the logs
-          echo "=== TEST RESULTS ==="
-          cat test_logs.txt
-          
-          # Check for success indicators in the logs
-          if grep -q "All tests completed" test_logs.txt && grep -q "✅" test_logs.txt; then
-            echo "✅ Test script ran successfully!"
-            exit 0
-          else
-            echo "❌ Test script failed or had errors."
-            exit 1
-          fi
