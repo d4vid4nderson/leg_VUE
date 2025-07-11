@@ -189,7 +189,11 @@ stages:
           
           # Run the test script that's already in the container
           echo "Running test_prod.py in the backend container..."
+          
+          # Use command-type "string" to run in non-interactive mode
           az containerapp exec \
             --name $(backendContainerAppName) \
             --resource-group $(resourceGroupName) \
-            --command "python test_prod.py"
+            --command "python test_prod.py" \
+            --command-type "string" \
+            --output tsv
