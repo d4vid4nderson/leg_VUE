@@ -187,42 +187,31 @@ stages:
           echo "Waiting for deployments to stabilize..."
           sleep 30
           
-          # Create a test script to upload
-          echo "#!/bin/bash" > run_test.sh
-          echo "cd /app" >> run_test.sh
-          echo "python test_prod.py" >> run_test.sh
-          echo "exit \$?" >> run_test.sh
-          chmod +x run_test.sh
+          # Run the test script in the container and capture output
+          echo "Running test_prod.py in the backend container..."
           
-          # Get container info
-          CONTAINER_NAME=$(az containerapp show --name $(backendContainerAppName) --resource-group $(resourceGroupName) --query "properties.latestRevisionName" -o tsv)
-          echo "Container revision: $CONTAINER_NAME"
+          # Create a script to capture the output and exit code
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
           
-          # Create a temporary file to copy test results
-          TEMP_FILE=$(mktemp)
+          # Run the command and capture output
+          OUTPUT=$(az containerapp exec --name $1 --resource-group $2 --command "python test_prod.py" 2>&1)
+          EXIT_CODE=$?
           
-          # Run the test via kubectl exec (which works better in CI environments)
-          az extension add --name k8s-extension --yes
-          az extension add --name containerapp --yes
+          # Print the output
+          echo "$OUTPUT"
           
-          # Get kubeconfig and run test
-          az containerapp kubeconfig get --name $(backendContainerAppName) --resource-group $(resourceGroupName) > kubeconfig.yaml
-          
-          # Get pod name
-          POD_NAME=$(KUBECONFIG=kubeconfig.yaml kubectl get pods -l containerApp=$(backendContainerAppName) -o jsonpath='{.items[0].metadata.name}')
-          echo "Pod name: $POD_NAME"
-          
-          # Execute test via kubectl
-          KUBECONFIG=kubeconfig.yaml kubectl exec $POD_NAME -- bash -c "cd /app && python test_prod.py" > $TEMP_FILE 2>&1
-          TEST_EXIT_CODE=$?
-          
-          # Display test results
-          cat $TEMP_FILE
-          
-          # Check exit code
-          if [ $TEST_EXIT_CODE -ne 0 ]; then
-            echo "##[error]Test script failed with exit code: $TEST_EXIT_CODE"
+          # Check for success indicators in the output
+          if [[ "$OUTPUT" == *"All tests completed"* ]] && [[ "$OUTPUT" == *"✅"* ]]; then
+            echo "Test script ran successfully!"
+            exit 0
+          else
+            echo "Test script failed or had errors."
             exit 1
           fi
+          EOF
           
-          echo "Test completed successfully!"
+          chmod +x run_test.sh
+          
+          # Run the test script
+          ./run_test.sh $(backendContainerAppName) $(resourceGroupName)
