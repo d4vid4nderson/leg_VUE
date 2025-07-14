@@ -514,11 +514,21 @@ const SettingsPage = ({
     };
 
     return (
-        <div className="pt-6">
-            <div className="mb-6">
-                <h2 className="text-3xl font-bold text-gray-800 mb-2">Settings</h2>
-                <p className="text-gray-600">Monitor your system status and manage your database</p>
-            </div>
+        <div className="pt-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
+            {/* Header Section */}
+            <section className="relative overflow-hidden px-6 pt-12 pb-8">
+                <div className="max-w-7xl mx-auto">
+                    <div className="text-center mb-8">
+                        <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+                            <span className="block bg-gradient-to-r from-gray-500 to-black bg-clip-text text-transparent py-2">Settings</span>
+                        </h1>
+                        
+                        <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+                            Monitor your system status and manage your database. Configure application settings and view system information.
+                        </p>
+                    </div>
+                </div>
+            </section>
 
             {/* Clear Status */}
             {clearStatus && (

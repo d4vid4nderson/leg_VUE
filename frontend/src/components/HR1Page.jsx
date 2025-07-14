@@ -53,18 +53,10 @@ const HR1PolicyPage = () => {
   );
 
   return (
-    <div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg mb-8">
           <div className="px-6 py-6">
-            <button 
-              onClick={() => navigate('/')}
-              className="flex items-center space-x-2 text-blue-100 hover:text-white mb-4 transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span>Back to Highlights</span>
-            </button>
-            
             <div className="flex items-center space-x-3 mb-4">
               <Landmark className="h-8 w-8" />
               <h1 className="text-3xl font-bold">H.R. 1 - Major Policy Changes</h1>

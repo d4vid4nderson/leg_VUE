@@ -24,11 +24,13 @@ import {
     Target,
     TrendingUp,
     Sparkles,
-    Download // Added for fetch button
+    Download, // Added for fetch button
+    MapPin
 } from 'lucide-react';
 
 import { FILTERS, SUPPORTED_STATES } from '../utils/constants';
 import { stripHtmlTags } from '../utils/helpers';
+import { calculateAllCounts } from '../utils/filterUtils';
 import useReviewStatus from '../hooks/useReviewStatus';
 import ShimmerLoader from '../components/ShimmerLoader';
 import BillCardSkeleton from '../components/BillCardSkeleton';
@@ -1056,12 +1058,35 @@ const StatePage = ({ stateName, stableHandlers }) => {
             education: allFilterCounts.education || 0,
             engineering: allFilterCounts.engineering || 0,
             healthcare: allFilterCounts.healthcare || 0,
-            all_practice_areas: allFilterCounts.total || 0,
+            all_practice_areas: allFilterCounts.all_practice_areas || 0,
             reviewed: allFilterCounts.reviewed || 0,
             not_reviewed: allFilterCounts.not_reviewed || 0,
             total: allFilterCounts.total || 0
         };
     }, [allFilterCounts]);
+    
+    // Calculate filter counts when stateOrders changes
+    useEffect(() => {
+        if (Array.isArray(stateOrders) && stateOrders.length > 0) {
+            const counts = calculateAllCounts(stateOrders, {
+                getCategoryFn: (item) => cleanCategory(item?.category),
+                reviewStatusFn: (item) => isItemReviewed(item)
+            });
+            
+            setAllFilterCounts(counts);
+        } else {
+            // Reset counts when no data
+            setAllFilterCounts({
+                civic: 0,
+                education: 0,
+                engineering: 0,
+                healthcare: 0,
+                reviewed: 0,
+                not_reviewed: 0,
+                total: 0
+            });
+        }
+    }, [stateOrders, isItemReviewed]);
     
     // Filtered orders (simple filtering without fuzzy search)
     const filteredStateOrders = useMemo(() => {
@@ -1070,11 +1095,9 @@ const StatePage = ({ stateName, stableHandlers }) => {
         let filtered = stateOrders;
         
         // Apply category filters
-        const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed', 'all_practice_areas'].includes(f));
+        const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
         
-        if (selectedFilters.includes('all_practice_areas')) {
-            // Show all categories
-        } else if (categoryFilters.length > 0) {
+        if (categoryFilters.length > 0) {
             filtered = filtered.filter(bill => categoryFilters.includes(cleanCategory(bill?.category)));
         }
         
@@ -1181,19 +1204,29 @@ const StatePage = ({ stateName, stableHandlers }) => {
     }, [statusTooltipOpen]);
     
     return (
-        <div className="pt-6">
+        <div className="pt-6 min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
             <ScrollToTopButton />
             
             {/* Page Header */}
-            <div className="mb-8">
-                <div className="flex items-center gap-3 mb-2">
-                    <FileText />
-                    <h2 className="text-2xl font-bold text-gray-800">{stateName} Legislation</h2>
+            <section className="relative overflow-hidden px-6 pt-12 pb-8">
+                <div className="max-w-7xl mx-auto">
+                    <div className="text-center mb-8">
+                        <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
+                            <MapPin size={16} />
+                            {stateName} State Legislation
+                        </div>
+                        
+                        <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+                            <span className="block">{stateName}</span>
+                            <span className="block bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent py-2">Legislation</span>
+                        </h1>
+                        
+                        <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+                            Access the latest legislation and bills from {stateName} with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of new legislation.
+                        </p>
+                    </div>
                 </div>
-                <p className="text-gray-600">
-                    Access the latest legislation and bills from {stateName} with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of new legislation. Direct links to official source documents are included for detailed review.
-                </p>
-            </div>
+            </section>
             
             {/* Results Section */}
             <div className="mb-8">

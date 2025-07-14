@@ -25,9 +25,9 @@ import {
   Hash,
   Target,        // For talking points icon
   TrendingUp,    // For business impact icon
-  Sparkles       // For AI Generated badges
+  Sparkles,      // For AI Generated badges
+  Calendar       // For date icon
 } from 'lucide-react';
-import HR1PolicyBanner from './HR1PolicyBanner';
 import { FILTERS } from '../utils/constants';
 import API_URL from '../config/api';
 import ShimmerLoader from '../components/ShimmerLoader';
@@ -1590,6 +1590,11 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     lastRefresh
   } = useOptimizedHighlights(1);
 
+  // Scroll to top when component mounts
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
   // Sync display highlights with hook highlights - PREVENT unhighlighted items from appearing
   useEffect(() => {
     // Only sync during initial load, never during active operations
@@ -2039,31 +2044,35 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const hasHighlights = displayHighlights && displayHighlights.length > 0;
 
   return (
-
-
-    <div className="pt-6">
+    <div className="pt-6 min-h-screen bg-gradient-to-br from-yellow-50 via-white to-orange-50">
       {/* Scroll to Top Button */}
       <ScrollToTopButton />
 
 
-      <HR1PolicyBanner 
-        onClick={() => {
-          navigate('/hr1'); // Adjust this route to match your routing setup
-        }}
-      />
 
       {/* Header */}
 
 
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <Star />
-          <h2 className="text-2xl font-bold text-gray-800">Highlights</h2>
+      {/* Header Section */}
+      <section className="relative overflow-hidden px-6 pt-12 pb-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
+              <Star size={16} />
+              All Highlighted Items
+            </div>
+            
+            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+              <span className="block">Highlighted</span>
+              <span className="block bg-gradient-to-r from-yellow-700 to-yellow-600 bg-clip-text text-transparent py-2">Items</span>
+            </h1>
+            
+            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+              Manage a collection of important legislation and executive orders. View, organize, and analyze your highlighted items with comprehensive AI insights including executive summaries, key talking points, and business impact assessments.
+            </p>
+          </div>
         </div>
-        <p className="text-gray-600">
-          Manage a collection of important legislation and executive orders. View, organize, and analyze your highlighted items with comprehensive AI insights including executive summaries, key talking points, and business impact assessments. Filter by practice area or jurisdiction, and keep track of the legislative developments most relevant to your interests and responsibilities.
-        </p>
-      </div>
+      </section>
 
       {/* Enhanced Highlights Display */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -2323,9 +2332,10 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                                 <span className="font-medium">{getExecutiveOrderNumber(highlight)}</span>
                               </div>
                               <span>-</span>
-                              <span className="font-medium">
-                                Date: {formatDate(highlight.signing_date) || highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}
-                              </span>
+                              <div className="flex items-center gap-1.5 text-gray-700">
+                                <Calendar size={14} className="text-green-600" />
+                                <span className="font-medium">{formatDate(highlight.signing_date) || highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}</span>
+                              </div>
                               <span>-</span>
                               <CategoryTag category={highlight.category} />
                               <span>-</span>
@@ -2339,9 +2349,10 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                                 <span className="font-medium">{highlight.bill_number || 'Unknown'}</span>
                               </div>
                               <span>-</span>
-                              <span className="font-medium">
-                                Date: {highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}
-                              </span>
+                              <div className="flex items-center gap-1.5 text-gray-700">
+                                <Calendar size={14} className="text-green-600" />
+                                <span className="font-medium">{highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}</span>
+                              </div>
                               <span>-</span>
                               <CategoryTag category={highlight.category} />
                               <span>-</span>

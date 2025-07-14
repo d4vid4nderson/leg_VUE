@@ -28,7 +28,8 @@ import {
   Ban,
   RotateCw as RefreshIcon,
   Target,
-  TrendingUp
+  TrendingUp,
+  Calendar
 } from 'lucide-react';
 
 import { 
@@ -968,7 +969,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       engineering: 0,
       healthcare: 0,
       'not-applicable': 0,
-      all_practice_areas: allOrders.length,
+      all_practice_areas: allOrders.filter(order => order?.category === 'all_practice_areas').length,
       reviewed: 0,
       not_reviewed: 0,
       total: allOrders.length
@@ -1006,9 +1007,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       ['civic', 'education', 'engineering', 'healthcare', 'all_practice_areas', 'not-applicable'].includes(f)
     );
     
-    if (selectedFilters.includes('all_practice_areas')) {
-      // Show all categories when 'all_practice_areas' is selected
-    } else if (categoryFilters.length > 0) {
+    if (categoryFilters.length > 0) {
       result = result.filter(order => categoryFilters.includes(order?.category));
       console.log(`🔍 After category filter: ${result.length} orders`);
     }
@@ -1054,6 +1053,8 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   // =====================================
   // FETCH FUNCTIONS
   // =====================================
+  
+
   const checkForNewExecutiveOrders = useCallback(async () => {
     try {
       console.log('🔍 Checking for new executive orders...');
@@ -1614,6 +1615,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     return () => clearTimeout(timeoutId);
   }, [fetchFromDatabase, checkForNewExecutiveOrders]);
 
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
@@ -1637,22 +1639,32 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   // RENDER COMPONENT
   // =====================================
   return (
-    <div className="pt-6">
+    <div className="pt-6 min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
       <ScrollToTopButton />
       
 
       <CountStatusComponent />
       
       {/* Header Section */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <ScrollText/>
-          <h2 className="text-2xl font-bold text-gray-800">Executive Orders</h2>
+      <section className="relative overflow-hidden px-6 pt-12 pb-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
+              <ScrollText size={16} />
+              Executive Orders
+            </div>
+            
+            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+              <span className="block">Executive Order</span>
+              <span className="block bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent py-2">Intelligence</span>
+            </h1>
+            
+            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+              Access the latest federal executive orders with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of presidential directives.
+            </p>
+          </div>
         </div>
-        <p className="text-gray-600">
-          Access the latest federal executive orders with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of presidential directives. Direct links to the Federal Register and official documents are included for detailed review.
-        </p> 
-      </div>
+      </section>
 
       {/* Results Section */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1923,7 +1935,10 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               <span className="font-medium">{getExecutiveOrderNumber(order)}</span>
                             </div>
                             <span>-</span>
-                            <span className="font-medium">Signed Date: {order.formatted_signing_date || 'N/A'}</span>
+                            <div className="flex items-center gap-1.5 text-gray-700">
+                              <Calendar size={14} className="text-green-600" />
+                              <span className="font-medium">{order.formatted_signing_date || 'N/A'}</span>
+                            </div>
                             <span>-</span>
                             <EditableCategoryTag 
                               category={order.category}

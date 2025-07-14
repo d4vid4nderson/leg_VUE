@@ -159,10 +159,10 @@ const Header = ({
                                         
                                         {/* Highlighted Items */}
                                         <button
-                                            onClick={() => handleMenuItemClick(() => navigate('/'))}
+                                            onClick={() => handleMenuItemClick(() => navigate('/highlights'))}
                                             className={
                                                 "w-full text-left px-6 py-3 text-sm font-bold transition-all duration-300 flex items-center gap-3 " +
-                                                (location.pathname === '/' || location.pathname === '/highlights'
+                                                (location.pathname === '/highlights'
                                                     ? 'bg-blue-50 text-blue-700'
                                                     : 'text-gray-800 hover:bg-gray-100')
                                             }
@@ -193,11 +193,49 @@ const Header = ({
                                         {/* Separator */}
                                         <div className="border-t border-gray-200 my-2"></div>
 
-                                        {/* State Legislation Header */}
-                                        <div className="px-6 py-3 text-sm font-bold text-gray-800 flex items-center gap-3">
+                                        {/* Federal Legislation */}
+                                        <button
+                                            onClick={() => handleMenuItemClick(() => navigate('/federal-legislation'))}
+                                            className={
+                                                "w-full text-left px-6 py-3 text-sm font-bold transition-all duration-300 flex items-center gap-3 " +
+                                                (location.pathname === '/federal-legislation'
+                                                    ? 'bg-blue-50 text-blue-700'
+                                                    : 'text-gray-800 hover:bg-gray-100')
+                                            }
+                                        >
+                                            <ScrollText size={16} />
+                                            <span>Federal Legislation</span>
+                                        </button>
+
+                                        {/* HR1 Page */}
+                                        <button
+                                            onClick={() => handleMenuItemClick(() => navigate('/hr1'))}
+                                            className={
+                                                "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
+                                                (location.pathname === '/hr1'
+                                                    ? 'bg-blue-50 text-blue-700 font-medium'
+                                                    : 'text-gray-600 hover:bg-gray-100')
+                                            }
+                                        >
+                                            HR1 Policy Analysis
+                                        </button>
+
+                                        {/* Separator */}
+                                        <div className="border-t border-gray-200 my-2"></div>
+
+                                        {/* State Legislation */}
+                                        <button
+                                            onClick={() => handleMenuItemClick(() => navigate('/state-legislation'))}
+                                            className={
+                                                "w-full text-left px-6 py-3 text-sm font-bold transition-all duration-300 flex items-center gap-3 " +
+                                                (location.pathname === '/state-legislation'
+                                                    ? 'bg-blue-50 text-blue-700'
+                                                    : 'text-gray-800 hover:bg-gray-100')
+                                            }
+                                        >
                                             <FileText size={16} />
                                             <span>State Legislation</span>
-                                        </div>
+                                        </button>
 
                                         {/* State Items */}
                                         {Object.keys(SUPPORTED_STATES).map(state => {

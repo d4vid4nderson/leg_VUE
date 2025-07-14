@@ -104,11 +104,12 @@ export const getCurrentStatus = (item) => {
   // 8. Fallback to generic status but avoid "Active" when possible
   const fallbackStatus = item.status || 'Unknown';
   if (fallbackStatus.toLowerCase() === 'active') {
-    console.log(`⚠️ Generic "Active" status for ${item.bill_number || 'item'} - consider as "Introduced"`);
+    console.debug(`⚠️ Generic "Active" status for ${item.bill_number || 'item'} - consider as "Introduced"`);
     return 'Introduced'; // More accurate than "Active"
   }
   
-  console.log(`⚠️ Using fallback status: ${fallbackStatus} for ${item.bill_number || 'item'}`);
+  // Only log unknown status warnings in debug mode to reduce console noise
+  console.debug(`⚠️ Using fallback status: ${fallbackStatus} for ${item.bill_number || 'item'}`);
   return fallbackStatus;
 };
 

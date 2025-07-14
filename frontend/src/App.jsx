@@ -10,8 +10,11 @@ import LoadingAnimation from './components/LoadingAnimation';
 import AzureADLoginModal from './components/AzureADLoginModal';
 
 // Lazy loaded components for code splitting
+const Homepage = lazy(() => import('./components/Homepage'));
 const HighlightsPage = lazy(() => import('./components/HighlightsPage'));
 const ExecutiveOrdersPage = lazy(() => import('./components/ExecutiveOrdersPage'));
+const FederalLegislationPage = lazy(() => import('./components/FederalLegislationPage'));
+const StateLegislationPage = lazy(() => import('./components/StateLegislationPage'));
 const StatePage = lazy(() => import('./components/StatePage'));
 const SettingsPage = lazy(() => import('./components/SettingsPage'));
 const AuthRedirect = lazy(() => import('./components/AuthRedirect'));
@@ -23,8 +26,11 @@ console.log('🔍 Component imports check:', {
   LoadingAnimation,
   AzureADLoginModal,
   // Lazy loaded components logged differently
+  Homepage: 'Lazy loaded',
   HighlightsPage: 'Lazy loaded',
   ExecutiveOrdersPage: 'Lazy loaded',
+  FederalLegislationPage: 'Lazy loaded',
+  StateLegislationPage: 'Lazy loaded',
   StatePage: 'Lazy loaded',
   SettingsPage: 'Lazy loaded',
   AuthRedirect: 'Lazy loaded',
@@ -363,7 +369,7 @@ const AppContent = () => {
         />
 
         {/* Main Content - Match Header's container width exactly */}
-        <main className="flex-1">
+        <main className="flex-1 min-h-screen">
           <div className="container mx-auto px-4 sm:px-6 lg:px-12 py-6">
             <Suspense fallback={
               <div className="flex items-center justify-center min-h-[400px]">
@@ -371,9 +377,23 @@ const AppContent = () => {
               </div>
             }>
               <Routes>
-              {/* Home/Highlights Route */}
+              {/* Home Route - Now using Homepage component */}
               <Route 
                 path="/" 
+                element={
+                  <SafeComponent
+                    component={Homepage}
+                    fallbackName="Homepage"
+                    makeApiCall={makeApiCall}
+                    copyToClipboard={copyToClipboard}
+                    stableHandlers={stableHandlers}
+                  />
+                } 
+              />
+
+              {/* Highlights Route */}
+              <Route 
+                path="/highlights" 
                 element={
                   <SafeComponent
                     component={HighlightsPage}
@@ -392,6 +412,34 @@ const AppContent = () => {
                   <SafeComponent
                     component={ExecutiveOrdersPage}
                     fallbackName="ExecutiveOrdersPage"
+                    makeApiCall={makeApiCall}
+                    copyToClipboard={copyToClipboard}
+                    stableHandlers={stableHandlers}
+                  />
+                } 
+              />
+
+              {/* Federal Legislation Route */}
+              <Route 
+                path="/federal-legislation" 
+                element={
+                  <SafeComponent
+                    component={FederalLegislationPage}
+                    fallbackName="FederalLegislationPage"
+                    makeApiCall={makeApiCall}
+                    copyToClipboard={copyToClipboard}
+                    stableHandlers={stableHandlers}
+                  />
+                } 
+              />
+
+              {/* State Legislation Route */}
+              <Route 
+                path="/state-legislation" 
+                element={
+                  <SafeComponent
+                    component={StateLegislationPage}
+                    fallbackName="StateLegislationPage"
                     makeApiCall={makeApiCall}
                     copyToClipboard={copyToClipboard}
                     stableHandlers={stableHandlers}
