@@ -223,6 +223,7 @@ class LegiScanAPI:
                 'state': self.get_state_name(state_abbr),
                 'state_abbr': state_abbr,
                 'status': result.get('status_text', result.get('status', '')),
+                'legiscan_status': result.get('status_text', result.get('status', '')),
                 'category': self._determine_category(title + ' ' + description),
                 
                 # Session information - ONLY fields that exist in your database
@@ -263,6 +264,7 @@ class LegiScanAPI:
                 'state': self.get_state_name(state_abbr),
                 'state_abbr': state_abbr,
                 'status': bill.get('status_text', ''),
+                'legiscan_status': bill.get('status_text', ''),
                 'category': self._determine_category(bill.get('title', '') + ' ' + bill.get('description', '')),
                 
                 # Session information - ONLY fields that exist in your database

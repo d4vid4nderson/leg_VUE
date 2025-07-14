@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 
 // Context
@@ -6,24 +6,29 @@ import { useAuth } from './context/AuthContext';
 
 // Components - with error handling for missing components
 import Header from './components/Header';
-import HighlightsPage from './components/HighlightsPage';
-import ExecutiveOrdersPage from './components/ExecutiveOrdersPage';
-import StatePage from './components/StatePage';
-import SettingsPage from './components/SettingsPage';
 import LoadingAnimation from './components/LoadingAnimation';
 import AzureADLoginModal from './components/AzureADLoginModal';
-import AuthRedirect from './components/AuthRedirect';
+
+// Lazy loaded components for code splitting
+const HighlightsPage = lazy(() => import('./components/HighlightsPage'));
+const ExecutiveOrdersPage = lazy(() => import('./components/ExecutiveOrdersPage'));
+const StatePage = lazy(() => import('./components/StatePage'));
+const SettingsPage = lazy(() => import('./components/SettingsPage'));
+const AuthRedirect = lazy(() => import('./components/AuthRedirect'));
+const HR1Page = lazy(() => import('./components/HR1Page'));
 
 // Debug: Log imported components to identify undefined ones
 console.log('🔍 Component imports check:', {
   Header,
-  HighlightsPage,
-  ExecutiveOrdersPage,
-  StatePage,
-  SettingsPage,
   LoadingAnimation,
   AzureADLoginModal,
-  AuthRedirect,
+  // Lazy loaded components logged differently
+  HighlightsPage: 'Lazy loaded',
+  ExecutiveOrdersPage: 'Lazy loaded',
+  StatePage: 'Lazy loaded',
+  SettingsPage: 'Lazy loaded',
+  AuthRedirect: 'Lazy loaded',
+  HR1Page: 'Lazy loaded',
 });
 
 // Hooks
@@ -82,6 +87,7 @@ const AppContent = () => {
 
   // Global highlights state for sharing between pages
   const [globalHighlights, setGlobalHighlights] = useState(new Set());
+  const [highlightsLoaded, setHighlightsLoaded] = useState(false);
 
   // Handle clicks outside dropdown to close it
   useEffect(() => {
@@ -95,32 +101,81 @@ const AppContent = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Load global highlights on startup
-  useEffect(() => {
-    const loadGlobalHighlights = async () => {
-      try {
-        // Use the same endpoint that HighlightsPage uses for consistency
-        const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
-        
-        if (response.ok) {
-          const highlights = await response.json();
-          const highlightIds = new Set(highlights.map(h => h.order_id || h.id));
-          setGlobalHighlights(highlightIds);
-          console.log('🌟 Loaded global highlights:', highlightIds.size, 'items');
-        } else {
-          console.warn('⚠️ Highlights endpoint returned:', response.status);
-          setGlobalHighlights(new Set());
-        }
-      } catch (error) {
-        console.error('Error loading global highlights:', error);
-        setGlobalHighlights(new Set());
-      }
-    };
+  // Optimized lazy loading of highlights with caching
+  const loadGlobalHighlights = useCallback(async () => {
+    if (highlightsLoaded) return globalHighlights;
     
-    if (isAuthenticated) {
-      loadGlobalHighlights();
+    try {
+      // Check localStorage cache first
+      const cached = localStorage.getItem('app_highlights');
+      if (cached) {
+        const cachedData = JSON.parse(cached);
+        if (Date.now() - cachedData.timestamp < 300000) { // 5 min cache
+          const highlightIds = new Set(cachedData.highlights);
+          setGlobalHighlights(highlightIds);
+          setHighlightsLoaded(true);
+          console.log('🌟 Loaded highlights from cache:', highlightIds.size, 'items');
+          return highlightIds;
+        }
+      }
+      
+      // Fetch from API if cache miss or expired
+      const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📥 Global highlights response:', data);
+        
+        // ⚡ ADD DEFENSIVE PROGRAMMING
+        let highlightsArray = [];
+        
+        if (data && data.success) {
+          // Try multiple possible array locations
+          if (Array.isArray(data.highlights)) {
+            highlightsArray = data.highlights;
+          } else if (Array.isArray(data.results)) {
+            highlightsArray = data.results;
+          } else if (Array.isArray(data)) {
+            highlightsArray = data;
+          }
+        }
+        
+        console.log(`✅ Processed ${highlightsArray.length} global highlights`);
+        const highlightIds = new Set(highlightsArray.map(h => h.order_id || h.id).filter(Boolean));
+        setGlobalHighlights(highlightIds);
+        
+        // Cache for 5 minutes
+        localStorage.setItem('app_highlights', JSON.stringify({
+          highlights: Array.from(highlightIds),
+          timestamp: Date.now()
+        }));
+        
+        console.log('🌟 Loaded highlights from API:', highlightIds.size, 'items');
+        return highlightIds;
+      } else {
+        console.warn('⚠️ Highlights endpoint returned:', response.status);
+        setGlobalHighlights(new Set());
+        return new Set();
+      }
+    } catch (error) {
+      console.error('Error loading global highlights:', error);
+      setGlobalHighlights(new Set());
+      return new Set();
+    } finally {
+      setHighlightsLoaded(true);
     }
-  }, [isAuthenticated]);
+  }, [highlightsLoaded, globalHighlights]);
+
+  // Defer highlights loading until after initial render
+  useEffect(() => {
+    if (isAuthenticated && !highlightsLoaded) {
+      // Use setTimeout to defer loading after render
+      const timer = setTimeout(() => {
+        loadGlobalHighlights();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, highlightsLoaded, loadGlobalHighlights]);
 
   // Auth effect - show/hide login modal based on auth state
   useEffect(() => {
@@ -228,20 +283,48 @@ const AppContent = () => {
     },
 
     refreshGlobalHighlights: async () => {
-      // Refresh highlights from backend using same endpoint as HighlightsPage
+      // Force refresh highlights from backend
       try {
         const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
         
         if (response.ok) {
-          const highlights = await response.json();
-          const highlightIds = new Set(highlights.map(h => h.order_id || h.id));
+          const data = await response.json();
+          console.log('📥 Refresh highlights response:', data);
+          
+          // ⚡ ADD DEFENSIVE PROGRAMMING
+          let highlightsArray = [];
+          
+          if (data && data.success) {
+            // Try multiple possible array locations
+            if (Array.isArray(data.highlights)) {
+              highlightsArray = data.highlights;
+            } else if (Array.isArray(data.results)) {
+              highlightsArray = data.results;
+            } else if (Array.isArray(data)) {
+              highlightsArray = data;
+            }
+          }
+          
+          console.log(`✅ Refreshed ${highlightsArray.length} highlights`);
+          const highlightIds = new Set(highlightsArray.map(h => h.order_id || h.id).filter(Boolean));
           setGlobalHighlights(highlightIds);
+          
+          // Update cache
+          localStorage.setItem('app_highlights', JSON.stringify({
+            highlights: Array.from(highlightIds),
+            timestamp: Date.now()
+          }));
         }
       } catch (error) {
         console.error('Error refreshing highlights:', error);
+        // ⚡ SET EMPTY SETS ON ERROR
+        setGlobalHighlights(new Set());
       }
-    }
-  }), [globalHighlights]);
+    },
+    
+    // Expose the lazy loader for components that need it
+    loadHighlightsIfNeeded: loadGlobalHighlights
+  }), [globalHighlights, loadGlobalHighlights]);
 
   // Show loading during auth check
   if (authLoading) {
@@ -282,7 +365,12 @@ const AppContent = () => {
         {/* Main Content - Match Header's container width exactly */}
         <main className="flex-1">
           <div className="container mx-auto px-4 sm:px-6 lg:px-12 py-6">
-            <Routes>
+            <Suspense fallback={
+              <div className="flex items-center justify-center min-h-[400px]">
+                <LoadingAnimation />
+              </div>
+            }>
+              <Routes>
               {/* Home/Highlights Route */}
               <Route 
                 path="/" 
@@ -321,6 +409,17 @@ const AppContent = () => {
                     makeApiCall={makeApiCall}
                     appVersion={appVersion}
                     setAppVersion={setAppVersion}
+                  />
+                } 
+              />
+
+              {/* HR1 Policy Analysis Route */}
+              <Route 
+                path="/hr1" 
+                element={
+                  <SafeComponent
+                    component={HR1Page}
+                    fallbackName="HR1Page"
                   />
                 } 
               />
@@ -373,6 +472,7 @@ const AppContent = () => {
                 } 
               />
                           </Routes>
+            </Suspense>
             </div>
         </main>
 

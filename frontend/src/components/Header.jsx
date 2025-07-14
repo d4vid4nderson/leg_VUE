@@ -170,11 +170,6 @@ const Header = ({
                                             <Star size={16} />
                                             <span>
                                                 Highlighted Items
-                                                {highlightedCount > 0 && (
-                                                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                                                        {highlightedCount}
-                                                    </span>
-                                                )}
                                             </span>
                                         </button>
 

@@ -96,7 +96,14 @@ const SettingsPage = ({
         try {
             setDatabaseDebugInfo({ ...databaseDebugInfo, loading: true });
 
-            const response = await fetch(`${API_URL}/api/debug/database-msi`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            
+            const response = await fetch(`${API_URL}/api/debug/database-msi`, {
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
             const data = await response.json();
 
             setDatabaseDebugInfo({
@@ -118,9 +125,13 @@ const SettingsPage = ({
 
         } catch (error) {
             console.error('Database debug failed:', error);
+            let errorMessage = error.message;
+            if (error.name === 'AbortError' || error.message.includes('timeout')) {
+                errorMessage = 'Database connection test timed out (>15s). Connection may be slow or unresponsive.';
+            }
             setDatabaseDebugInfo({
                 success: false,
-                logs: [`Error: ${error.message}`],
+                logs: [`Error: ${errorMessage}`],
                 loading: false
             });
         }
@@ -190,10 +201,21 @@ const SettingsPage = ({
         setCheckingHealth(true);
 
         try {
-            // Call both endpoints
+            // Create timeout controller for older browsers
+            const createTimeoutController = (timeoutMs) => {
+                const controller = new AbortController();
+                setTimeout(() => controller.abort(), timeoutMs);
+                return controller;
+            };
+
+            // Call both endpoints with timeout
             const [statusResponse, dbDebugResponse] = await Promise.allSettled([
-                fetch(`${API_URL}/api/status`),
-                fetch(`${API_URL}/api/debug/database-msi`)
+                fetch(`${API_URL}/api/status`, { 
+                    signal: createTimeoutController(10000).signal // 10 second timeout
+                }),
+                fetch(`${API_URL}/api/debug/database-msi`, { 
+                    signal: createTimeoutController(10000).signal // 10 second timeout
+                })
             ]);
 
             // Initialize with default error status
@@ -204,7 +226,7 @@ const SettingsPage = ({
                 federalRegister: { status: 'healthy', message: 'Federal Register API operational', responseTime: null }
             };
 
-            // Process status data
+            // Process status data or fallback to root endpoint
             if (statusResponse.status === 'fulfilled' && statusResponse.value.ok) {
                 const statusData = await statusResponse.value.json();
 
@@ -235,6 +257,49 @@ const SettingsPage = ({
                 // Update integration status
                 setIntegrationStatus(newStatus);
                 setLastHealthCheck(new Date());
+            } else {
+                // Fallback: Try the root endpoint for basic status
+                try {
+                    const rootResponse = await fetch(`${API_URL}/`, { 
+                        signal: createTimeoutController(5000).signal
+                    });
+                    
+                    if (rootResponse.ok) {
+                        const rootData = await rootResponse.json();
+                        
+                        newStatus = {
+                            database: {
+                                status: rootData.database?.status === 'connected' ? 'healthy' : 'error',
+                                message: rootData.database?.status === 'connected' ? 
+                                    `Database connected (${rootData.database?.type})` : 
+                                    'Database connection failed',
+                                responseTime: null
+                            },
+                            legiscan: {
+                                status: rootData.integrations?.legiscan === 'available' ? 'healthy' : 'error',
+                                message: rootData.integrations?.legiscan === 'available' ? 
+                                    'LegiScan API available' : 'LegiScan API not available',
+                                responseTime: null
+                            },
+                            azureAI: {
+                                status: rootData.integrations?.azure_ai === 'available' ? 'healthy' : 'error',
+                                message: rootData.integrations?.azure_ai === 'available' ? 
+                                    'Azure AI available' : 'Azure AI not available',
+                                responseTime: null
+                            },
+                            federalRegister: {
+                                status: 'healthy',
+                                message: 'Federal Register API operational',
+                                responseTime: null
+                            }
+                        };
+                        
+                        setIntegrationStatus(newStatus);
+                        setLastHealthCheck(new Date());
+                    }
+                } catch (fallbackError) {
+                    console.error('Fallback status check also failed:', fallbackError);
+                }
             }
 
             // Process database debug data

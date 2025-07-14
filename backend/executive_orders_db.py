@@ -525,3 +525,184 @@ def get_user_highlights_direct(user_id: str) -> List[Dict]:
     except Exception as e:
         logger.error(f"❌ Error getting user highlights: {e}")
         return []
+
+def get_user_highlights_with_content(user_id: str) -> List[Dict]:
+    """Get all highlights for a user with full content from joined tables"""
+    try:
+        # Convert user_id to int for database compatibility
+        user_id_int = int(user_id)
+        logger.info(f"🚀 Getting highlights with content for user {user_id} (converted to {user_id_int})")
+        
+        # Create table if needed
+        create_highlights_table()
+        
+        with get_db_cursor() as cursor:
+            # Use a UNION query to get all highlights with proper content from both tables
+            query = """
+            -- State legislation highlights with content from joined table
+            SELECT 
+                h.order_id, 
+                h.order_type,
+                COALESCE(s.title, 'State Legislation Bill #' + h.order_id) as title,
+                COALESCE(s.description, 'This is a highlighted state legislation item with ID ' + h.order_id) as description,
+                COALESCE(s.ai_summary, 'AI-generated summary for state legislation item ' + h.order_id) as ai_summary,
+                COALESCE(s.ai_executive_summary, '') as ai_executive_summary,
+                COALESCE(s.ai_key_points, '') as ai_key_points,
+                COALESCE(s.ai_talking_points, '') as ai_talking_points,
+                COALESCE(s.ai_business_impact, '') as ai_business_impact,
+                COALESCE(s.ai_potential_impact, '') as ai_potential_impact,
+                COALESCE(s.category, h.category, 'civic') as category,
+                COALESCE(s.state, h.state, 'Unknown State') as state,
+                COALESCE(s.state_abbr, '') as state_abbr,
+                COALESCE(s.status, 'Active') as status,
+                COALESCE(s.bill_number, 'SB-' + h.order_id) as bill_number,
+                COALESCE(s.bill_type, 'bill') as bill_type,
+                s.introduced_date,
+                s.last_action_date,
+                COALESCE(s.legiscan_url, h.legiscan_url, '') as legiscan_url,
+                COALESCE(s.pdf_url, h.pdf_url, '') as pdf_url,
+                COALESCE(s.reviewed, 0) as reviewed,
+                h.highlighted_at,
+                h.notes,
+                h.priority_level,
+                h.tags,
+                CAST('' AS NVARCHAR(MAX)) as eo_number,
+                CAST('' AS NVARCHAR(MAX)) as document_number,
+                NULL as signing_date_eo,
+                NULL as publication_date,
+                CAST('' AS NVARCHAR(MAX)) as html_url,
+                CAST('State Legislation' AS NVARCHAR(MAX)) as presidential_document_type
+            FROM dbo.user_highlights h
+            LEFT JOIN dbo.state_legislation s ON h.order_id = s.bill_id
+            WHERE h.user_id = ? AND h.order_type = 'state_legislation' AND h.is_archived = 0
+            
+            UNION ALL
+            
+            -- Executive order highlights with content  
+            SELECT 
+                h.order_id,
+                h.order_type,
+                COALESCE(e.title, h.title, 'Untitled Executive Order') as title,
+                COALESCE(e.summary, h.description, '') as description,
+                COALESCE(e.ai_summary, h.ai_summary, '') as ai_summary,
+                COALESCE(e.ai_executive_summary, '') as ai_executive_summary,
+                COALESCE(e.ai_key_points, '') as ai_key_points,
+                COALESCE(e.ai_talking_points, '') as ai_talking_points,
+                COALESCE(e.ai_business_impact, '') as ai_business_impact,
+                COALESCE(e.ai_potential_impact, '') as ai_potential_impact,
+                COALESCE(e.category, h.category, 'civic') as category,
+                '' as state,
+                '' as state_abbr,
+                '' as status,
+                '' as bill_number,
+                '' as bill_type,
+                NULL as introduced_date,
+                NULL as last_action_date,
+                '' as legiscan_url,
+                COALESCE(e.pdf_url, h.pdf_url, '') as pdf_url,
+                COALESCE(e.reviewed, 0) as reviewed,
+                h.highlighted_at,
+                h.notes,
+                h.priority_level,
+                h.tags,
+                COALESCE(e.eo_number, REPLACE(h.order_id, 'eo-', '')) as eo_number,
+                COALESCE(e.document_number, '') as document_number,
+                e.signing_date as signing_date_eo,
+                e.publication_date,
+                COALESCE(e.html_url, h.html_url, '') as html_url,
+                COALESCE(e.presidential_document_type, 'Executive Order') as presidential_document_type
+            FROM dbo.user_highlights h
+            LEFT JOIN dbo.executive_orders e ON CAST(REPLACE(h.order_id, 'eo-', '') AS VARCHAR) = CAST(e.eo_number AS VARCHAR)
+            WHERE h.user_id = ? AND h.order_type = 'executive_order' AND h.is_archived = 0
+            
+            ORDER BY highlighted_at DESC
+            """
+            
+            cursor.execute(query, (user_id_int, user_id_int))
+            columns = [column[0] for column in cursor.description]
+            rows = cursor.fetchall()
+            
+            logger.info(f"🔍 Retrieved {len(rows)} highlights with UNION query from joined tables")
+            
+            results = []
+            for row in rows:
+                result = dict(zip(columns, row))
+                
+                # Format the result based on order_type
+                if result['order_type'] == 'state_legislation':
+                    # Use actual database content from the JOIN
+                    formatted_result = {
+                        'order_id': result['order_id'],
+                        'order_type': 'state_legislation',
+                        'title': result.get('title', ''),
+                        'description': result.get('description', ''),
+                        'ai_summary': result.get('ai_summary', ''),
+                        'ai_executive_summary': result.get('ai_executive_summary', ''),
+                        'ai_key_points': result.get('ai_key_points', ''),
+                        'ai_talking_points': result.get('ai_talking_points', ''),
+                        'ai_business_impact': result.get('ai_business_impact', ''),
+                        'ai_potential_impact': result.get('ai_potential_impact', ''),
+                        'category': result.get('category', ''),
+                        'state': result.get('state', ''),
+                        'state_abbr': result.get('state_abbr', ''),
+                        'status': result.get('status', ''),
+                        'bill_number': result.get('bill_number', ''),
+                        'bill_type': result.get('bill_type', ''),
+                        'introduced_date': result.get('introduced_date') if isinstance(result.get('introduced_date'), str) else (result.get('introduced_date').isoformat() if result.get('introduced_date') else None),
+                        'last_action_date': result.get('last_action_date') if isinstance(result.get('last_action_date'), str) else (result.get('last_action_date').isoformat() if result.get('last_action_date') else None),
+                        'legiscan_url': result.get('legiscan_url', ''),
+                        'pdf_url': result.get('pdf_url', ''),
+                        'reviewed': bool(result.get('reviewed', False)),
+                        'highlighted_at': result.get('highlighted_at') if isinstance(result.get('highlighted_at'), str) else (result.get('highlighted_at').isoformat() if result.get('highlighted_at') else None),
+                        'notes': result.get('notes') or '',
+                        'priority_level': result.get('priority_level') or 'medium',
+                        'tags': result.get('tags') or '',
+                        'ai_processed': bool(result.get('ai_summary') or result.get('ai_executive_summary')),
+                        'bill_id': result['order_id']  # Add bill_id for frontend compatibility
+                    }
+                    
+                    # Debug: Check formatted result
+                    if result['order_id'] == '1892657':
+                        logger.info(f"🔍 Formatted result for 1892657: title='{formatted_result.get('title')}', state='{formatted_result.get('state')}'")
+                        
+                else:  # executive_order
+                    formatted_result = {
+                        'order_id': result['order_id'],
+                        'order_type': 'executive_order',
+                        'title': result['title'],
+                        'description': result['description'],
+                        'ai_summary': result['ai_summary'],
+                        'ai_executive_summary': result['ai_executive_summary'],
+                        'ai_key_points': result['ai_key_points'],
+                        'ai_talking_points': result['ai_talking_points'],
+                        'ai_business_impact': result['ai_business_impact'],
+                        'ai_potential_impact': result['ai_potential_impact'],
+                        'category': result['category'],
+                        'eo_number': result['eo_number'],
+                        'document_number': result['document_number'],
+                        'executive_order_number': result['eo_number'],
+                        'signing_date': result['signing_date_eo'] if isinstance(result['signing_date_eo'], str) else (result['signing_date_eo'].isoformat() if result['signing_date_eo'] else None),
+                        'publication_date': result['publication_date'] if isinstance(result['publication_date'], str) else (result['publication_date'].isoformat() if result['publication_date'] else None),
+                        'html_url': result['html_url'],
+                        'pdf_url': result['pdf_url'],
+                        'reviewed': bool(result['reviewed']),
+                        'highlighted_at': result['highlighted_at'] if isinstance(result['highlighted_at'], str) else (result['highlighted_at'].isoformat() if result['highlighted_at'] else None),
+                        'notes': result['notes'] or '',
+                        'priority_level': result['priority_level'] or 'medium',
+                        'tags': result['tags'] or '',
+                        'ai_processed': bool(result['ai_summary'] or result['ai_executive_summary']),
+                        'presidential_document_type': result['presidential_document_type']
+                    }
+                
+                results.append(formatted_result)
+            
+            logger.info(f"✅ Retrieved {len(results)} highlights with full content for user {user_id}")
+            logger.info(f"📊 Breakdown: {len([r for r in results if r['order_type'] == 'state_legislation'])} state legislation, {len([r for r in results if r['order_type'] == 'executive_order'])} executive orders")
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"❌ Error getting user highlights with content: {e}")
+        import traceback
+        traceback.print_exc()
+        return []

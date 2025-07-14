@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_connection_string():
-    """Get database connection string with container-based detection for MSI"""
+    """Get database connection string with proper environment detection"""
     
     # Check for container environment indicators
     is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
@@ -16,9 +16,9 @@ def get_connection_string():
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
     
-    # Use MSI if we're in a container (Azure), SQL Auth otherwise
+    # Use MSI ONLY if we're actually in a container/Azure environment
     if is_container:
-        logger.info("🔐 Using MSI authentication (container detected)")
+        print("🔐 Using MSI authentication (container detected)")
         connection_string = (
             "Driver={ODBC Driver 18 for SQL Server};"
             f"Server=tcp:{server},1433;"
@@ -29,28 +29,25 @@ def get_connection_string():
             "Connection Timeout=30;"
         )
     else:
-        # Local development - use SQL auth
+        # Local development - MUST use SQL auth
         username = os.getenv('AZURE_SQL_USERNAME')
         password = os.getenv('AZURE_SQL_PASSWORD')
         
-        logger.info(f"🔑 Using SQL authentication (local development)")
-        if all([username, password]):
-            logger.info("🔑 Using SQL authentication for development")
-            connection_string = (
-                "Driver={ODBC Driver 18 for SQL Server};"
-                f"Server=tcp:{server},1433;"
-                f"Database={database};"
-                f"UID={username};"
-                f"PWD={password};"
-                "Encrypt=yes;"
-                "TrustServerCertificate=no;"
-                "Connection Timeout=30;"
-            ) 
-        else:
-            logger.error("❌ Missing SQL credentials for local development")
-            raise ValueError("SQL credentials required in local development")
+        if not username or not password:
+            raise ValueError("❌ SQL credentials required for local development. Set AZURE_SQL_USERNAME and AZURE_SQL_PASSWORD in your .env file")
+        
+        print("🔑 Using SQL authentication (local development)")
+        connection_string = (
+            "Driver={ODBC Driver 18 for SQL Server};"
+            f"Server=tcp:{server},1433;"
+            f"Database={database};"
+            f"UID={username};"
+            f"PWD={password};"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+            "Connection Timeout=30;"
+        ) 
     
-    logger.info(f"🔌 Connecting to database: {connection_string[:50]}...")
     return connection_string
 
 def get_database_connection():
@@ -68,7 +65,11 @@ def get_database_connection():
         
         # Try to connect with timeout and retry
         conn = pyodbc.connect(connection_string, timeout=30)
+        
+        # Explicitly set autocommit to False to ensure transactions work properly
+        conn.autocommit = False
         print("✅ Database connection successful!")
+        print(f"🔍 Autocommit setting: {conn.autocommit}")
         return conn
     except Exception as e:
         print(f"❌ Failed to get database connection: {e}")

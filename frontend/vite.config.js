@@ -14,12 +14,12 @@ export default defineConfig({
     'process.env': {}
   },
   server: {
-    port: 80,
+    port: 3000,
     strictPort: false,
     open: true,
     proxy: {
       '/api': {
-        target: 'http://backend:8000',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       }
     },
