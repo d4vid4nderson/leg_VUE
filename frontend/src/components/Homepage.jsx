@@ -43,7 +43,7 @@ const Homepage = () => {
         }}
       />
       
-      <style jsx>{`
+      <style jsx="true">{`
         .gradient-button {
           background: transparent;
           transition: all 0.3s ease;

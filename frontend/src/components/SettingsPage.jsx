@@ -519,6 +519,11 @@ const SettingsPage = ({
             <section className="relative overflow-hidden px-6 pt-12 pb-8">
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-8">
+                        <div className="inline-flex items-center gap-2 bg-gray-100 text-gray-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
+                            <Settings size={16} />
+                            System Configuration & Information
+                        </div>
+                        
                         <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
                             <span className="block bg-gradient-to-r from-gray-500 to-black bg-clip-text text-transparent py-2">Settings</span>
                         </h1>
@@ -545,15 +550,14 @@ const SettingsPage = ({
             )}
 
             <div className="space-y-6">
-                {/* Combined System Configuration & Information Section */}
+                {/* System Management Section */}
                 <div className="bg-white rounded-lg shadow-sm p-6">
                     <button
                         onClick={() => setShowSystemSection(!showSystemSection)}
                         className="w-full flex items-center justify-between text-left focus:outline-none"
                     >
-                        <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-                            <Settings size={20} />
-                            <span>System Configuration & Information</span>
+                        <h3 className="text-xl font-semibold text-gray-800">
+                            System Management
                         </h3>
                         <div className="flex items-center gap-2">
                             <ChevronDown

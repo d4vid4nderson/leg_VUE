@@ -53,7 +53,15 @@ export const getCurrentStatus = (item) => {
     }
   }
   
-  // 5. Enhanced status analysis from description/title for better guessing
+  // 5. Check the actual status field from backend API BEFORE content inference
+  console.log(`🔍 DEBUG: Checking status field for ${item.bill_number || 'item'}: "${item.status}" (type: ${typeof item.status})`);
+  if (item.status && item.status !== 'Unknown' && item.status !== 'Active') {
+    console.log(`✅ Using backend status field: ${item.status} for ${item.bill_number || 'item'}`);
+    return item.status;
+  }
+  console.log(`❌ Status field not used for ${item.bill_number || 'item'}: status="${item.status}"`);
+
+  // 6. Enhanced status analysis from description/title for better guessing (as fallback only)
   if (item.description || item.title || item.ai_summary) {
     const text = ((item.description || '') + ' ' + (item.title || '') + ' ' + (item.ai_summary || '')).toLowerCase();
     

@@ -5,8 +5,9 @@ import requests
 import json
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
+from urllib.parse import urlencode
 
 class LegiScanAPI:
     """Complete LegiScan API integration class with real AI analysis"""
@@ -64,6 +65,10 @@ class LegiScanAPI:
             print(f"🔍 Making LegiScan API request to: {endpoint}")
             print(f"   Parameters: {[k for k in params.keys() if k != 'key']}")
             
+            # Debug parameter values (excluding API key)
+            debug_params = {k: v for k, v in params.items() if k != 'key'}
+            print(f"   Parameter values: {debug_params}")
+            
             response = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=30)
             response.raise_for_status()
             
@@ -75,6 +80,19 @@ class LegiScanAPI:
                 raise Exception(f"LegiScan API Error: {error_msg}")
             
             print(f"✅ LegiScan API request successful")
+            
+            # Debug response structure
+            if isinstance(data, dict):
+                print(f"📂 Response top-level keys: {list(data.keys())}")
+                if 'searchresult' in data:
+                    searchresult = data['searchresult']
+                    if isinstance(searchresult, dict):
+                        print(f"🔍 Searchresult keys: {list(searchresult.keys())}")
+                        if 'summary' in searchresult:
+                            print(f"📈 Summary: {searchresult['summary']}")
+            else:
+                print(f"⚠️ Response is not a dict: {type(data)}")
+            
             return data
             
         except requests.exceptions.RequestException as e:
@@ -98,70 +116,226 @@ class LegiScanAPI:
         reverse_mapping = {v: k for k, v in self.state_mapping.items()}
         return reverse_mapping.get(state_abbr.upper(), state_abbr)
     
-    def search_bills(self, state: str, query: str = None, limit: int = 50) -> Dict[str, Any]:
-        """Search for bills in a specific state"""
+    def search_bills(self, state: str, query: str = None, limit: int = 100, year_filter: str = 'all', max_pages: int = 5) -> Dict[str, Any]:
+        """Search for bills in a specific state with pagination and year filtering"""
         try:
             state_abbr = self.get_state_abbreviation(state)
-            print(f"🔍 Searching bills for {state} ({state_abbr})")
+            print(f"🔍 Searching bills for {state} ({state_abbr}) with year filter '{year_filter}'")
             
-            params = {
-                'op': 'getSearch',
-                'state': state_abbr,
-                'page': 1
-            }
+            all_bills = []
+            pages_fetched = 0
+            total_available = 0
             
-            if query:
-                params['query'] = query
-                print(f"🔍 Search query: '{query}'")
+            # Set year parameter based on filter
+            # IMPORTANT: LegiScan year parameter works differently:
+            # year=1: All years (default for getting all available bills)
+            # year=2: Current year only 
+            # year=3: Prior year only
+            # year=4: Recent years (current + prior)
+            year_param = 1  # Default to all years to get maximum results
+            if year_filter == 'current':
+                year_param = 2  # Current year only
+            elif year_filter == 'recent':
+                year_param = 4  # Recent years (current + prior)
             
-            response = self._make_request('', params)
+            # SMART SEARCH STRATEGY: Try multiple approaches to get recent bills
+            search_query = query
+            smart_query_applied = False
             
-            if 'searchresult' not in response:
-                print("⚠️ No searchresult field in LegiScan response")
-                return {
-                    'success': False,
-                    'error': 'No search results returned from LegiScan',
-                    'bills': []
+            if not query and year_filter in ['current', 'recent']:
+                from datetime import datetime
+                # Try specific date first (most likely to get July 14 bills)
+                current_date = datetime.now().strftime('%Y-%m-%d')  # e.g., "2025-07-15"
+                yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')  # "2025-07-14"
+                
+                # First try yesterday's date (July 14)
+                search_query = yesterday
+                smart_query_applied = True
+                print(f"🎯 No query provided - using smart date query '{search_query}' to find recent bills")
+            elif query:
+                search_query = query
+            
+            # Fetch multiple pages
+            for page in range(1, max_pages + 1):
+                params = {
+                    'op': 'getSearch',
+                    'state': state_abbr,
+                    'page': page
                 }
+                
+                if search_query:
+                    params['query'] = search_query
+                    if page == 1:
+                        print(f"🔍 Search query: '{search_query}'")
+                        if search_query != query:
+                            print(f"💡 Smart query applied: '{search_query}' (original: {query or 'None'})")
+                else:
+                    if page == 1:
+                        print(f"🔍 No query - using default LegiScan sorting")
+                
+                if year_param:
+                    params['year'] = year_param
+                    if page == 1:
+                        year_desc = 'All years' if year_param == 1 else 'Current year' if year_param == 2 else 'Recent years' if year_param == 4 else f'Year {year_param}'
+                        print(f"📅 Year filter: {year_param} ({year_desc})")
+                else:
+                    if page == 1:
+                        print(f"📅 No year parameter - LegiScan will use default")
             
-            bills = []
-            search_results = response['searchresult']
+                response = self._make_request('', params)
+                
+                if 'searchresult' not in response:
+                    if page == 1:
+                        print("⚠️ No searchresult field in LegiScan response")
+                        return {
+                            'success': False,
+                            'error': 'No search results returned from LegiScan',
+                            'bills': []
+                        }
+                    else:
+                        print(f"📄 No more results on page {page}")
+                        break
+                
+                search_results = response['searchresult']
+                page_bills = []
+                
+                # Extract summary on first page
+                if page == 1 and isinstance(search_results, dict) and 'summary' in search_results:
+                    summary = search_results.get('summary', {})
+                    total_available = summary.get('count', 0)
+                    print(f"📊 Total bills available: {total_available}")
+                    print(f"📄 Summary details: {summary}")
+                elif page == 1:
+                    print(f"⚠️ No summary found in response. Response keys: {list(search_results.keys()) if isinstance(search_results, dict) else type(search_results)}")
+                
+                # Handle different response formats from LegiScan
+                if isinstance(search_results, dict) and 'summary' in search_results:
+                    # This is a summary response, extract the actual results
+                    for key, value in search_results.items():
+                        if key != 'summary' and isinstance(value, dict):
+                            page_bills.append(value)
+                elif isinstance(search_results, dict):
+                    page_bills = [search_results]
+                elif isinstance(search_results, list):
+                    page_bills = search_results
+                
+                if not page_bills:
+                    print(f"📄 No bills found on page {page}")
+                    break
+                
+                all_bills.extend(page_bills)
+                pages_fetched = page
+                
+                print(f"📄 Page {page}: Found {len(page_bills)} bills (Total: {len(all_bills)})")
+                
+                # Debug: Show sample bill info from first page
+                if page == 1 and page_bills:
+                    sample_bill = page_bills[0]
+                    print(f"📝 Sample bill: {sample_bill.get('bill_number', 'N/A')} - {sample_bill.get('title', 'No title')[:50]}...")
+                    print(f"📅 Sample bill dates: intro={sample_bill.get('introduced_date')}, action={sample_bill.get('last_action_date')}")
+                    print(f"🔢 Sample bill raw data keys: {list(sample_bill.keys()) if isinstance(sample_bill, dict) else 'Not a dict'}")
+                elif page == 1:
+                    print(f"⚠️ No bills found on page 1. Search results type: {type(search_results)}")
+                
+                # Check if we have enough results or if this was a partial page
+                if len(all_bills) >= limit or len(page_bills) < 50:
+                    break
+                
+                # Rate limiting between requests
+                time.sleep(self.rate_limit_delay)
             
-            # Handle different response formats from LegiScan
-            if isinstance(search_results, dict) and 'summary' in search_results:
-                # This is a summary response, extract the actual results
-                actual_results = []
-                for key, value in search_results.items():
-                    if key != 'summary' and isinstance(value, dict):
-                        actual_results.append(value)
-                search_results = actual_results
-            elif isinstance(search_results, dict):
-                search_results = [search_results]
-            elif isinstance(search_results, list):
-                pass
-            else:
-                print(f"⚠️ Unexpected search results format: {type(search_results)}")
-                search_results = []
+            # Apply final limit
+            if limit and len(all_bills) > limit:
+                all_bills = all_bills[:limit]
             
-            print(f"🔍 Processing {len(search_results)} search results")
+            print(f"🔍 Processing {len(all_bills)} bills from {pages_fetched} pages")
             
-            for i, result in enumerate(search_results[:limit]):
+            processed_bills = []
+            for i, result in enumerate(all_bills):
                 try:
                     bill_data = self._extract_bill_data(result, state_abbr)
                     if bill_data:
-                        bills.append(bill_data)
-                        print(f"✅ Processed bill {i+1}: {bill_data.get('bill_number', 'Unknown')}")
+                        processed_bills.append(bill_data)
+                        if i < 5:  # Only log first 5 to avoid spam
+                            print(f"✅ Processed bill {i+1}: {bill_data.get('bill_number', 'Unknown')}")
                 except Exception as e:
                     print(f"❌ Error processing bill result {i+1}: {e}")
                     continue
             
-            print(f"✅ Successfully processed {len(bills)} bills from search")
+            # Debug: Show date range of bills fetched
+            if processed_bills:
+                dates = []
+                bill_numbers = []
+                for bill in processed_bills[:5]:  # Check first 5 bills
+                    intro_date = bill.get('introduced_date')
+                    last_action = bill.get('last_action_date')
+                    bill_number = bill.get('bill_number')
+                    if intro_date:
+                        dates.append(f"Intro: {intro_date}")
+                    if last_action:
+                        dates.append(f"Action: {last_action}")
+                    if bill_number:
+                        bill_numbers.append(bill_number)
+                if dates:
+                    print(f"📅 Sample bill dates: {dates[:3]}")
+                if bill_numbers:
+                    print(f"📝 Sample bill numbers: {bill_numbers[:5]}")
+            else:
+                print(f"⚠️ No processed bills to show dates for!")
+            
+            print(f"✅ Successfully processed {len(processed_bills)} bills from {pages_fetched} pages (Total available: {total_available})")
+            
+            # If we used a smart query but got few results, try multiple fallback searches
+            if (smart_query_applied and len(processed_bills) < 10 and max_pages > 1):
+                print(f"🔄 Smart query returned few results ({len(processed_bills)}), trying fallback searches...")
+                
+                fallback_queries = []
+                from datetime import datetime, timedelta
+                
+                # Add multiple date-based fallback queries
+                for days_back in [0, 1, 2, 7]:  # Today, yesterday, 2 days ago, week ago
+                    date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+                    fallback_queries.append(date)
+                
+                # Add month-based query
+                current_month = datetime.now().strftime('%Y-%m')
+                fallback_queries.append(current_month)
+                
+                # Add generic queries
+                fallback_queries.extend(['introduced', 'filed', None])  # None = no query
+                
+                for i, fallback_query in enumerate(fallback_queries):
+                    if len(processed_bills) >= limit:
+                        break
+                        
+                    try:
+                        print(f"🔍 Trying fallback {i+1}: query='{fallback_query}'")
+                        fallback_result = self.search_bills(state, query=fallback_query, limit=min(50, limit - len(processed_bills)), 
+                                                           year_filter=year_filter, max_pages=2)
+                        
+                        if fallback_result['success'] and fallback_result['bills']:
+                            # Merge results, avoiding duplicates
+                            existing_ids = {bill.get('bill_id') for bill in processed_bills}
+                            new_bills = [bill for bill in fallback_result['bills'] 
+                                       if bill.get('bill_id') not in existing_ids]
+                            
+                            if new_bills:
+                                processed_bills.extend(new_bills)
+                                print(f"➕ Added {len(new_bills)} bills from fallback query '{fallback_query}'")
+                                break  # Stop after first successful fallback
+                    except Exception as e:
+                        print(f"⚠️ Fallback search '{fallback_query}' failed: {e}")
+                        continue
             
             return {
                 'success': True,
-                'bills': bills,
-                'total_found': len(search_results),
+                'bills': processed_bills,
+                'total_found': total_available,
+                'pages_fetched': pages_fetched,
+                'returned_count': len(processed_bills),
+                'year_filter': year_filter,
                 'query': query,
+                'smart_query_used': search_query != query,
                 'state': state_abbr
             }
             
@@ -222,8 +396,8 @@ class LegiScanAPI:
                 'description': description,
                 'state': self.get_state_name(state_abbr),
                 'state_abbr': state_abbr,
-                'status': result.get('status_text', result.get('status', '')),
-                'legiscan_status': result.get('status_text', result.get('status', '')),
+                'status': self._convert_status_to_text(result),
+                'legiscan_status': self._convert_status_to_text(result),
                 'category': self._determine_category(title + ' ' + description),
                 
                 # Session information - ONLY fields that exist in your database
@@ -328,6 +502,51 @@ class LegiScanAPI:
             return history[-1].get('date', '')
         return ''
     
+    def _convert_status_to_text(self, result: Dict[str, Any]) -> str:
+        """Convert LegiScan status codes to readable text"""
+        # First try to get status_text if available
+        status_text = result.get('status_text', '')
+        if status_text and status_text.strip():
+            return status_text.strip()
+        
+        # If no status_text, convert numeric status code
+        status_code = result.get('status', '')
+        
+        # LegiScan status code mapping
+        status_mapping = {
+            '1': 'Introduced',
+            '2': 'Engrossed', 
+            '3': 'Enrolled',
+            '4': 'Passed',
+            '5': 'Vetoed',
+            '6': 'Failed/Dead',
+            '7': 'Indefinitely Postponed',
+            '8': 'Signed by Governor',
+            '9': 'Effective',
+            1: 'Introduced',
+            2: 'Engrossed',
+            3: 'Enrolled', 
+            4: 'Passed',
+            5: 'Vetoed',
+            6: 'Failed/Dead',
+            7: 'Indefinitely Postponed',
+            8: 'Signed by Governor',
+            9: 'Effective'
+        }
+        
+        # Convert status code to text
+        if status_code in status_mapping:
+            return status_mapping[status_code]
+        elif str(status_code) in status_mapping:
+            return status_mapping[str(status_code)]
+        
+        # If we have some status but can't map it, return as-is
+        if status_code:
+            return str(status_code)
+        
+        # Default fallback
+        return 'Unknown'
+    
     def _parse_date(self, date_str: str) -> Optional[datetime]:
         """Parse date string to datetime object"""
         if not date_str:
@@ -415,8 +634,8 @@ class LegiScanAPI:
             print(f"   - Limit: {limit}")
             print(f"   - Process one-by-one: {process_one_by_one}")
             
-            # Search for bills
-            search_result = self.search_bills(state, query, limit)
+            # Search for bills with new parameters
+            search_result = self.search_bills(state, query, limit, year_filter='all', max_pages=5)
             
             if not search_result['success']:
                 print(f"❌ Search failed: {search_result.get('error')}")
@@ -668,19 +887,26 @@ class LegiScanAPI:
             print(f"❌ Error saving bill {db_data.get('bill_id', 'unknown')}: {e}")
             return False
     
-    def optimized_bulk_fetch(self, state: str, limit: int = 50, recent_only: bool = True) -> Dict[str, Any]:
+    def optimized_bulk_fetch(self, state: str, limit: int = 50, recent_only: bool = False, year_filter: str = 'all', max_pages: int = 10) -> Dict[str, Any]:
         """
         *** BULK FETCH METHOD CALLED BY YOUR MAIN.PY ***
-        Optimized bulk fetch for state legislation
+        Optimized bulk fetch for state legislation with enhanced parameters
         """
         try:
             print(f"🔍 LegiScan: Starting optimized_bulk_fetch")
             print(f"   - State: {state}")
             print(f"   - Limit: {limit}")
             print(f"   - Recent only: {recent_only}")
+            print(f"   - Year filter: {year_filter}")
+            print(f"   - Max pages: {max_pages}")
             
-            # Use search without query to get recent bills
-            result = self.search_bills(state, query=None, limit=limit)
+            # Use new parameter or fallback to recent_only logic
+            if recent_only and year_filter == 'all':
+                year_filter = 'current'
+            
+            # Use search without query to get recent bills (smart query will be applied automatically)
+            print(f"🔍 Calling search_bills with: state={state}, query=None, limit={limit}, year_filter={year_filter}, max_pages={max_pages}")
+            result = self.search_bills(state, query=None, limit=limit, year_filter=year_filter, max_pages=max_pages)
             
             if result['success']:
                 bills = result['bills']
@@ -717,7 +943,7 @@ def test_legiscan_api():
         api = LegiScanAPI()
         
         print("🧪 Testing search functionality...")
-        result = api.search_bills("CA", "test", 1)
+        result = api.search_bills("CA", "test", 1, year_filter='all', max_pages=1)
         
         print(f"✅ LegiScan API test result: {result.get('success')}")
         if result.get('success'):

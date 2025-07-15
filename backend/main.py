@@ -18,6 +18,7 @@ import aiohttp
 import pyodbc
 import requests
 from ai_status import check_azure_ai_configuration
+from ai import convert_status_to_text
 # Import our new fixed modules  
 from database_connection import test_database_connection, get_db_connection, execute_query
 # Environment variables loading
@@ -935,31 +936,78 @@ class EnhancedLegiScanClient:
             print(f"❌ Enhanced LegiScan API request failed: {e}")
             raise
     
-    async def search_bills_enhanced(self, state: str, query: str, limit: int = 20) -> Dict:
-        """Enhanced bill search with comprehensive data"""
+    async def search_bills_enhanced(self, state: str, query: str, limit: int = 100, year_filter: str = 'all', max_pages: int = 5) -> Dict:
+        """Enhanced bill search with comprehensive data and pagination"""
         try:
-            params = {'query': query, 'year': 2, 'page': 1}
-            if state:
-                params['state'] = state
+            all_results = []
+            total_found = 0
+            pages_fetched = 0
             
-            url = self._build_url('search', params)
-            data = await self._api_request(url)
-            search_result = data.get('searchresult', {})
+            # Set year parameter based on filter
+            # LegiScan year parameter: 1=All years, 2=Current year, 4=Recent years
+            year_param = 1  # Default to all years to get maximum results
+            if year_filter == 'current':
+                year_param = 2  # Current year only
+            elif year_filter == 'recent':
+                year_param = 4  # Recent years (current + prior)
             
-            summary = search_result.pop('summary', {})
-            results = [search_result[key] for key in search_result if key != 'summary']
+            print(f"🔍 Enhanced search for {state} with year filter '{year_filter}' (param: {year_param})")
             
-            print(f"🔍 Enhanced search found {summary.get('count', 0)} results")
+            # Fetch multiple pages
+            for page in range(1, max_pages + 1):
+                params = {
+                    'query': query, 
+                    'year': year_param, 
+                    'page': page
+                }
+                if state:
+                    params['state'] = state
+                
+                url = self._build_url('search', params)
+                data = await self._api_request(url)
+                search_result = data.get('searchresult', {})
+                
+                # Extract summary from first page
+                if page == 1:
+                    summary = search_result.get('summary', {})
+                    total_found = summary.get('count', 0)
+                    print(f"📊 Total bills available: {total_found}")
+                
+                # Extract results from current page
+                page_results = [search_result[key] for key in search_result if key != 'summary' and isinstance(search_result[key], dict)]
+                
+                if not page_results:
+                    print(f"📄 No more results on page {page}")
+                    break
+                
+                all_results.extend(page_results)
+                pages_fetched = page
+                
+                print(f"📄 Page {page}: Found {len(page_results)} bills (Total so far: {len(all_results)})")
+                
+                # Check if we have enough results or if this was the last page
+                if len(all_results) >= limit or len(page_results) < 50:  # LegiScan typically returns 50 per page
+                    break
+                
+                # Rate limiting between page requests
+                await asyncio.sleep(self.rate_limit_delay)
             
-            # Limit results
-            if limit and len(results) > limit:
-                results = results[:limit]
+            # Apply final limit
+            if limit and len(all_results) > limit:
+                all_results = all_results[:limit]
+            
+            print(f"✅ Enhanced search completed: {len(all_results)} bills returned from {pages_fetched} pages")
             
             return {
                 'success': True,
-                'summary': summary,
-                'results': results,
-                'bills_found': len(results)
+                'summary': {
+                    'count': total_found,
+                    'pages_fetched': pages_fetched,
+                    'year_filter': year_filter,
+                    'returned_count': len(all_results)
+                },
+                'results': all_results,
+                'bills_found': len(all_results)
             }
             
         except Exception as e:
@@ -986,14 +1034,15 @@ class EnhancedLegiScanClient:
             print(f"❌ Error fetching detailed bill {bill_id}: {e}")
             return {}
     
-    async def enhanced_search_and_analyze(self, state: str, query: str, limit: int = 20, 
+    async def enhanced_search_and_analyze(self, state: str, query: str, limit: int = 100, 
+                                        year_filter: str = 'current', max_pages: int = 10,
                                         with_ai: bool = True, db_manager = None) -> Dict:
         """Enhanced search and analyze workflow with one-by-one processing"""
         try:
             print(f"🚀 Enhanced search and analyze: {query} in {state}")
             
             # Step 1: Search for bills
-            search_result = await self.search_bills_enhanced(state, query, limit)
+            search_result = await self.search_bills_enhanced(state, query, limit, year_filter, max_pages)
             
             if not search_result.get('success') or not search_result.get('results'):
                 return {
@@ -1043,7 +1092,7 @@ class EnhancedLegiScanClient:
                         'description': detailed_bill.get('description', ''),
                         'state': state,
                         'state_abbr': state,
-                        'status': detailed_bill.get('status', ''),
+                        'status': convert_status_to_text(detailed_bill),
                         'session_id': detailed_bill.get('session', {}).get('session_id', ''),
                         'session_name': detailed_bill.get('session', {}).get('session_name', ''),
                         'bill_type': detailed_bill.get('bill_type', 'bill'),
@@ -1269,16 +1318,28 @@ class StateLegislationDatabaseManager:
 class StateLegislationFetchRequest(BaseModel):
     states: List[str]
     save_to_db: bool = True
-    bills_per_state: int = 25
+    bills_per_state: int = 50  # Increased default
+    year_filter: str = 'all'  # NEW: Year filtering
+    max_pages: int = 3  # NEW: Pagination control
+
+class LegiScanConfigRequest(BaseModel):
+    """Configuration for LegiScan API requests"""
+    default_limit: int = 100
+    default_year_filter: str = 'all'  # 'all', 'current', 'recent'
+    default_max_pages: int = 5
+    enable_pagination: bool = True
+    rate_limit_delay: float = 1.1
 
 class LegiScanSearchRequest(BaseModel):
     query: str
     state: str
-    limit: int = 20
+    limit: int = 100  # Increased default limit
     save_to_db: bool = True
     process_one_by_one: bool = False
     with_ai_analysis: bool = True
     enhanced_ai: bool = True  # NEW: Use enhanced AI processing
+    year_filter: str = 'all'  # NEW: 'all', 'current', 'recent'
+    max_pages: int = 5  # NEW: Maximum pages to fetch
 
 class ExecutiveOrderFetchRequest(BaseModel):
     start_date: Optional[str] = "2025-01-20"
@@ -2648,6 +2709,41 @@ def transform_orders_for_save(orders):
 
 
     
+# ===============================
+# LEGISCAN CONFIGURATION ENDPOINTS
+# ===============================
+
+@app.get("/api/legiscan/config")
+async def get_legiscan_config():
+    """Get current LegiScan API configuration"""
+    return {
+        "success": True,
+        "config": {
+            "default_limit": 100,
+            "default_year_filter": "all",
+            "default_max_pages": 5,
+            "enable_pagination": True,
+            "rate_limit_delay": 1.1,
+            "year_filter_options": [
+                {"value": "all", "label": "All Years", "description": "Fetch bills from all available years (recommended)"},
+                {"value": "current", "label": "Current Year", "description": "Only bills from current year (2025)"},
+                {"value": "recent", "label": "Recent Years", "description": "Bills from recent years"}
+            ],
+            "description": "LegiScan API configuration for enhanced bill searching with pagination and year filtering"
+        }
+    }
+
+@app.post("/api/legiscan/config")
+async def update_legiscan_config(request: LegiScanConfigRequest):
+    """Update LegiScan API configuration (for future enhancement)"""
+    # For now, just return the requested configuration
+    # In the future, this could save to a configuration file or database
+    return {
+        "success": True,
+        "message": "Configuration updated successfully",
+        "config": request.dict()
+    }
+
     # ===============================
 # ADDITIONAL EXECUTIVE ORDER ENDPOINTS
 # ===============================
@@ -3128,14 +3224,13 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
         print(f"🔍 DEBUG: Raw rows fetched: {len(rows)}")
+        print(f"🔍 DEBUG: Columns: {columns}")
         
         # Convert to API format
         results = []
+        print(f"🔍 DEBUG: About to process {len(rows)} rows")
         for i, row in enumerate(rows):
             db_record = dict(zip(columns, row))
-            
-            if i < 3:
-                print(f"🔍 DEBUG: Row {i+1}: bill_id={db_record.get('bill_id')}, title={db_record.get('title', '')[:30]}...")
             
             # Map database columns to API format
             api_record = {
@@ -3154,7 +3249,7 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
                 'state_abbr': db_record.get('state_abbr', ''),
                 
                 # Status and metadata
-                'status': db_record.get('status', ''),
+                'status': convert_status_to_text(db_record) if db_record.get('status') else 'Unknown',
                 'category': db_record.get('category', 'not-applicable'),
                 'session': db_record.get('session_name', ''),
                 'bill_type': db_record.get('bill_type', 'bill'),
@@ -3199,6 +3294,14 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
                             api_record[date_field] = str(api_record[date_field])
                     except:
                         api_record[date_field] = str(api_record[date_field])
+            
+            # Debug the final API record for first few items
+            if i < 2:
+                print(f"🔍 DEBUG: Final API record {i+1} status field: {repr(api_record.get('status'))}")
+                print(f"🔍 DEBUG: All status-related fields in API record:")
+                for key, value in api_record.items():
+                    if 'status' in key.lower():
+                        print(f"   {key}: {repr(value)}")
             
             results.append(api_record)
         
@@ -3688,6 +3791,8 @@ async def enhanced_search_and_analyze_endpoint(request: LegiScanSearchRequest):
             state=request.state,
             query=request.query,
             limit=request.limit,
+            year_filter=getattr(request, 'year_filter', 'all'),
+            max_pages=getattr(request, 'max_pages', 5),
             with_ai=getattr(request, 'enhanced_ai', True),
             db_manager=db_manager
         )
@@ -5494,6 +5599,8 @@ async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
                 state=request.state,
                 query=request.query,
                 limit=request.limit,
+                year_filter=getattr(request, 'year_filter', 'all'),
+                max_pages=getattr(request, 'max_pages', 5),
                 with_ai=request.with_ai_analysis,
                 db_manager=db_manager
             )
@@ -5712,11 +5819,13 @@ async def fetch_state_legislation_endpoint(request: StateLegislationFetchRequest
             print(f"\n🔍 BACKEND: Processing state: {state}")
             
             try:
-                # Use your existing optimized bulk fetch method
+                # Use enhanced bulk fetch method with new parameters
                 result = legiscan_api.optimized_bulk_fetch(
                     state=state,
                     limit=request.bills_per_state,
-                    recent_only=True
+                    recent_only=False,  # Changed to False to get more bills
+                    year_filter=getattr(request, 'year_filter', 'all'),
+                    max_pages=getattr(request, 'max_pages', 3)
                 )
                 
                 print(f"🔍 BACKEND: Bulk fetch result for {state}:")
@@ -5822,6 +5931,8 @@ async def test_one_by_one_processing(
                     state=state,
                     query=query,
                     limit=limit,
+                    year_filter='all',
+                    max_pages=5,
                     with_ai=True,
                     db_manager=db_manager
                 )

@@ -100,6 +100,51 @@ else:
     print("Debug: AZURE_KEY is not set")
 print(f"Debug: LegiScan API Key: {'✅ Set' if LEGISCAN_API_KEY else '❌ Not Set'}")
 
+def convert_status_to_text(bill_data: Dict[str, Any]) -> str:
+    """Convert LegiScan status codes to readable text"""
+    # First try to get status_text if available
+    status_text = bill_data.get('status_text', '')
+    if status_text and status_text.strip():
+        return status_text.strip()
+    
+    # If no status_text, convert numeric status code
+    status_code = bill_data.get('status', '')
+    
+    # LegiScan status code mapping
+    status_mapping = {
+        '1': 'Introduced',
+        '2': 'Engrossed', 
+        '3': 'Enrolled',
+        '4': 'Passed',
+        '5': 'Vetoed',
+        '6': 'Failed/Dead',
+        '7': 'Indefinitely Postponed',
+        '8': 'Signed by Governor',
+        '9': 'Effective',
+        1: 'Introduced',
+        2: 'Engrossed',
+        3: 'Enrolled', 
+        4: 'Passed',
+        5: 'Vetoed',
+        6: 'Failed/Dead',
+        7: 'Indefinitely Postponed',
+        8: 'Signed by Governor',
+        9: 'Effective'
+    }
+    
+    # Convert status code to text
+    if status_code in status_mapping:
+        return status_mapping[status_code]
+    elif str(status_code) in status_mapping:
+        return status_mapping[str(status_code)]
+    
+    # If we have some status but can't map it, return as-is
+    if status_code:
+        return str(status_code)
+    
+    # Default fallback
+    return 'Unknown'
+
 # Initialize Azure OpenAI client
 client = AsyncAzureOpenAI(
     azure_endpoint=AZURE_ENDPOINT,
@@ -492,9 +537,9 @@ class LegiScanClient:
     def search_bills(self, 
                     state: Optional[str] = None,
                     query: Optional[str] = None,
-                    year: int = 2,
+                    year: int = 1,  # Changed default to 1 (all years)
                     page: int = 1) -> Dict:
-        """Search for bills"""
+        """Search for bills - defaults to all years instead of current year only"""
         try:
             if not query:
                 raise ValueError("Query is required for search")
@@ -783,7 +828,7 @@ async def process_bills_for_state(state: str, limit: int = 50, session_id: Optio
                     'description': detailed_bill.get('description', ''),
                     'state': state,
                     'session': detailed_bill.get('session', {}).get('session_name', 'Unknown'),
-                    'status': detailed_bill.get('status', 0),
+                    'status': convert_status_to_text(detailed_bill),
                     'status_date': detailed_bill.get('status_date', ''),
                     'url': detailed_bill.get('state_link', ''),
                     'sponsors': detailed_bill.get('sponsors', []),
@@ -1039,7 +1084,7 @@ async def search_and_analyze_bills(query: str, state: str = None, limit: int = 2
         search_results = legiscan.search_bills(
             state=state,
             query=query,
-            year=2
+            year=1  # Changed to 1 (all years) instead of 2 (current year only)
         )
         
         if not search_results.get('results'):

@@ -390,14 +390,13 @@ const FederalLegislationPage = () => {
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button 
-              onClick={() => window.location.href = '/federal-legislation/hr1'}
+              onClick={() => window.location.href = '/hr1'}
               className="bg-white text-purple-600 px-8 py-4 rounded-xl font-semibold hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
             >
               <FileText size={20} />
               View HR 1 Analysis
             </button>
             <button 
-              onClick={() => window.location.href = '/federal-legislation/browse'}
               className="border-2 border-white text-white px-8 py-4 rounded-xl font-semibold hover:bg-white hover:text-purple-600 transition-all duration-300 flex items-center gap-2"
             >
               <Eye size={20} />

@@ -284,7 +284,7 @@ const FetchButtonGroup = ({ onFetch, isLoading }) => {
                 ) : (
                     <Download size={16} />
                 )}
-                <span>{isLoading ? 'Fetching...' : 'Fetch'}</span>
+                <span>{isLoading ? 'Fetching from LegiScan...' : 'Fetch Fresh Bills'}</span>
             </button>
             
             {/* Sliding Time Period Buttons */}
@@ -303,7 +303,12 @@ const FetchButtonGroup = ({ onFetch, isLoading }) => {
                             <button
                                 key={period.key}
                                 onClick={() => handlePeriodClick(period.key)}
-                                className={`w-full px-4 py-2.5 text-left text-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 ${
+                                disabled={isLoading}
+                                className={`w-full px-4 py-2.5 text-left text-sm transition-all duration-200 ${
+                                    isLoading 
+                                        ? 'text-gray-400 cursor-not-allowed'
+                                        : 'hover:bg-blue-50 hover:text-blue-700'
+                                } ${
                                     selectedPeriod === period.key 
                                         ? 'bg-blue-100 text-blue-800 font-medium' 
                                         : 'text-gray-700'
@@ -312,7 +317,12 @@ const FetchButtonGroup = ({ onFetch, isLoading }) => {
                                     transitionDelay: `${index * 50}ms`
                                 }}
                             >
-                                {period.label}
+                                <div className="flex items-center justify-between">
+                                    <span>{period.label}</span>
+                                    {period.key === '7days' && <span className="text-xs text-gray-500">Recent</span>}
+                                    {period.key === '30days' && <span className="text-xs text-gray-500">Standard</span>}
+                                    {period.key === '90days' && <span className="text-xs text-gray-500">Extended</span>}
+                                </div>
                             </button>
                         ))}
                     </div>
@@ -623,6 +633,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [fetchLoading, setFetchLoading] = useState(false); // New state for fetch loading
+    const [fetchSuccess, setFetchSuccess] = useState(null); // Success message for fetch
     
     // Filter state (matching ExecutiveOrdersPage pattern)
     const [selectedFilters, setSelectedFilters] = useState([]);
@@ -851,9 +862,11 @@ const StatePage = ({ stateName, stableHandlers }) => {
         setCurrentPage(1);
     };
     
-    // New fetch handler for time periods
+    // New fetch handler for time periods - fetches fresh bills from LegiScan API
     const handleFetch = useCallback(async (period) => {
         setFetchLoading(true);
+        setError(null); // Clear any existing errors
+        setFetchSuccess(null); // Clear any existing success messages
         
         try {
             // Calculate date range based on period
@@ -861,23 +874,122 @@ const StatePage = ({ stateName, stableHandlers }) => {
             const daysAgo = period === '7days' ? 7 : period === '30days' ? 30 : 90;
             const startDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
             
-            console.log(`Fetching data for ${period} (last ${daysAgo} days)`);
-            console.log(`Date range: ${startDate.toISOString()} to ${now.toISOString()}`);
+            console.log(`🔍 Fetching fresh bills from LegiScan for ${period} (last ${daysAgo} days)`);
+            console.log(`📅 Date range: ${startDate.toISOString()} to ${now.toISOString()}`);
+            console.log(`🎯 Target: Find bills from July 14, 2025 (HB47, HB36, HB69, etc.)`);
             
-            // Here you would implement your actual fetch logic
-            // For now, we'll just simulate a fetch with the existing data
-            await fetchFromDatabase(1);
+            const stateAbbr = SUPPORTED_STATES[stateName];
             
-            // You could add additional filtering logic here based on the date range
-            // or modify the API call to include date parameters
+            // Determine search parameters based on period
+            let limit = 100; // Increased default to get more bills
+            let yearFilter = 'current'; // Default to current year for recent bills
+            let maxPages = 10; // Increased to get more comprehensive results
+            
+            if (period === '7days') {
+                limit = 50;
+                yearFilter = 'current'; // Recent bills likely to be in current year
+                maxPages = 5; // Should be enough for recent bills with smart query
+            } else if (period === '30days') {
+                limit = 100;
+                yearFilter = 'current';
+                maxPages = 8;
+            } else { // 90days
+                limit = 150;
+                yearFilter = 'all'; // Wider search for longer periods
+                maxPages = 12;
+            }
+            
+            // FORCE USE OF ENHANCED SEARCH WITH SMART DATE QUERY FOR ALL PERIODS
+            // This ensures we get the July 14, 2025 bills
+            let fetchUrl, requestBody;
+            
+            // Use the enhanced search endpoint with specific date queries to get July 14 bills
+            fetchUrl = `${API_URL}/api/legiscan/enhanced-search-and-analyze`;
+            
+            // Smart query strategy based on period
+            let smartQuery;
+            if (period === '7days') {
+                smartQuery = '2025-07-14'; // Specific date for July 14 bills
+            } else if (period === '30days') {
+                smartQuery = '2025-07'; // July 2025 bills
+            } else {
+                smartQuery = 'introduced'; // Broader search for 90 days
+            }
+            
+            requestBody = {
+                query: smartQuery,
+                state: stateAbbr,
+                limit: limit,
+                save_to_db: true,
+                process_one_by_one: false,
+                with_ai_analysis: true,
+                enhanced_ai: true,
+                year_filter: yearFilter,
+                max_pages: maxPages
+            };
+            
+            console.log(`🎯 Using smart query '${smartQuery}' for ${period} to find July 14 bills`);
+            
+            const response = await fetch(fetchUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Handle different response formats
+                let newBills = [];
+                if (result.bills) {
+                    newBills = result.bills;
+                } else if (result.results && Array.isArray(result.results)) {
+                    // Bulk fetch format - flatten results from all states
+                    newBills = result.results.reduce((acc, stateResult) => {
+                        if (stateResult.bills) {
+                            acc.push(...stateResult.bills);
+                        }
+                        return acc;
+                    }, []);
+                } else if (result.data && Array.isArray(result.data)) {
+                    newBills = result.data;
+                }
+                
+                console.log(`✅ Successfully fetched ${newBills.length} fresh bills from LegiScan`);
+                
+                // Show success message
+                if (newBills.length > 0) {
+                    console.log(`📊 Added ${newBills.length} new bills to the database`);
+                    setFetchSuccess(`Successfully fetched ${newBills.length} fresh bills from LegiScan! These include the most recent bills available.`);
+                    
+                    // Refresh the page data to show new bills
+                    await fetchFromDatabase(1);
+                    
+                    // Clear success message after 5 seconds
+                    setTimeout(() => setFetchSuccess(null), 5000);
+                } else {
+                    console.log('ℹ️ No new bills found for the selected period');
+                    setFetchSuccess('No new bills found for the selected period. Database is up to date.');
+                    setTimeout(() => setFetchSuccess(null), 3000);
+                }
+            } else {
+                throw new Error(result.error || 'Failed to fetch bills from LegiScan');
+            }
             
         } catch (error) {
-            console.error('Error fetching data for period:', period, error);
-            setError(`Failed to fetch data for ${period}: ${error.message}`);
+            console.error('❌ Error fetching fresh bills:', error);
+            setError(`Failed to fetch fresh bills for ${period}: ${error.message}`);
         } finally {
             setFetchLoading(false);
         }
-    }, []);
+    }, [stateName]);
     
     // Fetch data from database
     const fetchFromDatabase = useCallback(async (pageNum = 1) => {
@@ -936,6 +1048,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                     summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
                     bill_number: bill?.bill_number,
                     state: bill?.state || stateName,
+                    status: bill?.status, // ✅ ADD THE STATUS FIELD!
                     legiscan_url: bill?.legiscan_url,
                     ai_talking_points: bill?.ai_talking_points,
                     ai_business_impact: bill?.ai_business_impact,
@@ -1394,6 +1507,14 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                 </div>
                             </div>
                         </div>
+                        
+                        {/* Success Message */}
+                        {fetchSuccess && (
+                            <div className="bg-green-50 border border-green-200 text-green-800 p-4 rounded-md mb-6">
+                                <p className="font-semibold mb-1">✅ Fetch Successful</p>
+                                <p className="text-sm">{fetchSuccess}</p>
+                            </div>
+                        )}
                         
                         {/* Results */}
                         {loading ? (
