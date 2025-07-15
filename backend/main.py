@@ -1899,13 +1899,12 @@ print(f"   - CONTAINER_APP_NAME: {container_app_name}")
 print(f"   - MSI_ENDPOINT: {msi_endpoint}")
 print(f"   - Final environment: {environment}")
 
+
 # Get the frontend URL from environment variable if set
 frontend_url = os.getenv("FRONTEND_URL", "")
 
-# CORS setup - Force permissive CORS for local development
-force_dev_cors = os.getenv("FORCE_DEV_CORS", "true").lower() == "true"
-
-if environment == "production" and not force_dev_cors:
+# CORS setup based solely on environment
+if environment == "production":
     cors_origins = [
         "https://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
         "http://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io"
@@ -1913,12 +1912,11 @@ if environment == "production" and not force_dev_cors:
     allow_headers = ["Content-Type", "Authorization", "X-Requested-With"]
     print(f"✅ CORS configured for production with specific origins: {cors_origins}")
 else:
-    # Development or forced development CORS - be more permissive for local development
+    # Development CORS - be more permissive for local development
     cors_origins = ["*"]  # Allow all origins
     allow_headers = ["*"]  # Allow all headers in development
     print(f"✅ CORS configured for development/local with permissive settings")
     print(f"   - Environment: {environment}")
-    print(f"   - Force dev CORS: {force_dev_cors}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -1926,7 +1924,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=allow_headers,
-    max_age=86400  # Cache preflight requests for 24 hours
+    max_age=86400
 )
 
 # Add response compression middleware
