@@ -2342,7 +2342,89 @@ async def update_state_legislation_review_status(
     except Exception as e:
         logger.error(f"Error updating state legislation review status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update review status: {str(e)}")
-    
+
+@app.patch("/api/state-legislation/{id}/category")
+async def update_state_legislation_category(
+    id: str,
+    request: dict
+):
+    """Update category for state legislation"""
+    try:
+        logger.info(f"🔍 CATEGORY ENDPOINT CALLED: ID={id}, Request={request}")
+        
+        category = request.get('category', 'civic')
+        
+        # Validate category
+        valid_categories = ['civic', 'education', 'engineering', 'healthcare', 'not-applicable', 'all', 'all_practice_areas']
+        if category not in valid_categories:
+            raise HTTPException(status_code=400, detail=f"Invalid category. Must be one of: {valid_categories}")
+        
+        logger.info(f"🔍 BACKEND: Updating state legislation category - ID: {id}, category: {category}")
+        
+        conn = get_azure_sql_connection()
+        if not conn:
+            raise HTTPException(status_code=503, detail="Database connection failed")
+        
+        cursor = conn.cursor()
+        
+        # Try to find the record multiple ways (similar to review status endpoint)
+        search_attempts = [
+            ("Direct ID match", "SELECT id FROM dbo.state_legislation WHERE id = ?", id),
+            ("Direct bill_id match", "SELECT id FROM dbo.state_legislation WHERE bill_id = ?", id),
+            ("String ID match", "SELECT id FROM dbo.state_legislation WHERE CAST(id AS VARCHAR) = ?", str(id)),
+            ("String bill_id match", "SELECT id FROM dbo.state_legislation WHERE CAST(bill_id AS VARCHAR) = ?", str(id))
+        ]
+        
+        found_record_id = None
+        for attempt_name, query, param in search_attempts:
+            try:
+                logger.info(f"🔍 BACKEND: Trying {attempt_name} with param: {param}")
+                cursor.execute(query, param)
+                result = cursor.fetchone()
+                if result:
+                    found_record_id = result[0]
+                    logger.info(f"✅ BACKEND: Found record with {attempt_name}, database ID: {found_record_id}")
+                    break
+                else:
+                    logger.info(f"❌ BACKEND: No match with {attempt_name}")
+            except Exception as e:
+                logger.error(f"❌ BACKEND: Error with {attempt_name}: {e}")
+        
+        if not found_record_id:
+            logger.error(f"❌ BACKEND: Could not find any record for ID: {id}")
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"State legislation not found for ID: {id}")
+        
+        # Update the record
+        update_query = "UPDATE dbo.state_legislation SET category = ? WHERE id = ?"
+        cursor.execute(update_query, category, found_record_id)
+        rows_affected = cursor.rowcount
+        
+        logger.info(f"🔍 BACKEND: Updated {rows_affected} rows")
+        
+        if rows_affected == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="No rows were updated")
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"✅ BACKEND: Successfully updated record {found_record_id}")
+        
+        return {
+            "success": True,
+            "message": f"Category updated to {category}",
+            "id": id,
+            "database_id": found_record_id,
+            "category": category
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating state legislation category: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update category: {str(e)}")
+
 @app.patch("/api/test-patch/{id}")
 async def test_patch(id: str):
     return {"test": "patch works", "id": id}
@@ -4335,6 +4417,10 @@ async def update_executive_order_review_status(
         
         logger.info(f"✅ BACKEND: Successfully updated executive order {found_record_id} reviewed status from '{current_reviewed}' to '{updated_reviewed}'")
         
+        # Clear cache to ensure fresh data on next request
+        api_cache.clear()
+        logger.info("🔄 Cache cleared after executive order review status update")
+        
         return {
             "success": True,
             "message": f"Review status updated to {reviewed}",
@@ -4466,6 +4552,10 @@ async def update_executive_order_category(
         conn.close()
         
         logger.info(f"✅ BACKEND: Successfully updated executive order {found_record_id} category from '{current_category}' to '{updated_category}'")
+        
+        # Clear cache to ensure fresh data on next request
+        api_cache.clear()
+        logger.info("🔄 Cache cleared after executive order category update")
         
         return {
             "success": True,

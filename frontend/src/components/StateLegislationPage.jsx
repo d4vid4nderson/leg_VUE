@@ -21,8 +21,10 @@ import {
   Target,
   Globe,
   Star,
-  AlertCircle
+  AlertCircle,
+  UserCheck
 } from 'lucide-react';
+import StateOutlineBackground from './StateOutlineBackground';
 
 const StateLegislationOverview = () => {
   const navigate = useNavigate();
@@ -35,6 +37,7 @@ const StateLegislationOverview = () => {
       code: 'CA',
       region: 'West',
       population: '39.5M',
+      governor: 'Gavin Newsom',
       activeBills: 1247,
       recentActivity: '2 hours ago',
       description: 'Comprehensive coverage of California state legislation including environmental, tech, and healthcare policies.',
@@ -51,6 +54,7 @@ const StateLegislationOverview = () => {
       code: 'CO',
       region: 'West',
       population: '5.8M',
+      governor: 'Jared Polis',
       activeBills: 592,
       recentActivity: '4 hours ago',
       description: 'Track Colorado legislation covering energy, environmental regulations, and social policies.',
@@ -67,6 +71,7 @@ const StateLegislationOverview = () => {
       code: 'KY',
       region: 'South',
       population: '4.5M',
+      governor: 'Andy Beshear',
       activeBills: 378,
       recentActivity: '6 hours ago',
       description: 'Monitor Kentucky state bills focusing on agriculture, healthcare, and economic development.',
@@ -83,6 +88,7 @@ const StateLegislationOverview = () => {
       code: 'NV',
       region: 'West',
       population: '3.2M',
+      governor: 'Joe Lombardo',
       activeBills: 445,
       recentActivity: '3 hours ago',
       description: 'Coverage of Nevada legislation including gaming regulations, energy, and tourism policies.',
@@ -99,6 +105,7 @@ const StateLegislationOverview = () => {
       code: 'SC',
       region: 'South',
       population: '5.2M',
+      governor: 'Henry McMaster',
       activeBills: 521,
       recentActivity: '5 hours ago',
       description: 'Track South Carolina bills covering manufacturing, agriculture, and coastal regulations.',
@@ -115,6 +122,7 @@ const StateLegislationOverview = () => {
       code: 'TX',
       region: 'South',
       population: '30.0M',
+      governor: 'Greg Abbott',
       activeBills: 1856,
       recentActivity: '1 hour ago',
       description: 'Comprehensive Texas legislation tracking including energy, border policies, and business regulations.',
@@ -194,10 +202,18 @@ const StateLegislationOverview = () => {
                   <div className="flex items-start justify-between mb-6">
                     <div className="flex items-center gap-4">
                       <div className={`w-16 h-16 ${state.color} rounded-2xl flex items-center justify-center shadow-lg`}>
-                        <span className="text-white font-bold text-xl">{state.code}</span>
+                        <StateOutlineBackground 
+                          stateName={state.name} 
+                          className="w-10 h-10 text-white"
+                          isIcon={true}
+                        />
                       </div>
                       <div>
                         <h3 className="text-2xl font-bold text-gray-900 mb-1">{state.name}</h3>
+                        <div className="flex items-center gap-2 text-gray-600 text-sm mb-1">
+                          <UserCheck size={14} />
+                          <span>{state.governor}</span>
+                        </div>
                         <div className="flex items-center gap-2 text-gray-600 text-sm">
                           <Users size={14} />
                           <span>{state.population} population</span>
@@ -222,12 +238,12 @@ const StateLegislationOverview = () => {
                     </div>
                   </div>
                   
-                  <p className="text-gray-600 leading-relaxed mb-6">
+                  <p className="text-gray-600 leading-relaxed mb-6 flex-grow">
                     {state.description}
                   </p>
                   
-                  {/* Practice Areas Stats */}
-                  <div className="space-y-3 flex-grow">
+                  {/* Practice Areas Stats - Fixed position from bottom */}
+                  <div className="space-y-3 mb-6">
                     <h4 className="text-sm font-semibold text-gray-900 mb-3">Bills by Practice Area</h4>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -262,12 +278,12 @@ const StateLegislationOverview = () => {
                   </div>
                   
                   {/* Action Button */}
-                  <div className="mt-6">
+                  <div>
                     <button
                       onClick={() => navigate(`/state/${state.name.toLowerCase().replace(' ', '-')}`)}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
                     >
-                      <span>View {state.name} Legislation</span>
+                      <span>{state.name} Legislation</span>
                       <ArrowRight size={18} />
                     </button>
                   </div>

@@ -37,8 +37,12 @@ import {
   Hammer,       // Building/construction
   Bug,          // Bug fixing/debugging
   Cpu,          // Processor/technical
-  HardDrive     // Technical/system
+  HardDrive,    // Technical/system
+  Clock,        // Time/clock icon
+  UserCheck,    // User/governor icon
+  Users as UsersIcon // Population icon
 } from 'lucide-react';
+import StateOutlineBackground from './StateOutlineBackground';
 
 const ApplicationInfoModal = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -191,12 +195,12 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       </div>
 
       {/* Data Sources */}
-      <div>
+      <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-xl p-8 shadow-lg">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-8 h-8 bg-gradient-to-r from-purple-400 to-indigo-400 rounded-lg flex items-center justify-center shadow-md">
-            <Database className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-md">
+            <Database className="w-6 h-6 text-white" />
           </div>
-          <h3 className="text-xl font-bold text-purple-800">Official Data Sources</h3>
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">Official Data Sources</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -288,26 +292,50 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       </div>
 
       {/* Supported States */}
-      <div>
+      <div className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 border border-emerald-200 rounded-xl p-8 shadow-lg">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-8 h-8 bg-gradient-to-r from-red-400 to-pink-400 rounded-lg flex items-center justify-center shadow-md">
-            <MapPin className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-green-500 rounded-xl flex items-center justify-center shadow-md">
+            <MapPin className="w-6 h-6 text-white" />
           </div>
-          <h3 className="text-xl font-bold text-red-800">Supported States & Jurisdictions</h3>
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-emerald-700 to-green-700 bg-clip-text text-transparent">Supported States & Jurisdictions</h3>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { name: 'California', code: 'CA', color: 'bg-blue-100 text-blue-800 border-blue-300' },
-              { name: 'Colorado', code: 'CO', color: 'bg-green-100 text-green-800 border-green-300' },
-              { name: 'Kentucky', code: 'KY', color: 'bg-purple-100 text-purple-800 border-purple-300' },
-              { name: 'Nevada', code: 'NV', color: 'bg-orange-100 text-orange-800 border-orange-300' },
-              { name: 'South Carolina', code: 'SC', color: 'bg-red-100 text-red-800 border-red-300' },
-              { name: 'Texas', code: 'TX', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' }
+              { name: 'California', code: 'CA', population: '39.5M', governor: 'Gavin Newsom' },
+              { name: 'Colorado', code: 'CO', population: '5.8M', governor: 'Jared Polis' },
+              { name: 'Kentucky', code: 'KY', population: '4.5M', governor: 'Andy Beshear' },
+              { name: 'Nevada', code: 'NV', population: '3.2M', governor: 'Joe Lombardo' },
+              { name: 'South Carolina', code: 'SC', population: '5.2M', governor: 'Henry McMaster' },
+              { name: 'Texas', code: 'TX', population: '30.0M', governor: 'Greg Abbott' }
             ].map((state) => (
-              <div key={state.code} className={`px-4 py-3 rounded-xl text-center ${state.color} border`}>
-                <div className="font-bold text-lg">{state.code}</div>
-                <div className="text-sm">{state.name}</div>
+              <div key={state.code} className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 hover:shadow-md transition-shadow duration-300 cursor-pointer group relative" onClick={() => window.open(`/state/${state.name.toLowerCase().replace(' ', '-')}`, '_blank')}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-md">
+                    <StateOutlineBackground 
+                      stateName={state.name} 
+                      className="w-8 h-8 text-white"
+                      isIcon={true}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-lg text-green-800">{state.name}</h4>
+                    <p className="text-sm text-green-600">{state.code}</p>
+                  </div>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <ExternalLink size={16} className="text-green-500" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <UserCheck size={14} className="text-green-500" />
+                    <span>{state.governor}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <UsersIcon size={14} className="text-green-500" />
+                    <span>{state.population} population</span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

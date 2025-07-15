@@ -34,6 +34,7 @@ import { calculateAllCounts } from '../utils/filterUtils';
 import useReviewStatus from '../hooks/useReviewStatus';
 import ShimmerLoader from '../components/ShimmerLoader';
 import BillCardSkeleton from '../components/BillCardSkeleton';
+import StateOutlineBackground from '../components/StateOutlineBackground';
 import API_URL from '../config/api';
 import { 
     getCurrentStatus, 
@@ -787,7 +788,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
             
             // Make API call to update category
             const response = await fetch(`${API_URL}/api/state-legislation/${itemId}/category`, {
-                method: 'PUT',
+                method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -855,6 +856,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
             setCurrentPage(1);
             return newFilters;
         });
+        // Keep dropdown open to allow multiple selections
     };
     
     const clearAllFilters = () => {
@@ -1322,10 +1324,14 @@ const StatePage = ({ stateName, stableHandlers }) => {
             
             {/* Page Header */}
             <section className="relative overflow-hidden px-6 pt-12 pb-8">
-                <div className="max-w-7xl mx-auto">
+                <div className="max-w-7xl mx-auto relative z-10">
                     <div className="text-center mb-8">
                         <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-                            <MapPin size={16} />
+                            <StateOutlineBackground 
+                                stateName={stateName} 
+                                className="w-4 h-4"
+                                isIcon={true}
+                            />
                             {stateName} State Legislation
                         </div>
                         
@@ -1381,20 +1387,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                     >
                                         <div className="flex items-center gap-2">
                                             <span className="truncate">
-                                                {selectedFilters.length === 0 
-                                                    ? 'Filters'
-                                                    : selectedFilters.length === 1
-                                                    ? (() => {
-                                                        const filter = FILTERS.find(f => f.key === selectedFilters[0]);
-                                                        if (filter) return filter.label;
-                                                        if (selectedFilters[0] === 'all_practice_areas') return 'All Practice Areas';
-                                                        if (selectedFilters[0] === 'not-applicable') return 'Not Applicable';
-                                                        if (selectedFilters[0] === 'reviewed') return 'Reviewed';
-                                                        if (selectedFilters[0] === 'not_reviewed') return 'Not Reviewed';
-                                                        return 'Filter';
-                                                      })()
-                                                    : `${selectedFilters.length} Filters`
-                                                }
+                                                Filters
                                             </span>
                                             {selectedFilters.length > 0 && (
                                                 <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
@@ -1742,7 +1735,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-all duration-300"
                                                                 >
                                                                     <ExternalLink size={14} />
-                                                                    <span>View on LegiScan</span>
+                                                                    <span>View Source Material</span>
                                                                 </a>
                                                             )}
                                                         </div>

@@ -147,7 +147,17 @@ const formatDate = (dateStr) => {
 };
 
 const getOrderId = (order) => {
-  return getExecutiveOrderId(order) || `fallback-${Math.random().toString(36).substr(2, 9)}`;
+  // Generate ID in format expected by backend: eo-{number}
+  if (order.eo_number) return `eo-${order.eo_number}`;
+  if (order.executive_order_number) return `eo-${order.executive_order_number}`;
+  if (order.document_number) return `eo-${order.document_number}`;
+  if (order.bill_number) return `eo-${order.bill_number}`;
+  
+  // Fallback to original implementation if none of the above work
+  const baseId = getExecutiveOrderId(order);
+  if (baseId) return baseId.startsWith('eo-') ? baseId : `eo-${baseId}`;
+  
+  return `fallback-${Math.random().toString(36).substr(2, 9)}`;
 };
 
 const stripHtmlTags = (content) => {
@@ -2142,7 +2152,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-all duration-300"
                               >
                                 <ExternalLink size={14} />
-                                Federal Register
+                                View Source Material
                               </a>
                             )}
                             
@@ -2154,7 +2164,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                 className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-all duration-300"
                               >
                                 <FileText size={14} />
-                                View PDF
+                                Executive Order PDF
                               </a>
                             )}
 
