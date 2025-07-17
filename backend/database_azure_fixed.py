@@ -341,6 +341,7 @@ class StateLegislationDB(Base):
     # Basic information
     title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)  # Simple AI overview
     state = Column(String(50), nullable=False, index=True)
     state_abbr = Column(String(5), nullable=True, index=True)
     status = Column(String(100), nullable=True, index=True)

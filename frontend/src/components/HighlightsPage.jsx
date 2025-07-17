@@ -26,7 +26,8 @@ import {
   Target,        // For talking points icon
   TrendingUp,    // For business impact icon
   Sparkles,      // For AI Generated badges
-  Calendar       // For date icon
+  Calendar,      // For date icon
+  MoreVertical   // For mobile menu
 } from 'lucide-react';
 import { FILTERS } from '../utils/constants';
 import API_URL from '../config/api';
@@ -130,7 +131,7 @@ const FilterDropdown = React.forwardRef(({
 
       {/* Dropdown Menu - Right aligned to open leftward */}
       {showFilterDropdown && (
-        <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[280px] max-w-[320px]">
+        <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] min-w-[280px] max-w-[320px]">
           <div className="p-3">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold text-gray-800">Filter Options</h3>
@@ -1574,6 +1575,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
   const [localHighlights, setLocalHighlights] = useState(new Set());
   const [highlightLoading, setHighlightLoading] = useState(new Set());
   const [copiedHighlights, setCopiedHighlights] = useState(new Set());
+  const [activeMobileMenu, setActiveMobileMenu] = useState(null); // Mobile menu state
   
   // Additional state for immediate UI updates
   const [displayHighlights, setDisplayHighlights] = useState([]);
@@ -2041,6 +2043,18 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Mobile menu click outside handler
+  useEffect(() => {
+    const handleMobileMenuClickOutside = (event) => {
+      if (activeMobileMenu && !event.target.closest('.mobile-menu-container')) {
+        setActiveMobileMenu(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleMobileMenuClickOutside);
+    return () => document.removeEventListener('mousedown', handleMobileMenuClickOutside);
+  }, [activeMobileMenu]);
+
   const hasHighlights = displayHighlights && displayHighlights.length > 0;
 
   return (
@@ -2077,14 +2091,14 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       {/* Enhanced Highlights Display */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6">
-          {/* Controls Section - Match StatePage layout exactly */}
-          <div className="flex items-center justify-between mb-6">
-            {/* Left side - Refresh Button (matching StatePage Fetch button style) */}
-            <div className="relative">
+          {/* Controls Section - Mobile Responsive */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            {/* Left side - Refresh Button (matching StatePage FetchButtonGroup style) */}
+            <div className="relative w-full sm:w-auto">
               <button
                 onClick={handleManualRefresh}
                 disabled={isRefreshing}
-                className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 ${
+                className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 w-full sm:w-auto ${
                   isRefreshing
                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                     : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700'
@@ -2096,15 +2110,15 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                 ) : (
                   <RefreshCw size={16} />
                 )}
-                <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+                <span>{isRefreshing ? 'Refreshing highlights...' : 'Refresh Highlights'}</span>
               </button>
             </div>
 
-            <div className="flex gap-4 items-center">
-              {/* Sort Button - Match StatePage functionality */}
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
+              {/* Sort Button - Mobile Optimized */}
               <button
                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center gap-3 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                className="flex items-center justify-center gap-3 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px]"
               >
                 {sortOrder === 'latest' ? (
                   <>
@@ -2124,7 +2138,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                 <button
                   type="button"
                   onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                  className="flex items-center justify-between px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-48"
+                  className="flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-full sm:w-48 min-h-[44px]"
                 >
                   <div className="flex items-center gap-2">
                     <span className="truncate">
@@ -2155,7 +2169,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
 
                 {/* Dropdown content - Match StatePage structure exactly */}
                 {showFilterDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-[120]">
                     {/* Clear All Button */}
                     {selectedFilters.length > 0 && (
                       <div className="px-4 py-2 border-b border-gray-200">
@@ -2308,7 +2322,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
               )}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 relative">
               {paginatedHighlights.map((highlight, index) => {
                 const globalIndex = (currentPage - 1) * itemsPerPage + index;
                 const highlightWithIndex = { ...highlight, index: globalIndex };
@@ -2316,205 +2330,221 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                 const isExpanded = expandedOrders.has(orderId);
                 
                 return (
-                  <div key={`highlight-${orderId}-${globalIndex}`} className="border rounded-lg overflow-hidden transition-all duration-300 border-gray-200">
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">
-                            {cleanOrderTitle(highlight.title)}
-                          </h3>
-                          
-                          {/* Executive Order Style Header */}
-                          {highlight.order_type === 'executive_order' ? (
-                            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
-                              <div className="flex items-center gap-1.5 text-gray-700">
-                                <Hash size={14} className="text-blue-600" />
-                                <span className="font-medium">{getExecutiveOrderNumber(highlight)}</span>
-                              </div>
-                              <span>-</span>
-                              <div className="flex items-center gap-1.5 text-gray-700">
-                                <Calendar size={14} className="text-green-600" />
-                                <span className="font-medium">{formatDate(highlight.signing_date) || highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}</span>
-                              </div>
-                              <span>-</span>
-                              <CategoryTag category={highlight.category} />
-                              <span>-</span>
-                              <OrderTypeTag orderType={highlight.order_type} />
-                            </div>
-                          ) : (
-                            /* State Legislation Style Header */
-                            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-2">
-                              <div className="flex items-center gap-1.5 text-gray-700">
-                                <Hash size={14} className="text-blue-600" />
-                                <span className="font-medium">{highlight.bill_number || 'Unknown'}</span>
-                              </div>
-                              <span>-</span>
-                              <div className="flex items-center gap-1.5 text-gray-700">
-                                <Calendar size={14} className="text-green-600" />
-                                <span className="font-medium">{highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}</span>
-                              </div>
-                              <span>-</span>
-                              <CategoryTag category={highlight.category} />
-                              <span>-</span>
-                              <OrderTypeTag orderType={highlight.order_type} />
-                              {highlight.state && (
-                                <>
-                                  <span>-</span>
-                                  <StateTag state={highlight.state} />
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2 ml-4">
-                          {/* Highlight toggle button */}
-                          <button
-                            type="button"
-                            className={`p-2 rounded-md transition-all duration-300 ${
-                              isOrderHighlighted(highlightWithIndex)
-                                ? 'text-yellow-500 bg-yellow-100 hover:bg-yellow-200'
-                                : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500'
-                            } ${isOrderHighlightLoading(highlightWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            onClick={async (e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (!isOrderHighlightLoading(highlightWithIndex)) {
-                                await handleOrderHighlight(highlightWithIndex);
-                              }
-                            }}
-                            disabled={isOrderHighlightLoading(highlightWithIndex)}
-                            title={
-                              isOrderHighlightLoading(highlightWithIndex) 
-                                ? "Processing..." 
-                                : isOrderHighlighted(highlightWithIndex) 
-                                  ? "Remove from highlights" 
-                                  : "Add to highlights"
+                  <div key={`highlight-${orderId}-${globalIndex}`} className="bg-white border rounded-lg transition-all duration-300 border-gray-200 hover:shadow-md relative" style={{ zIndex: 50 - index }}>
+                    <div className="p-3">
+
+                      {/* Compact Header with Title and Star */}
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h3 className="text-base font-semibold text-gray-800 leading-tight flex-1">
+                          {cleanOrderTitle(highlight.title)}
+                        </h3>
+                        <button
+                          type="button"
+                          className={`p-1.5 rounded-md transition-all duration-300 flex-shrink-0 ${
+                            isOrderHighlighted(highlightWithIndex)
+                              ? 'text-yellow-500 bg-yellow-50 hover:bg-yellow-100'
+                              : 'text-gray-400 hover:text-yellow-500 hover:bg-gray-50'
+                          } ${isOrderHighlightLoading(highlightWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!isOrderHighlightLoading(highlightWithIndex)) {
+                              await handleOrderHighlight(highlightWithIndex);
                             }
-                          >
-                            {isOrderHighlightLoading(highlightWithIndex) ? (
-                              <RotateCw size={16} className="animate-spin" />
-                            ) : (
-                              <Star 
-                                size={16} 
-                                className={isOrderHighlighted(highlightWithIndex) ? "fill-current" : ""} 
-                              />
-                            )}
-                          </button>
-                          
-                          {/* Expand/collapse button */}
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setExpandedOrders(prev => {
-                                const newSet = new Set(prev);
-                                if (newSet.has(orderId)) {
-                                  newSet.delete(orderId);
-                                } else {
-                                  newSet.add(orderId);
-                                }
-                                return newSet;
-                              });
-                            }}
-                            className="p-2 hover:bg-gray-100 rounded-md transition-all duration-300"
-                            title={isExpanded ? "Collapse details" : "Expand details"}
-                          >
-                            <ChevronDown 
-                              size={20} 
-                              className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                          }}
+                          disabled={isOrderHighlightLoading(highlightWithIndex)}
+                          title={
+                            isOrderHighlightLoading(highlightWithIndex) 
+                              ? "Processing..." 
+                              : isOrderHighlighted(highlightWithIndex) 
+                                ? "Remove from highlights" 
+                                : "Add to highlights"
+                          }
+                        >
+                          {isOrderHighlightLoading(highlightWithIndex) ? (
+                            <RotateCw size={16} className="animate-spin" />
+                          ) : (
+                            <Star 
+                              size={16} 
+                              className={isOrderHighlighted(highlightWithIndex) ? "fill-current" : ""} 
                             />
-                          </button>
-                        </div>
+                          )}
+                        </button>
+                      </div>
+                      
+                      {/* Compact Metadata Row */}
+                      <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
+                        {highlight.order_type === 'executive_order' ? (
+                          <>
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <Hash size={12} className="text-blue-600" />
+                              <span className="font-medium">{getExecutiveOrderNumber(highlight)}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <Calendar size={12} className="text-green-600" />
+                              <span className="font-medium">{formatDate(highlight.signing_date) || highlight.formatted_signing_date || highlight.formatted_publication_date || 'Unknown'}</span>
+                            </div>
+                            <CategoryTag category={highlight.category} />
+                            <OrderTypeTag orderType={highlight.order_type} />
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <Hash size={12} className="text-blue-600" />
+                              <span className="font-medium">{highlight.bill_number || 'Unknown'}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <Calendar size={12} className="text-green-600" />
+                              <span className="font-medium">{highlight.formatted_signing_date || formatDate(highlight.introduced_date) || formatDate(highlight.last_action_date) || 'Unknown'}</span>
+                            </div>
+                            <CategoryTag category={highlight.category} />
+                            <OrderTypeTag orderType={highlight.order_type} />
+                            {highlight.state && (
+                              <StateTag state={highlight.state} />
+                            )}
+                          </>
+                        )}
                       </div>
 
-                      {/* Executive Summary (always visible for Executive Orders) */}
-                      {highlight.order_type === 'executive_order' && highlight.ai_processed && highlight.ai_summary && (
-                        <div className="mb-4 mt-4">
-                          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-5">
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-purple-600 rounded-full">
-                                  <FileText size={20} className="text-white" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-purple-900">Executive Summary</h3>
+                      {/* Compact AI Summary Preview */}
+                      {highlight.ai_processed && highlight.ai_summary && !isExpanded && (
+                        <div className="mb-2 bg-purple-50 border border-purple-200 rounded-md p-3">
+                          <div className="flex items-start gap-2">
+                            <FileText size={14} className="text-purple-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold text-purple-900">
+                                  {highlight.order_type === 'executive_order' ? 'Executive Summary' : 'Legislative Summary'}
+                                </span>
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-600 text-white text-xs rounded">
+                                  <Sparkles size={10} />
+                                  AI
+                                </span>
                               </div>
-                              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
-                                <Sparkles size={12} />
-                                AI Generated
-                              </div>
-                            </div>
-                            <div className="text-sm text-purple-800 leading-relaxed">
-                              {stripHtmlTags(highlight.ai_summary)}
+                              <p className="text-xs text-purple-800 line-clamp-2">
+                                {stripHtmlTags(highlight.ai_summary)}
+                              </p>
                             </div>
                           </div>
                         </div>
                       )}
 
-                      {/* State Legislation Summary (always visible) */}
-                      {highlight.order_type === 'state_legislation' && highlight.ai_processed && highlight.ai_summary && (
-                        <div className="mb-4 mt-4">
-                          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-5">
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-purple-600 rounded-full">
-                                  <FileText size={20} className="text-white" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-purple-900">Legislative Summary</h3>
-                              </div>
-                              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
-                                <Sparkles size={12} />
-                                AI Generated
-                              </div>
-                            </div>
-                            <div className="text-sm text-purple-800 leading-relaxed">
-                              {stripHtmlTags(highlight.ai_summary)}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                      {/* External Links - Inline */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {highlight.html_url && (
+                          <a
+                            href={highlight.html_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 text-blue-600 rounded-md text-xs font-medium hover:bg-gray-100 transition-all duration-300"
+                          >
+                            <ExternalLink size={12} className="text-blue-600" />
+                            View Source
+                          </a>
+                        )}
+                        
+                        {highlight.pdf_url && (
+                          <a
+                            href={highlight.pdf_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 text-red-600 rounded-md text-xs font-medium hover:bg-gray-100 transition-all duration-300"
+                          >
+                            <FileText size={12} className="text-red-600" />
+                            PDF
+                          </a>
+                        )}
+                        
+                        {/* Read More Button */}
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setExpandedOrders(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(orderId)) {
+                                newSet.delete(orderId);
+                              } else {
+                                newSet.add(orderId);
+                              }
+                              return newSet;
+                            });
+                          }}
+                          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-all duration-200"
+                        >
+                          {isExpanded ? (
+                            <>
+                              Show Less
+                              <ChevronDown size={12} className="rotate-180 transition-transform duration-200" />
+                            </>
+                          ) : (
+                            <>
+                              Read More
+                              <ChevronDown size={12} className="transition-transform duration-200" />
+                            </>
+                          )}
+                        </button>
+                      </div>
 
                       {/* Expanded Content */}
                       {isExpanded && (
-                        <div>
-                          {/* Azure AI Talking Points */}
-                          {highlight.ai_processed && highlight.ai_talking_points && (
-                            <div className="mb-4 mt-4">
-                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-5">
-                                <div className="flex items-center justify-between mb-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-600 rounded-full">
-                                      <Target size={20} className="text-white" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-blue-800">Key Talking Points</h3>
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          {/* Full AI Summary - Compact */}
+                          {highlight.ai_processed && highlight.ai_summary && (
+                            <div className="mb-3">
+                              <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <FileText size={14} className="text-purple-600" />
+                                    <h3 className="text-sm font-semibold text-purple-900">
+                                      {highlight.order_type === 'executive_order' ? 'Executive Summary' : 'Legislative Summary'}
+                                    </h3>
                                   </div>
-                                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md">
-                                    <Sparkles size={12} />
-                                    AI Generated
+                                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-600 text-white text-xs rounded">
+                                    <Sparkles size={10} />
+                                    AI
                                   </div>
                                 </div>
-                                <div className="space-y-4">
+                                <div className="text-sm text-purple-800 leading-relaxed">
+                                  {stripHtmlTags(highlight.ai_summary)}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Azure AI Talking Points - Compact */}
+                          {highlight.ai_processed && highlight.ai_talking_points && (
+                            <div className="mb-3">
+                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <Target size={14} className="text-blue-600" />
+                                    <h3 className="text-sm font-semibold text-blue-800">Key Talking Points</h3>
+                                  </div>
+                                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-600 text-white text-xs rounded">
+                                    <Sparkles size={10} />
+                                    AI
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
                                   {formatTalkingPoints(highlight.ai_talking_points)}
                                 </div>
                               </div>
                             </div>
                           )}
 
-                          {/* Azure AI Business Impact */}
+                          {/* Azure AI Business Impact - Compact */}
                           {highlight.ai_processed && highlight.ai_business_impact && (
-                            <div className="mb-4 mt-4">
-                              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-5">
-                                <div className="flex items-center justify-between mb-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-green-600 rounded-full">
-                                      <TrendingUp size={20} className="text-white" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-green-900">Business Impact Analysis</h3>
+                            <div className="mb-3">
+                              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <TrendingUp size={14} className="text-green-600" />
+                                    <h3 className="text-sm font-semibold text-green-900">Business Impact Analysis</h3>
                                   </div>
-                                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-md">
-                                    <Sparkles size={12} />
-                                    AI Generated
+                                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-600 text-white text-xs rounded">
+                                    <Sparkles size={10} />
+                                    AI
                                   </div>
                                 </div>
                                 <div className="text-sm text-green-800 leading-relaxed">
@@ -2524,13 +2554,13 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                             </div>
                           )}
 
-                          {/* No AI Analysis Message */}
+                          {/* No AI Analysis Message - Compact */}
                           {!highlight.ai_processed && (
-                            <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+                            <div className="bg-yellow-50 p-3 rounded-md border border-yellow-200 mb-3">
                               <div className="flex items-center justify-between">
                                 <div>
-                                  <h4 className="font-medium text-yellow-800">No AI Analysis Available</h4>
-                                  <p className="text-yellow-700 text-sm">
+                                  <h4 className="text-sm font-medium text-yellow-800">No AI Analysis Available</h4>
+                                  <p className="text-yellow-700 text-xs">
                                     This item was highlighted before AI processing was available.
                                   </p>
                                 </div>

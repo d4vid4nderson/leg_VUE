@@ -21,6 +21,10 @@ except ImportError:
         EXECUTIVE_SUMMARY = "executive_summary"
         KEY_TALKING_POINTS = "key_talking_points"
         BUSINESS_IMPACT = "business_impact"
+        # State Bill specific prompts
+        STATE_BILL_SUMMARY = "state_bill_summary"
+        STATE_BILL_TALKING_POINTS = "state_bill_talking_points"
+        STATE_BILL_IMPACT = "state_bill_impact"
     
     class Category(Enum):
         HEALTHCARE = "healthcare"
@@ -205,6 +209,60 @@ Avoid asterisks (**) and dashes (---) in your response.
 Focus on concrete business implications.
 
 Legislative Content: {text}
+""",
+
+    # State Bill specific prompts
+    PromptType.STATE_BILL_SUMMARY: """
+    Write a simple, clear overview of this state bill in 1-2 sentences.
+    Focus only on:
+    - What the bill does (main purpose in plain language)
+    - Who or what it affects (in basic terms)
+    
+    Keep it very simple and accessible. Avoid technical details, legislative jargon, or complex explanations.
+    Write as if explaining to someone who just wants a quick understanding of what this bill is about.
+    
+    State Bill Content: {text}
+    """,
+        
+    PromptType.STATE_BILL_TALKING_POINTS: """
+    Create exactly 5 distinct talking points for discussing this state bill with constituents and stakeholders.
+    Each point should be ONE complete sentence and focus on different aspects:
+
+    1. [What problem this bill aims to solve or address]
+    2. [Who would be most directly affected by this legislation]  
+    3. [The most significant change or new requirement it creates]
+    4. [How and when this would be implemented if passed]
+    5. [Potential benefits or concerns for the average citizen]
+
+    Format as numbered list exactly as shown above.
+    Make each point suitable for town halls, community meetings, or constituent communications.
+    Use bold formatting for important terms: **term**
+    Avoid legislative jargon - use plain language.
+    
+    State Bill Content: {text}
+    """,
+    
+    PromptType.STATE_BILL_IMPACT: """
+Analyze the potential impact of this state bill using clear, accessible language:
+
+Community Impact:
+Local Effects and Considerations
+• [Describe how this bill would affect local communities and residents in one clear sentence]
+• [Describe any economic or social impacts on the state in one clear sentence]
+
+Implementation Considerations:
+Practical Effects and Requirements
+• [Describe what would need to change or be established for implementation in one clear sentence]
+• [Describe any costs, benefits, or administrative changes in one clear sentence]
+
+Summary:
+[Provide a balanced 1-2 sentence summary of what this bill would mean for the state and its residents]
+
+Use simple bullet points with • character only. 
+Avoid asterisks (**) and dashes (---) in your response.
+Focus on practical, real-world implications for constituents.
+
+State Bill Content: {text}
 """
 }
 
@@ -213,6 +271,9 @@ SYSTEM_MESSAGES = {
     PromptType.EXECUTIVE_SUMMARY: "You are a senior policy analyst who writes clear, concise executive summaries for C-level executives. Focus on the big picture and strategic implications.",
     PromptType.KEY_TALKING_POINTS: "You are a communications strategist helping leaders discuss policy changes. Create talking points that are memorable, accurate, and useful for stakeholder conversations.",
     PromptType.BUSINESS_IMPACT: "You are a business strategy consultant analyzing regulatory impact. Focus on concrete business implications, compliance requirements, and strategic opportunities.",
+    PromptType.STATE_BILL_SUMMARY: "You are a legislative analyst who creates simple, clear overviews of state bills for the general public. Focus on the basic purpose and impact in plain language that anyone can understand quickly.",
+    PromptType.STATE_BILL_TALKING_POINTS: "You are a community engagement specialist helping elected officials communicate with constituents. Create talking points that are accessible, relevant, and useful for public discussions.",
+    PromptType.STATE_BILL_IMPACT: "You are a civic policy analyst who evaluates how state legislation affects communities and residents. Focus on practical, real-world implications for everyday citizens.",
 }
 
 # Enums and classes
@@ -628,10 +689,13 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
         if prompt_type == PromptType.EXECUTIVE_SUMMARY:
             max_tokens = 300
             temperature = 0.1
-        elif prompt_type == PromptType.KEY_TALKING_POINTS:
+        elif prompt_type == PromptType.STATE_BILL_SUMMARY:
+            max_tokens = 150  # Shorter for simple overview
+            temperature = 0.1
+        elif prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS]:
             max_tokens = 400
             temperature = 0.2
-        elif prompt_type == PromptType.BUSINESS_IMPACT:
+        elif prompt_type in [PromptType.BUSINESS_IMPACT, PromptType.STATE_BILL_IMPACT]:
             max_tokens = 500
             temperature = 0.15
         
@@ -644,20 +708,20 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
             top_p=0.95,
             frequency_penalty=0.3,
             presence_penalty=0.2,
-            stop=["6.", "7.", "8.", "9."] if prompt_type == PromptType.KEY_TALKING_POINTS else None
+            stop=["6.", "7.", "8.", "9."] if prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS] else None
         )
 
         raw_response = response.choices[0].message.content
         print(f"Raw AI response ({prompt_type.value}):\n---\n{raw_response[:200]}...\n---")
 
         # Enhanced formatting for each type
-        if prompt_type == PromptType.EXECUTIVE_SUMMARY:
+        if prompt_type in [PromptType.EXECUTIVE_SUMMARY, PromptType.STATE_BILL_SUMMARY]:
             # Keep as paragraph, clean up any unwanted formatting
             formatted_response = clean_summary_format(raw_response)
-        elif prompt_type == PromptType.KEY_TALKING_POINTS:
+        elif prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS]:
             # Ensure proper numbered list format
             formatted_response = format_talking_points(raw_response)
-        elif prompt_type == PromptType.BUSINESS_IMPACT:
+        elif prompt_type in [PromptType.BUSINESS_IMPACT, PromptType.STATE_BILL_IMPACT]:
             # Ensure proper business impact structure
             formatted_response = format_business_impact(raw_response)
         else:
@@ -677,6 +741,16 @@ async def get_key_talking_points(text: str, context: str = "") -> str:
 
 async def get_business_impact(text: str, context: str = "") -> str:
     return await process_with_ai(text, PromptType.BUSINESS_IMPACT, context=context)
+
+# State Bill specific AI functions
+async def get_state_bill_summary(text: str, context: str = "") -> str:
+    return await process_with_ai(text, PromptType.STATE_BILL_SUMMARY, context=context)
+
+async def get_state_bill_talking_points(text: str, context: str = "") -> str:
+    return await process_with_ai(text, PromptType.STATE_BILL_TALKING_POINTS, context=context)
+
+async def get_state_bill_impact(text: str, context: str = "") -> str:
+    return await process_with_ai(text, PromptType.STATE_BILL_IMPACT, context=context)
 
 # Main analysis functions - ENHANCED
 async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) -> Dict[str, str]:
@@ -723,11 +797,11 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         # Categorize the bill
         category = categorize_bill(title, description)
         
-        # Run AI analysis tasks with different contexts for each type
+        # Run AI analysis tasks with state bill specific prompts
         try:
-            summary_task = get_executive_summary(content, f"Executive Summary - {base_context}")
-            talking_points_task = get_key_talking_points(content, f"Stakeholder Discussion - {base_context}")
-            business_impact_task = get_business_impact(content, f"Business Analysis - {base_context}")
+            summary_task = get_state_bill_summary(content, f"State Bill Summary - {base_context}")
+            talking_points_task = get_state_bill_talking_points(content, f"Constituent Discussion - {base_context}")
+            business_impact_task = get_state_bill_impact(content, f"Community Impact - {base_context}")
             
             summary_result, talking_points_result, business_impact_result = await asyncio.gather(
                 summary_task, talking_points_task, business_impact_task, return_exceptions=True
@@ -749,6 +823,7 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         
         # Return results with both old and new field names for compatibility
         return {
+            'summary': summary_result,  # New simple overview for summary column
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
             'ai_talking_points': talking_points_result,
@@ -765,6 +840,7 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         traceback.print_exc()
         error_msg = f"<p>AI analysis failed: {str(e)}</p>"
         return {
+            'summary': error_msg,  # New simple overview for summary column
             'ai_summary': error_msg,
             'ai_executive_summary': error_msg,
             'ai_talking_points': error_msg,
@@ -932,11 +1008,11 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
         
         print(f"🔍 Analyzing {state} legislation: {title[:50]}...")
         
-        # Run enhanced AI analysis with different contexts
+        # Run enhanced AI analysis with state bill specific prompts
         summary_result, talking_points_result, business_impact_result = await asyncio.gather(
-            get_executive_summary(content, f"Legislative Summary - {context}"),
-            get_key_talking_points(content, f"Legislative Discussion - {context}"),
-            get_business_impact(content, f"Legislative Impact - {context}"),
+            get_state_bill_summary(content, f"State Bill Summary - {context}"),
+            get_state_bill_talking_points(content, f"Constituent Discussion - {context}"),
+            get_state_bill_impact(content, f"Community Impact - {context}"),
             return_exceptions=True
         )
         
@@ -948,6 +1024,7 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
             business_impact_result = f"<p>Error generating business impact: {str(business_impact_result)}</p>"
         
         return {
+            'summary': summary_result,  # New simple overview for summary column
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
             'ai_talking_points': talking_points_result,
@@ -961,6 +1038,7 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
         print(f"❌ Error analyzing legislation: {e}")
         error_msg = f"<p>AI analysis failed: {str(e)}</p>"
         return {
+            'summary': error_msg,  # New simple overview for summary column
             'ai_summary': error_msg,
             'ai_executive_summary': error_msg,
             'ai_talking_points': error_msg,

@@ -21,6 +21,20 @@ from ai_status import check_azure_ai_configuration
 from ai import convert_status_to_text
 # Import our new fixed modules  
 from database_connection import test_database_connection, get_db_connection, execute_query
+# Import LegiScan service
+from legiscan_service import (
+    EnhancedLegiScanClient, 
+    StateLegislationDatabaseManager,
+    LegiScanConfigRequest,
+    LegiScanSearchRequest,
+    StateLegislationFetchRequest,
+    SessionStatusRequest,
+    check_legiscan_connection,
+    get_legiscan_status,
+    LEGISCAN_AVAILABLE,
+    LEGISCAN_INITIALIZED,
+    LegiScanAPI
+)
 # Environment variables loading
 from dotenv import load_dotenv
 from executive_orders_db import (add_highlight_direct, create_highlights_table,
@@ -891,10 +905,10 @@ async def enhanced_bill_analysis(bill_data: Dict, context: str = "") -> Dict[str
         }
 
 # ===============================
-# ENHANCED LEGISCAN CLIENT
+# ENHANCED LEGISCAN CLIENT - Now imported from legiscan_service.py
 # ===============================
 
-class EnhancedLegiScanClient:
+# class EnhancedLegiScanClient: # MOVED to legiscan_service.py
     """Enhanced LegiScan client with comprehensive AI integration"""
     
     def __init__(self, api_key: str = None, rate_limit_delay: float = 0.5):
@@ -1217,7 +1231,7 @@ class StateLegislationDatabaseManager:
                 # Update existing bill
                 update_query = """
                 UPDATE dbo.state_legislation SET
-                    bill_number = ?, title = ?, description = ?, state = ?, state_abbr = ?,
+                    bill_number = ?, title = ?, description = ?, summary = ?, state = ?, state_abbr = ?,
                     status = ?, category = ?, introduced_date = ?, last_action_date = ?,
                     session_id = ?, session_name = ?, bill_type = ?, body = ?,
                     legiscan_url = ?, pdf_url = ?, ai_summary = ?, ai_executive_summary = ?,
@@ -1231,6 +1245,7 @@ class StateLegislationDatabaseManager:
                     bill_data.get('bill_number', ''),
                     bill_data.get('title', ''),
                     bill_data.get('description', ''),
+                    bill_data.get('summary', ''),  # Add summary field
                     bill_data.get('state', ''),
                     bill_data.get('state_abbr', ''),
                     bill_data.get('status', ''),
@@ -1262,13 +1277,13 @@ class StateLegislationDatabaseManager:
                 # Insert new bill
                 insert_query = """
                 INSERT INTO dbo.state_legislation (
-                    bill_id, bill_number, title, description, state, state_abbr,
+                    bill_id, bill_number, title, description, summary, state, state_abbr,
                     status, category, introduced_date, last_action_date,
                     session_id, session_name, bill_type, body,
                     legiscan_url, pdf_url, ai_summary, ai_executive_summary,
                     ai_talking_points, ai_key_points, ai_business_impact,
                     ai_potential_impact, ai_version, created_at, last_updated, reviewed
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 
                 values = (
@@ -1276,6 +1291,7 @@ class StateLegislationDatabaseManager:
                     bill_data.get('bill_number', ''),
                     bill_data.get('title', ''),
                     bill_data.get('description', ''),
+                    bill_data.get('summary', ''),  # Add summary field
                     bill_data.get('state', ''),
                     bill_data.get('state_abbr', ''),
                     bill_data.get('status', ''),
@@ -1930,10 +1946,11 @@ app.add_middleware(
 # Add response compression middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+
 # Handle OPTIONS requests explicitly
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    return {}
+# @app.options("/{path:path}")
+# async def options_handler(path: str):
+#     return {}
 
 # Simple CORS test endpoint
 @app.get("/api/cors-test")
@@ -1945,6 +1962,36 @@ async def cors_test():
         "timestamp": datetime.now().isoformat(),
         "cors_enabled": True
     }
+
+# Test POST endpoint
+@app.post("/api/test-post")
+async def test_post():
+    """Test POST endpoint"""
+    return {"message": "Test POST works", "timestamp": datetime.now().isoformat()}
+
+class ManualRefreshRequest(BaseModel):
+    state_code: Optional[str] = None
+    session_id: Optional[str] = None
+    force_update: bool = False
+
+@app.post("/api/updates/manual-refresh")
+async def manual_refresh_endpoint(request: ManualRefreshRequest):
+    """Manual refresh endpoint for updating bills"""
+    try:
+        logger.info(f"🔄 Manual refresh requested for state: {request.state_code}, session: {request.session_id}")
+        
+        return {
+            "task_id": f"manual_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "message": "Manual refresh started",
+            "estimated_duration": 300,
+            "success": True
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in manual refresh: {e}")
+        return {
+            "success": False,
+            "message": str(e)
+        }
 
 
 
@@ -2138,6 +2185,7 @@ async def debug_connectivity(request: Request):
             "error": str(e),
             "error_type": type(e).__name__
         }
+
 
 
 @app.post("/api/executive-orders/fetch")
@@ -2967,6 +3015,32 @@ async def legacy_fetch_executive_orders(request: ExecutiveOrderFetchRequest):
             "message": str(e)
         }
 
+
+
+
+@app.get("/api/task-status/{task_id}")
+async def get_task_status(task_id: str):
+    """Get the status of a manual refresh task"""
+    try:
+        # Simple response for now
+        return {
+            "task_id": task_id,
+            "status": "completed",
+            "start_time": datetime.now().isoformat(),
+            "end_time": datetime.now().isoformat(),
+            "bills_updated": 0,
+            "bills_added": 0,
+            "error_message": None
+        }
+    except Exception as e:
+        logger.error(f"❌ Error getting task status: {e}")
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error_message": str(e)
+        }
+
+
 #@app.post("/api/fetch-executive-orders")
 #async def legacy_fetch_executive_orders():
 #    """Legacy endpoint for backward compatibility"""
@@ -3332,6 +3406,8 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
                 'status': convert_status_to_text(db_record) if db_record.get('status') else 'Unknown',
                 'category': db_record.get('category', 'not-applicable'),
                 'session': db_record.get('session_name', ''),
+                'session_name': db_record.get('session_name', ''),  # Add session_name field
+                'session_id': db_record.get('session_id', ''),     # Add session_id field
                 'bill_type': db_record.get('bill_type', 'bill'),
                 'body': db_record.get('body', ''),
                 
@@ -3382,6 +3458,8 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
                 for key, value in api_record.items():
                     if 'status' in key.lower():
                         print(f"   {key}: {repr(value)}")
+                
+                # Debug session data (removed for production)
             
             results.append(api_record)
         
@@ -6145,6 +6223,82 @@ async def test_one_by_one_processing(
             "success": False,
             "error": f"Test failed: {str(e)}",
             "workflow": "enhanced_one_by_one" if enhanced_ai else "traditional_one_by_one"
+        }
+
+# ===============================
+# SESSION MONITORING ENDPOINTS
+# ===============================
+
+@app.post("/api/legiscan/session-status")
+async def check_session_status(request: SessionStatusRequest):
+    """Check for active legislative sessions across specified states"""
+    try:
+        print(f"🔍 Checking session status for states: {request.states}")
+        
+        # Check if LegiScan service is available
+        if not LEGISCAN_AVAILABLE and not LEGISCAN_INITIALIZED:
+            return {
+                "success": False,
+                "error": "LegiScan service not available",
+                "active_sessions": {},
+                "states_checked": request.states,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Initialize Enhanced LegiScan client
+        try:
+            client = EnhancedLegiScanClient()
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to initialize LegiScan client: {str(e)}",
+                "active_sessions": {},
+                "states_checked": request.states,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Check for active sessions
+        session_data = await client.check_active_sessions(request.states)
+        
+        if not session_data.get('success'):
+            return {
+                "success": False,
+                "error": session_data.get('error', 'Unknown error checking sessions'),
+                "active_sessions": {},
+                "states_checked": request.states,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Format response for frontend
+        response = {
+            "success": True,
+            "active_sessions": session_data.get('active_sessions', {}),
+            "states_checked": session_data.get('states_checked', []),
+            "states_with_active_sessions": session_data.get('states_with_active_sessions', []),
+            "total_active_sessions": session_data.get('total_active_sessions', 0),
+            "timestamp": session_data.get('timestamp'),
+            "include_all_sessions": request.include_all_sessions
+        }
+        
+        # Include all session details if requested
+        if request.include_all_sessions:
+            response["all_sessions"] = session_data.get('all_sessions', {})
+        
+        print(f"✅ Session status check completed: {response['total_active_sessions']} active sessions found")
+        
+        return response
+        
+    except Exception as e:
+        print(f"❌ Error checking session status: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        return {
+            "success": False,
+            "error": f"Session status check failed: {str(e)}",
+            "active_sessions": {},
+            "states_checked": request.states,
+            "timestamp": datetime.now().isoformat()
         }
 
 # ===============================

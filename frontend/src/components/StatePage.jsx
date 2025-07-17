@@ -6,7 +6,6 @@ import {
     FileText,
     Star,
     ExternalLink,
-    Building,
     GraduationCap,
     HeartPulse,
     Wrench,
@@ -19,13 +18,17 @@ import {
     ArrowDown,
     ArrowUp as ArrowUpIcon,
     Calendar,
+    CalendarDays,
     Hash,
     X,
-    Target,
-    TrendingUp,
-    Sparkles,
     Download, // Added for fetch button
-    MapPin
+    MapPin,
+    MoreVertical, // Added for mobile menu
+    Flag,
+    Bell,
+    Clock,
+    LayoutGrid,
+    Sparkles
 } from 'lucide-react';
 
 import { FILTERS, SUPPORTED_STATES } from '../utils/constants';
@@ -35,6 +38,11 @@ import useReviewStatus from '../hooks/useReviewStatus';
 import ShimmerLoader from '../components/ShimmerLoader';
 import BillCardSkeleton from '../components/BillCardSkeleton';
 import StateOutlineBackground from '../components/StateOutlineBackground';
+import SessionNotification from '../components/SessionNotification';
+import SessionFilter from '../components/SessionFilter';
+import HighlightsFilter from '../components/HighlightsFilter';
+import StatusFilter from '../components/StatusFilter';
+import ManualRefresh from '../components/ManualRefresh';
 import API_URL from '../config/api';
 import { 
     getCurrentStatus, 
@@ -49,20 +57,42 @@ import {
 // Pagination configuration
 const ITEMS_PER_PAGE = 25;
 
-// Extended FILTERS array with review status options
-const EXTENDED_FILTERS = [
-    ...FILTERS,
+// Bill status filter options
+const STATUS_FILTERS = [
     {
-        key: 'reviewed',
-        label: 'Reviewed',
+        key: 'introduced',
+        label: 'Introduced',
         icon: Check,
-        type: 'review_status'
+        type: 'bill_status',
+        description: 'Bills that have been introduced'
     },
     {
-        key: 'not_reviewed',
-        label: 'Not Reviewed',
-        icon: AlertTriangle,
-        type: 'review_status'
+        key: 'engrossed',
+        label: 'Engrossed',
+        icon: Check,
+        type: 'bill_status',
+        description: 'Bills that have passed one chamber'
+    },
+    {
+        key: 'enrolled',
+        label: 'Enrolled',
+        icon: Check,
+        type: 'bill_status',
+        description: 'Bills that have passed both chambers'
+    },
+    {
+        key: 'passed',
+        label: 'Passed',
+        icon: Flag,
+        type: 'bill_status',
+        description: 'Bills that have been passed'
+    },
+    {
+        key: 'final',
+        label: 'Final',
+        icon: Flag,
+        type: 'bill_status',
+        description: 'Bills at final stage (Passed/Enacted/Vetoed/Failed)'
     }
 ];
 
@@ -95,6 +125,13 @@ const cleanCategory = (category) => {
     validCategories.push('not-applicable');
     
     return validCategories.includes(mappedCategory) ? mappedCategory : 'not-applicable';
+};
+
+// Helper function to extract year from session string
+const extractYearFromSession = (sessionString) => {
+    if (!sessionString) return null;
+    const yearMatch = sessionString.match(/(\d{4})/);
+    return yearMatch ? parseInt(yearMatch[1]) : null;
 };
 
 const cleanBillTitle = (title) => {
@@ -192,7 +229,7 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
             </button>
             
             {isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[160px] w-max">
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] min-w-[160px] w-max">
                     <div className="py-1">
                         {FILTERS.map((filter) => {
                             const isSelected = filter.key === cleanedCategory;
@@ -216,22 +253,161 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
     );
 };
 
-// Review Status Tag Component
-const ReviewStatusTag = ({ isReviewed }) => {
-    if (isReviewed) {
-        return (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 text-xs font-medium rounded-md">
-                <Check size={12} />
-                Reviewed
-            </span>
-        );
-    }
+
+// Horizontal Progress Indicator Component for Bill Status
+const StatusProgressBar = ({ status, onStageClick }) => {
+    const mappedStatus = mapLegiScanStatus(status);
+    
+    // Define the legislative process stages in order - dynamic last stage
+    const getStatusStages = (currentStatus) => {
+        const baseStages = [
+            { key: 'introduced', label: 'Introduced', shortLabel: 'Intro' },
+            { key: 'engrossed', label: 'Engrossed', shortLabel: 'Eng' },
+            { key: 'enrolled', label: 'Enrolled', shortLabel: 'Enr' },
+            { key: 'passed', label: 'Passed', shortLabel: 'Pass' }
+        ];
+        
+        // Dynamic final stage based on actual LegiScan status
+        if (currentStatus === 'Signed by Governor' || currentStatus === 'Effective') {
+            baseStages.push({ key: 'enacted', label: 'Enacted', shortLabel: 'Law' });
+        } else if (currentStatus === 'Vetoed') {
+            baseStages.push({ key: 'vetoed', label: 'Vetoed', shortLabel: 'Veto' });
+        } else if (currentStatus === 'Failed/Dead' || currentStatus === 'Indefinitely Postponed') {
+            baseStages.push({ key: 'failed', label: 'Failed', shortLabel: 'Failed' });
+        } else {
+            // Default final stage
+            baseStages.push({ key: 'final', label: 'Final', shortLabel: 'Final' });
+        }
+        
+        return baseStages;
+    };
+    
+    const statusStages = getStatusStages(mappedStatus);
+    
+    // Map current status to stage - based on actual LegiScan statuses
+    const getStageIndex = (currentStatus) => {
+        const mappedStatus = mapLegiScanStatus(currentStatus);
+        
+        // Map LegiScan statuses to progress bar stages
+        if (mappedStatus === 'Introduced') return 0;
+        if (mappedStatus === 'Engrossed') return 1; // Passed one chamber
+        if (mappedStatus === 'Enrolled') return 2; // Passed both chambers
+        if (mappedStatus === 'Passed') return 3; // Final passage
+        if (mappedStatus === 'Signed by Governor' || mappedStatus === 'Effective') return 4; // Enacted into law
+        if (mappedStatus === 'Vetoed') return 4; // Vetoed at final stage
+        if (mappedStatus === 'Failed/Dead' || mappedStatus === 'Indefinitely Postponed') return 4; // Failed - show at end
+        
+        // Default to introduced for unknown statuses
+        return 0;
+    };
+    
+    const currentStageIndex = getStageIndex(status);
+    const isFailed = mappedStatus === 'Failed/Dead' || mappedStatus === 'Indefinitely Postponed';
+    const isVetoed = mappedStatus === 'Vetoed';
+    
+    const handleStageClick = (stage, index, e) => {
+        e.stopPropagation();
+        if (onStageClick) {
+            onStageClick(stage, index, e);
+        }
+    };
+    
+    // Calculate circle color based on dynamic progression
+    const getCircleColor = (index) => {
+        const progress = index / (statusStages.length - 1);
+        
+        if (isFailed || isVetoed) {
+            // Blue to red gradient for failed/vetoed bills
+            const r = Math.round(59 + (239 - 59) * progress);   // 59 (blue) to 239 (red)
+            const g = Math.round(130 + (68 - 130) * progress);  // 130 (blue) to 68 (red)
+            const b = Math.round(246 + (68 - 246) * progress);  // 246 (blue) to 68 (red)
+            return `rgb(${r}, ${g}, ${b})`;
+        } else {
+            // Blue progression for successful bills
+            const r = Math.round(59 + (29 - 59) * progress);    // 59 (light blue) to 29 (dark blue)
+            const g = Math.round(130 + (78 - 130) * progress);  // 130 (light blue) to 78 (dark blue)
+            const b = Math.round(246 + (216 - 246) * progress); // 246 (light blue) to 216 (dark blue)
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+    };
+
+    // Get dynamic icon for each stage
+    const getStageIcon = (stage, index) => {
+        if (index < currentStageIndex) {
+            // Completed stages - only show checkmarks if bill actually succeeded
+            if (isFailed || isVetoed) {
+                // For failed/vetoed bills, show X's for earlier stages (they didn't truly succeed)
+                return <X size={12} className="text-white" strokeWidth={3} />;
+            } else {
+                // For successful bills, show checkmarks for completed stages
+                return <Check size={12} className="text-white" strokeWidth={3} />;
+            }
+        } else if (index === currentStageIndex) {
+            // Current stage depends on status
+            if (isFailed || isVetoed) {
+                return <X size={12} className="text-white" strokeWidth={3} />;
+            } else if (index === statusStages.length - 1 && (mappedStatus === 'Signed by Governor' || mappedStatus === 'Effective')) {
+                // Only show flag for truly enacted laws
+                return <Flag size={12} className="text-white" strokeWidth={3} />;
+            } else {
+                // All other current stages get checkmark (including "Passed", "Introduced", etc.)
+                return <Check size={12} className="text-white" strokeWidth={3} />;
+            }
+        } else {
+            // Future stages are empty
+            return null;
+        }
+    };
     
     return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 text-xs font-medium rounded-md">
-            <AlertTriangle size={12} />
-            Not Reviewed
-        </span>
+        <div className="w-full px-0 py-2">
+            <div className="relative w-full">
+                {/* Progress line background - positioned to align with circle centers */}
+                <div className="absolute top-3 h-2 bg-gray-300" style={{ left: '16px', right: '16px' }}></div>
+                
+                {/* Progress line foreground - positioned to align with circle centers */}
+                <div 
+                    className="absolute top-3 h-2 transition-all duration-300"
+                    style={{
+                        left: '16px',
+                        right: currentStageIndex === statusStages.length - 1 ? '16px' : 'auto',
+                        width: currentStageIndex === statusStages.length - 1 ? 'auto' : `${((currentStageIndex) / (statusStages.length - 1)) * (100 - 32)}%`,
+                        background: isFailed || isVetoed
+                            ? 'linear-gradient(to right, #3b82f6, #ef4444)' // Blue to red for failed/vetoed
+                            : 'linear-gradient(to right, #3b82f6, #1d4ed8)' // Blue progression for successful
+                    }}
+                ></div>
+                
+                {/* Circles positioned across full width */}
+                <div className="flex w-full relative" style={{ justifyContent: 'space-between' }}>
+                    {statusStages.map((stage, index) => (
+                        <div key={stage.key} className="flex flex-col items-center relative">
+                            <div
+                                onClick={(e) => handleStageClick(stage, index, e)}
+                                className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 relative z-10 cursor-pointer border-2"
+                                style={{
+                                    backgroundColor: index <= currentStageIndex ? getCircleColor(index) : 'white',
+                                    borderColor: index <= currentStageIndex ? getCircleColor(index) : '#d1d5db'
+                                }}
+                                title={getStatusDescription(stage.key)}
+                            >
+                                {getStageIcon(stage, index)}
+                            </div>
+                            
+                            {/* Label under circle */}
+                            <span 
+                                className="text-xs font-medium mt-1 text-center whitespace-nowrap"
+                                style={{
+                                    color: index <= currentStageIndex ? getCircleColor(index) : '#6b7280'
+                                }}
+                            >
+                                {stage.shortLabel}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
     );
 };
 
@@ -465,7 +641,7 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
 
     return (
         <div 
-            className="status-tooltip absolute bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64 z-50"
+            className="status-tooltip absolute bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64 z-[120]"
             style={{
                 top: position?.top || 0,
                 left: position?.left || 0,
@@ -497,135 +673,6 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
 };
 
 // AI Content Formatting Functions
-const formatTalkingPoints = (content) => {
-    if (!content) return null;
-    
-    let textContent = content.replace(/<[^>]*>/g, '');
-    const numberedMatches = textContent.match(/\d+\.\s*[^.]*(?:\.[^0-9][^.]*)*(?=\s*\d+\.|$)/g);
-    const points = [];
-    
-    if (numberedMatches && numberedMatches.length > 1) {
-        numberedMatches.forEach((match) => {
-            let cleaned = match.replace(/^\d+\.\s*/, '').trim();
-            if (cleaned.length > 10) {
-                points.push(cleaned);
-            }
-        });
-    } else {
-        const sentences = textContent.split(/(?=\d+\.\s)/).filter(s => s.trim().length > 0);
-        sentences.forEach((sentence) => {
-            const cleaned = sentence.replace(/^\d+\.\s*/, '').trim();
-            if (cleaned.length > 10) {
-                points.push(cleaned);
-            }
-        });
-    }
-    
-    if (points.length > 0) {
-        return (
-            <div className="space-y-4">
-                {points.slice(0, 5).map((point, idx) => (
-                    <div key={idx} className="flex gap-4">
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                            {idx + 1}
-                        </div>
-                        <p className="text-sm text-blue-800 leading-relaxed flex-1 pt-1">
-                            {point}
-                        </p>
-                    </div>
-                ))}
-            </div>
-        );
-    }
-    
-    return <div className="text-sm text-gray-700 leading-relaxed">{textContent}</div>;
-};
-
-const formatUniversalContent = (content) => {
-    if (!content) return null;
-    
-    let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
-    textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
-    
-    const sectionKeywords = [
-        'Risk Assessment', 'Market Opportunity', 'Implementation Requirements',
-        'Financial Implications', 'Competitive Implications', 'Timeline Pressures', 'Summary'
-    ];
-    
-    const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]?\\s*([^]*?)(?=\\s*(?:${sectionKeywords.join('|')}|$))`, 'gi');
-    const inlineMatches = [];
-    let match;
-    
-    while ((match = inlinePattern.exec(textContent)) !== null) {
-        inlineMatches.push({
-            header: match[1].trim(),
-            content: match[2].trim(),
-            fullMatch: match[0]
-        });
-    }
-    
-    if (inlineMatches.length > 0) {
-        const sections = [];
-        
-        inlineMatches.forEach(({ header, content }) => {
-            if (header && content && content.length > 5) {
-                let cleanHeader = header.trim();
-                if (!cleanHeader.endsWith(':')) {
-                    cleanHeader += ':';
-                }
-                
-                const items = [];
-                const sentences = content.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 5);
-                
-                if (sentences.length === 1 || content.length < 200) {
-                    items.push(content.trim());
-                } else {
-                    sentences.forEach(sentence => {
-                        if (sentence.length > 10) {
-                            items.push(sentence);
-                        }
-                    });
-                }
-                
-                if (items.length > 0) {
-                    sections.push({ title: cleanHeader, items: items });
-                }
-            }
-        });
-        
-        if (sections.length > 0) {
-            return (
-                <div>
-                    {sections.map((section, idx) => (
-                        <div key={idx} style={{ marginBottom: '16px' }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>
-                                {section.title}
-                            </div>
-                            {section.items.map((item, itemIdx) => (
-                                <div key={itemIdx} style={{
-                                    marginBottom: '6px',
-                                    fontSize: '14px',
-                                    lineHeight: '1.6',
-                                    wordWrap: 'break-word',
-                                    overflowWrap: 'break-word'
-                                }}>
-                                    {section.items.length === 1 ? item : `• ${item}`}
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </div>
-            );
-        }
-    }
-    
-    return <div className="universal-text-content" style={{
-        fontSize: '14px',
-        lineHeight: '1.6',
-        wordWrap: 'break-word',
-        overflowWrap: 'break-word'
-    }}>{textContent}</div>;
-};
 
 // Main StatePage Component
 const StatePage = ({ stateName, stableHandlers }) => {
@@ -635,13 +682,29 @@ const StatePage = ({ stateName, stableHandlers }) => {
     const [error, setError] = useState(null);
     const [fetchLoading, setFetchLoading] = useState(false); // New state for fetch loading
     const [fetchSuccess, setFetchSuccess] = useState(null); // Success message for fetch
+    const [activeMobileMenu, setActiveMobileMenu] = useState(null); // Mobile menu state
+    
+    // Manual refresh state
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [headerVisible, setHeaderVisible] = useState(true);
+    const [lastUpdateTime, setLastUpdateTime] = useState(null);
     
     // Filter state (matching ExecutiveOrdersPage pattern)
     const [selectedFilters, setSelectedFilters] = useState([]);
+    const [selectedStatusFilter, setSelectedStatusFilter] = useState(null);
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
     
     // Sort state
     const [sortOrder, setSortOrder] = useState('latest');
+    
+    // Session filter state
+    const [selectedSessions, setSelectedSessions] = useState([]);
+    
+    // Highlights filter state - persistent in localStorage
+    const [isHighlightFilterActive, setIsHighlightFilterActive] = useState(() => {
+        const saved = localStorage.getItem('highlightFilterActive');
+        return saved === 'true';
+    });
     
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -675,8 +738,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
     const [localHighlights, setLocalHighlights] = useState(new Set());
     const [highlightLoading, setHighlightLoading] = useState(new Set());
     
-    // Expanded bills state
-    const [expandedBills, setExpandedBills] = useState(new Set());
     
     const filterDropdownRef = useRef(null);
     
@@ -706,26 +767,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
         return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
     }, [stateName]);
     
-    // Expand/collapse functions
-    const toggleBillExpansion = useCallback((bill) => {
-        const billId = getStateBillId(bill);
-        if (!billId) return;
-        
-        setExpandedBills(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(billId)) {
-                newSet.delete(billId);
-            } else {
-                newSet.add(billId);
-            }
-            return newSet;
-        });
-    }, [getStateBillId]);
-    
-    const isBillExpanded = useCallback((bill) => {
-        const billId = getStateBillId(bill);
-        return billId ? expandedBills.has(billId) : false;
-    }, [expandedBills, getStateBillId]);
     
     // Helper function to get bill status with proper database field mapping
     const getBillStatus = useCallback((bill) => {
@@ -850,17 +891,35 @@ const StatePage = ({ stateName, stableHandlers }) => {
     // Filter helper functions
     const toggleFilter = (filterKey) => {
         setSelectedFilters(prev => {
-            const newFilters = prev.includes(filterKey)
-                ? prev.filter(f => f !== filterKey)
-                : [...prev, filterKey];
-            setCurrentPage(1);
-            return newFilters;
+            // If clicking the same filter, deselect it
+            if (prev.includes(filterKey)) {
+                return [];
+            }
+            // Otherwise, select only this filter
+            return [filterKey];
         });
-        // Keep dropdown open to allow multiple selections
+        setCurrentPage(1);
+        // Close dropdown after selection
+        setShowFilterDropdown(false);
     };
     
     const clearAllFilters = () => {
         setSelectedFilters([]);
+        setSelectedStatusFilter(null);
+        setSelectedSessions([]);
+        setIsHighlightFilterActive(false);
+        localStorage.setItem('highlightFilterActive', 'false');
+        setCurrentPage(1);
+    };
+
+    const clearPracticeAreaFilters = () => {
+        setSelectedFilters([]);
+        setCurrentPage(1);
+    };
+    
+    // Status filter handler
+    const handleStatusFilterChange = (statusKey) => {
+        setSelectedStatusFilter(statusKey);
         setCurrentPage(1);
     };
     
@@ -1041,25 +1100,30 @@ const StatePage = ({ stateName, stableHandlers }) => {
             const transformedBills = ordersArray.map((bill, index) => {
                 const uniqueId = getStateBillId(bill) || `fallback-${pageNum}-${index}`;
                 
-                return {
+                const transformedBill = {
                     id: uniqueId,
                     bill_id: uniqueId,
                     title: bill?.title || 'Untitled Bill',
                     category: cleanCategory(bill?.category),
                     description: bill?.description || bill?.ai_summary || 'No description available',
-                    summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : 'No AI summary available',
+                    summary: bill?.summary ? stripHtmlTags(bill.summary) : 'No summary available',
                     bill_number: bill?.bill_number,
                     state: bill?.state || stateName,
                     status: bill?.status, // ✅ ADD THE STATUS FIELD!
                     legiscan_url: bill?.legiscan_url,
-                    ai_talking_points: bill?.ai_talking_points,
-                    ai_business_impact: bill?.ai_business_impact,
-                    ai_potential_impact: bill?.ai_potential_impact,
                     introduced_date: bill?.introduced_date,
                     last_action_date: bill?.last_action_date,
                     reviewed: bill?.reviewed || false,
+                    // Session fields
+                    session: bill?.session || '',
+                    session_name: bill?.session_name || '',
+                    session_id: bill?.session_id || '',
                     order_type: 'state_legislation'
                 };
+                
+                // Debug session data (removed for production)
+                
+                return transformedBill;
             });
             
             setStateOrders(transformedBills);
@@ -1202,6 +1266,18 @@ const StatePage = ({ stateName, stableHandlers }) => {
             });
         }
     }, [stateOrders, isItemReviewed]);
+
+    // Close mobile menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (activeMobileMenu && !event.target.closest('.mobile-menu-container')) {
+                setActiveMobileMenu(null);
+            }
+        };
+
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [activeMobileMenu]);
     
     // Filtered orders (simple filtering without fuzzy search)
     const filteredStateOrders = useMemo(() => {
@@ -1210,20 +1286,29 @@ const StatePage = ({ stateName, stableHandlers }) => {
         let filtered = stateOrders;
         
         // Apply category filters
-        const categoryFilters = selectedFilters.filter(f => !['reviewed', 'not_reviewed'].includes(f));
-        
-        if (categoryFilters.length > 0) {
-            filtered = filtered.filter(bill => categoryFilters.includes(cleanCategory(bill?.category)));
+        if (selectedFilters.length > 0) {
+            filtered = filtered.filter(bill => selectedFilters.includes(cleanCategory(bill?.category)));
         }
         
-        // Apply review status filters
-        const hasReviewedFilter = selectedFilters.includes('reviewed');
-        const hasNotReviewedFilter = selectedFilters.includes('not_reviewed');
+        // Apply status filter
+        if (selectedStatusFilter) {
+            filtered = filtered.filter(bill => {
+                const billStatus = (bill.status || '').toLowerCase();
+                return billStatus.includes(selectedStatusFilter.toLowerCase());
+            });
+        }
         
-        if (hasReviewedFilter && !hasNotReviewedFilter) {
-            filtered = filtered.filter(bill => isItemReviewed(bill));
-        } else if (hasNotReviewedFilter && !hasReviewedFilter) {
-            filtered = filtered.filter(bill => !isItemReviewed(bill));
+        // Apply highlights filter
+        if (isHighlightFilterActive) {
+            filtered = filtered.filter(bill => isStateBillHighlighted(bill));
+        }
+        
+        // Apply session filters
+        if (selectedSessions.length > 0) {
+            filtered = filtered.filter(bill => {
+                const billSession = bill.session || bill.session_name;
+                return billSession && selectedSessions.includes(billSession);
+            });
         }
         
         // Sort by date
@@ -1243,7 +1328,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
         });
         
         return filtered;
-    }, [stateOrders, selectedFilters, isItemReviewed, sortOrder]);
+    }, [stateOrders, selectedFilters, selectedStatusFilter, sortOrder, selectedSessions, isHighlightFilterActive, isStateBillHighlighted]);
     
     // Pagination calculations
     const totalItems = filteredStateOrders.length;
@@ -1258,6 +1343,66 @@ const StatePage = ({ stateName, stableHandlers }) => {
             fetchFromDatabase(1);
         }
     }, [stateName, fetchFromDatabase]);
+    
+    // Manual refresh handlers
+    const handleRefreshStart = useCallback(() => {
+        setIsRefreshing(true);
+        setError(null);
+        setFetchSuccess(null);
+    }, []);
+    
+    const handleRefreshComplete = useCallback(async (result) => {
+        setIsRefreshing(false);
+        setLastUpdateTime(new Date());
+        
+        if (result && (result.bills_updated > 0 || result.bills_added > 0)) {
+            setFetchSuccess(
+                `Successfully updated! ${result.bills_added || 0} new bills added, ${result.bills_updated || 0} bills updated.`
+            );
+            
+            // Refresh the bills list
+            await fetchFromDatabase(1);
+            
+            // Clear success message after 5 seconds
+            setTimeout(() => setFetchSuccess(null), 5000);
+        } else {
+            setFetchSuccess('No new updates found. Your data is current.');
+            setTimeout(() => setFetchSuccess(null), 3000);
+        }
+    }, [fetchFromDatabase]);
+    
+    const handleRefreshError = useCallback((error) => {
+        setIsRefreshing(false);
+        setError(`Failed to refresh: ${error.message}`);
+        setTimeout(() => setError(null), 5000);
+    }, []);
+    
+    const handleRefreshNeeded = useCallback(() => {
+        // Scroll to the header refresh button
+        const refreshButton = document.getElementById('main-refresh-button');
+        if (refreshButton) {
+            refreshButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Add a subtle highlight effect
+            refreshButton.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50');
+            setTimeout(() => {
+                refreshButton.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50');
+            }, 2000);
+        }
+    }, []);
+    
+    // Scroll detection for mobile floating refresh
+    useEffect(() => {
+        const handleScroll = () => {
+            const header = document.getElementById('page-header');
+            if (header) {
+                const headerRect = header.getBoundingClientRect();
+                setHeaderVisible(headerRect.bottom > 0);
+            }
+        };
+        
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
     
     // Load highlights on mount
     useEffect(() => {
@@ -1319,12 +1464,13 @@ const StatePage = ({ stateName, stableHandlers }) => {
     }, [statusTooltipOpen]);
     
     return (
-        <div className="pt-6 min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
+        <div className="pt-6 min-h-screen bg-gradient-to-b from-green-50 to-white">
             <ScrollToTopButton />
             
             {/* Page Header */}
-            <section className="relative overflow-hidden px-6 pt-12 pb-8">
+            <section id="page-header" className="relative overflow-hidden px-6 pt-12 pb-8">
                 <div className="max-w-7xl mx-auto relative z-10">
+                    {/* Centered Badge */}
                     <div className="text-center mb-8">
                         <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
                             <StateOutlineBackground 
@@ -1334,66 +1480,238 @@ const StatePage = ({ stateName, stableHandlers }) => {
                             />
                             {stateName} State Legislation
                         </div>
-                        
+                    </div>
+                    
+                    {/* Clean Header Layout */}
+                    <div className="text-center mb-8">
+                        {/* Main Title */}
                         <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
                             <span className="block">{stateName}</span>
                             <span className="block bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent py-2">Legislation</span>
                         </h1>
                         
+                        {/* Description */}
                         <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-                            Access the latest legislation and bills from {stateName} with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of new legislation.
+                            Access the latest legislation and bills from {stateName} with simple, clear overviews. Stay informed about new legislation and track the status of important bills affecting your state.
                         </p>
+                        
+                        {/* Status Bar with Refresh Button */}
+                        <div className="flex flex-col items-center justify-center gap-4 mb-6">
+                            {/* Refresh Button */}
+                            <div className="flex justify-center">
+                                <ManualRefresh 
+                                    id="main-refresh-button"
+                                    stateCode={SUPPORTED_STATES[stateName]}
+                                    size="medium"
+                                    onRefreshStart={handleRefreshStart}
+                                    onRefreshComplete={handleRefreshComplete}
+                                    onRefreshError={handleRefreshError}
+                                    className="transition-all duration-200"
+                                />
+                            </div>
+                            
+                            {/* Status Info */}
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-600">
+                                <span className="font-medium text-center">{stateOrders.length} bills loaded</span>
+                                {lastUpdateTime && (
+                                    <span className="flex items-center justify-center gap-1">
+                                        <Clock size={14} />
+                                        Last updated: {lastUpdateTime.toLocaleTimeString()}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
+            
+            {/* Single Smart Notification System */}
+            <div className="max-w-7xl mx-auto px-6 mb-4">
+                {/* Success Message */}
+                {fetchSuccess && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start space-x-3 mb-4">
+                        <Check size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                            <p className="text-green-800 font-medium">Update Successful</p>
+                            <p className="text-green-700 text-sm mt-1">{fetchSuccess}</p>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Error Message */}
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3 mb-4">
+                        <AlertTriangle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                            <p className="text-red-800 font-medium">Update Failed</p>
+                            <p className="text-red-700 text-sm mt-1">{error}</p>
+                        </div>
+                        <button
+                            onClick={() => setError(null)}
+                            className="text-red-400 hover:text-red-600 ml-auto"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                )}
+                
+                {/* Refreshing Progress */}
+                {isRefreshing && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center space-x-3 mb-4">
+                        <RefreshIcon size={20} className="text-blue-600 animate-spin flex-shrink-0" />
+                        <div>
+                            <p className="text-blue-800 font-medium">Refreshing Bills...</p>
+                            <p className="text-blue-700 text-sm">Fetching the latest data from LegiScan</p>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Enhanced Session Notification with integrated updates */}
+                <SessionNotification 
+                    stateName={stateName} 
+                    stateAbbr={SUPPORTED_STATES[stateName]}
+                    visible={true}
+                    onRefreshNeeded={handleRefreshNeeded}
+                    hasUpdates={false} // Remove duplicate update indication
+                />
+            </div>
             
             {/* Results Section */}
             <div className="mb-8">
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                     <div className="p-6">
-                        {/* Controls Bar - Fetch Button moved to left, sort/filter on right */}
-                        <div className="flex items-center justify-between mb-6">
-                            {/* Fetch Button Group - Moved to upper left */}
-                            <FetchButtonGroup 
-                                onFetch={handleFetch} 
-                                isLoading={fetchLoading}
-                            />
+                        {/* Controls Bar - Sort/filter controls */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                            {/* Sort Button - Mobile Optimized */}
+                            <button
+                                onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
+                                className="flex items-center justify-center gap-3 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px]"
+                            >
+                                {sortOrder === 'latest' ? (
+                                    <>
+                                        <ArrowDown size={16} />
+                                        <span>Latest Date</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ArrowUpIcon size={16} />
+                                        <span>Earliest Date</span>
+                                    </>
+                                )}
+                            </button>
                             
-                            <div className="flex gap-4 items-center">
-                                {/* Sort Button */}
-                                <button
-                                    onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                                    className="flex items-center gap-3 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                                >
-                                    {sortOrder === 'latest' ? (
-                                        <>
-                                            <ArrowDown size={16} />
-                                            <span>Latest Date</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <ArrowUpIcon size={16} />
-                                            <span>Earliest Date</span>
-                                        </>
-                                    )}
-                                </button>
+                            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
+                                
+                                {/* Clear All Filters Button - Slides in when multiple filters are active */}
+                                <div className={`relative overflow-hidden transition-all duration-300 ease-in-out ${
+                                    (selectedFilters.length > 0 ? 1 : 0) + 
+                                    (selectedStatusFilter ? 1 : 0) + 
+                                    (selectedSessions.length > 0 ? 1 : 0) + 
+                                    (isHighlightFilterActive ? 1 : 0) > 1
+                                        ? 'w-full sm:w-32 opacity-100' 
+                                        : 'w-0 opacity-0'
+                                }`}>
+                                    <button
+                                        onClick={() => {
+                                            clearAllFilters();
+                                        }}
+                                        className="flex items-center justify-center px-3 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-200 w-full sm:w-32 min-h-[44px] text-gray-700"
+                                        title="Clear all active filters"
+                                    >
+                                        <X size={16} className="mr-1" />
+                                        <span className="whitespace-nowrap">Clear All</span>
+                                    </button>
+                                </div>
+                                
+                                {/* Highlights Filter */}
+                                <HighlightsFilter 
+                                    isHighlightFilterActive={isHighlightFilterActive}
+                                    onHighlightFilterChange={(value) => {
+                                        setIsHighlightFilterActive(value);
+                                        localStorage.setItem('highlightFilterActive', value.toString());
+                                    }}
+                                    disabled={loading || fetchLoading}
+                                    loading={loading}
+                                    highlightCount={stateOrders.filter(bill => isStateBillHighlighted(bill)).length}
+                                />
+                                
+                                {/* Session Filter */}
+                                <SessionFilter 
+                                    sessions={(() => {
+                                        // Get unique sessions from bills with actual session data
+                                        const sessionMap = new Map();
+                                        stateOrders.forEach((bill) => {
+                                            const sessionName = bill.session || bill.session_name;
+                                            
+                                            if (sessionName && sessionName.trim() && sessionName !== 'Unknown Session') {
+                                                const sessionKey = sessionName;
+                                                if (!sessionMap.has(sessionKey)) {
+                                                    sessionMap.set(sessionKey, {
+                                                        session_id: sessionKey,
+                                                        session_name: sessionName,
+                                                        year_start: extractYearFromSession(sessionName),
+                                                        year_end: null,
+                                                        is_active: sessionName.includes('2025') || sessionName.includes('2024'),
+                                                        is_likely_active: sessionName.includes('2025')
+                                                    });
+                                                }
+                                            }
+                                        });
+                                        return Array.from(sessionMap.values());
+                                    })()}
+                                    selectedSessions={selectedSessions}
+                                    onSessionChange={setSelectedSessions}
+                                    disabled={loading || fetchLoading}
+                                    loading={loading}
+                                />
+                                
+                                {/* Status Filter */}
+                                <StatusFilter 
+                                    statusOptions={STATUS_FILTERS}
+                                    selectedStatus={selectedStatusFilter}
+                                    onStatusChange={handleStatusFilterChange}
+                                    disabled={loading || fetchLoading}
+                                    loading={loading}
+                                    statusCounts={(() => {
+                                        const counts = {};
+                                        STATUS_FILTERS.forEach(filter => {
+                                            counts[filter.key] = stateOrders.filter(bill => {
+                                                const billStatus = (bill.status || '').toLowerCase();
+                                                return billStatus.includes(filter.key.toLowerCase());
+                                            }).length;
+                                        });
+                                        return counts;
+                                    })()}
+                                />
                                 
                                 {/* Filter Dropdown */}
                                 <div className="relative" ref={filterDropdownRef}>
                                     <button
                                         type="button"
                                         onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                                        className="flex items-center justify-between px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-48"
+                                        className={`flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-full sm:w-56 min-h-[44px] ${
+                                            selectedFilters.length > 0 ? 'ring-2 ring-blue-500 border-blue-500' : ''
+                                        }`}
                                     >
                                         <div className="flex items-center gap-2">
+                                            {(() => {
+                                                if (selectedFilters.length > 0) {
+                                                    const selectedFilter = FILTERS.find(f => f.key === selectedFilters[0]);
+                                                    if (selectedFilter) {
+                                                        const IconComponent = selectedFilter.icon;
+                                                        return <IconComponent size={16} className="text-gray-500" />;
+                                                    }
+                                                }
+                                                return <LayoutGrid size={16} className="text-gray-500" />;
+                                            })()}
                                             <span className="truncate">
-                                                Filters
+                                                {selectedFilters.length > 0 ? (
+                                                    (() => {
+                                                        const selectedFilter = FILTERS.find(f => f.key === selectedFilters[0]);
+                                                        return selectedFilter ? selectedFilter.label : 'All Practice Areas';
+                                                    })()
+                                                ) : 'All Practice Areas'}
                                             </span>
-                                            {selectedFilters.length > 0 && (
-                                                <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
-                                                    {selectedFilters.length}
-                                                </span>
-                                            )}
                                         </div>
                                         <ChevronDown 
                                             size={16} 
@@ -1403,27 +1721,30 @@ const StatePage = ({ stateName, stableHandlers }) => {
 
                                     {/* Dropdown content - Match HighlightsPage structure exactly */}
                                     {showFilterDropdown && (
-                                        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
-                                            {/* Clear All Button */}
-                                            {selectedFilters.length > 0 && (
-                                                <div className="px-4 py-2 border-b border-gray-200">
-                                                    <button
-                                                        onClick={() => {
-                                                            clearAllFilters();
-                                                            setShowFilterDropdown(false);
-                                                        }}
-                                                        className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
-                                                    >
-                                                        Clear All Filters ({selectedFilters.length})
-                                                    </button>
+                                        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-[120]">
+                                            {/* Header */}
+                                            <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b border-gray-200">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-medium text-gray-700">
+                                                        Filter by Practice Area
+                                                    </span>
+                                                    {selectedFilters.length > 0 && (
+                                                        <button
+                                                            onClick={() => {
+                                                                clearPracticeAreaFilters();
+                                                                setShowFilterDropdown(false);
+                                                            }}
+                                                            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                        >
+                                                            Clear
+                                                        </button>
+                                                    )}
                                                 </div>
-                                            )}
+                                            </div>
                                             
-                                            {/* Practice Areas Section */}
-                                            <div className="border-b border-gray-200 pb-2">
-                                                <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                                    Practice Areas
-                                                </div>
+                                            <div>
+                                                {/* Practice Areas Section */}
+                                                <div className="border-b border-gray-200 pb-2">
                                                 
                                                 {/* All filter options from FILTERS array */}
                                                 {FILTERS.map((filter) => {
@@ -1444,7 +1765,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                                       filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
                                                                       filter.key === 'not-applicable' ? 'bg-gray-100 text-gray-700 font-medium' :
                                                                       'bg-gray-100 text-gray-700 font-medium'
-                                                                    : 'text-gray-700 hover:bg-gray-100'
+                                                                    : 'text-gray-900 hover:bg-gray-50'
                                                             }`}
                                                         >
                                                             <div className="flex items-center gap-3">
@@ -1456,44 +1777,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                     );
                                                 })}
                                             </div>
-
-                                            {/* Review Status Section */}
-                                            <div>
-                                                <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                                    Review Status
-                                                </div>
-                                                
-                                                {/* Reviewed */}
-                                                <button
-                                                    onClick={() => toggleFilter('reviewed')}
-                                                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                                                        selectedFilters.includes('reviewed')
-                                                            ? 'bg-green-100 text-green-700 font-medium'
-                                                            : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <Check size={16} />
-                                                        <span>Reviewed</span>
-                                                    </div>
-                                                    <span className="text-xs text-gray-500">({filterCounts.reviewed || 0})</span>
-                                                </button>
-
-                                                {/* Not Reviewed */}
-                                                <button
-                                                    onClick={() => toggleFilter('not_reviewed')}
-                                                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                                                        selectedFilters.includes('not_reviewed')
-                                                            ? 'bg-yellow-100 text-yellow-700 font-medium'
-                                                            : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <AlertTriangle size={16} />
-                                                        <span>Not Reviewed</span>
-                                                    </div>
-                                                    <span className="text-xs text-gray-500">({filterCounts.not_reviewed || 0})</span>
-                                                </button>
                                             </div>
                                         </div>
                                     )}
@@ -1524,90 +1807,111 @@ const StatePage = ({ stateName, stableHandlers }) => {
                         ) : currentPageItems.length > 0 ? (
                             <div className="space-y-6">
                                 {currentPageItems.map((bill, index) => {
-                                    const billId = getStateBillId(bill);
-                                    const isReviewed = isItemReviewed(bill);
-                                    const isExpanded = isBillExpanded(bill);
-                                    
                                     return (
-                                        <div key={bill.id || index} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
+                                        <div key={bill.id || index} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 relative">
+                                            {/* Mobile Menu Button - Top Right Corner */}
+                                            <div className="absolute top-4 right-4 lg:hidden">
+                                                <div className="relative mobile-menu-container">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            setActiveMobileMenu(activeMobileMenu === bill.id ? null : bill.id);
+                                                        }}
+                                                        className="p-2 hover:bg-gray-100 rounded-lg transition-all duration-300 border border-gray-200"
+                                                    >
+                                                        <MoreVertical size={20} className="text-gray-600" />
+                                                    </button>
+                                                    
+                                                    {/* Mobile Action Menu */}
+                                                    {activeMobileMenu === bill.id && (
+                                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                                                            
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    if (!isBillHighlightLoading(bill)) {
+                                                                        handleStateBillHighlight(bill);
+                                                                    }
+                                                                    setActiveMobileMenu(null);
+                                                                }}
+                                                                disabled={isBillHighlightLoading(bill)}
+                                                                className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors ${
+                                                                    isStateBillHighlighted(bill) ? 'text-yellow-500' : 'text-gray-700'
+                                                                }`}
+                                                            >
+                                                                <Star size={18} className={isStateBillHighlighted(bill) ? "fill-current" : ""} />
+                                                                <span>{isStateBillHighlighted(bill) ? 'Highlighted' : 'Add Highlight'}</span>
+                                                            </button>
+                                                            
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            
                                             <div className="p-6">
-                                                {/* Card Header */}
-                                                <div className="flex items-start justify-between mb-4">
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="text-xl font-bold text-gray-900 mb-3 leading-tight">
+                                                {/* Card Header - Mobile Responsive */}
+                                                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-4 gap-4">
+                                                    <div className="flex-1 min-w-0 pr-10 lg:pr-4">
+                                                        <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 leading-tight pr-2">
                                                             {cleanBillTitle(bill.title)}
                                                         </h3>
                                                         
-                                                        {/* Metadata Row */}
-                                                        <div className="flex flex-wrap items-center gap-4 text-sm mb-3">
-                                                            <div className="flex items-center gap-1.5 text-gray-700">
-                                                                <Hash size={14} className="text-blue-600" />
-                                                                <span className="font-medium">{bill.bill_number || 'Unknown'}</span>
-                                                            </div>
-                                                            {bill.introduced_date && (
+                                                        {/* Metadata Row - Mobile Optimized */}
+                                                        <div className="space-y-3 mb-0">
+                                                            {/* Top Row - Bill Number, Date, and Category */}
+                                                            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 text-sm">
                                                                 <div className="flex items-center gap-1.5 text-gray-700">
-                                                                    <Calendar size={14} className="text-green-600" />
-                                                                    <span>
-                                                                        {new Date(bill.introduced_date).toLocaleDateString('en-US', {
-                                                                            month: 'numeric',
-                                                                            day: 'numeric',
-                                                                            year: 'numeric'
-                                                                        })}
-                                                                    </span>
+                                                                    <Hash size={16} className="text-blue-600" />
+                                                                    <span className="font-medium">{bill.bill_number || 'Unknown'}</span>
                                                                 </div>
-                                                            )}
-                                                            {/* Show status if available, otherwise don't show status pill */}
-                                                            {getBillStatus(bill) && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        openStatusTooltip(getBillStatus(bill), e, bill);
-                                                                    }}
-                                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 hover:shadow-sm cursor-pointer ${getStatusColorClasses(getBillStatus(bill))}`}
-                                                                    title="Click to learn more about this status"
-                                                                >
-                                                                    {getStatusIcon(getBillStatus(bill))}
-                                                                    <span>{mapLegiScanStatus(getBillStatus(bill)) || getBillStatus(bill)}</span>
-                                                                </button>
-                                                            )}
-                                                            <EditableCategoryTag 
-                                                                category={bill.category}
-                                                                itemId={getStateBillId(bill)}
-                                                                itemType="state_legislation"
-                                                                onCategoryChange={handleCategoryUpdate}
-                                                                disabled={loading || fetchLoading}
-                                                            />
-                                                            <ReviewStatusTag isReviewed={isReviewed} />
+                                                                {bill.introduced_date && (
+                                                                    <div className="flex items-center gap-1.5 text-gray-700">
+                                                                        <Calendar size={16} className="text-green-600" />
+                                                                        <span>
+                                                                            {new Date(bill.introduced_date).toLocaleDateString('en-US', {
+                                                                                month: 'numeric',
+                                                                                day: 'numeric',
+                                                                                year: 'numeric'
+                                                                            })}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                <EditableCategoryTag 
+                                                                    category={bill.category}
+                                                                    itemId={getStateBillId(bill)}
+                                                                    itemType="state_legislation"
+                                                                    onCategoryChange={handleCategoryUpdate}
+                                                                    disabled={loading || fetchLoading}
+                                                                />
+                                                                
+                                                                {/* Session Tag */}
+                                                                {(bill.session_name || bill.session) && (
+                                                                    <div className="flex items-center gap-1.5 text-gray-700">
+                                                                        <CalendarDays size={16} className={
+                                                                            (bill.session_name || bill.session || '').toLowerCase().includes('special') 
+                                                                                ? 'text-purple-600' 
+                                                                                : 'text-blue-600'
+                                                                        } />
+                                                                        <span className={`font-medium ${
+                                                                            (bill.session_name || bill.session || '').toLowerCase().includes('special') 
+                                                                                ? 'text-purple-700' 
+                                                                                : 'text-blue-700'
+                                                                        }`}>
+                                                                            {bill.session_name || bill.session}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Action Buttons */}
-                                                    <div className="flex items-center gap-3 ml-6 flex-shrink-0">
-                                                        {/* Review Button */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                handleReviewToggle(bill);
-                                                            }}
-                                                            disabled={isItemReviewLoading(bill)}
-                                                            className={`p-2 rounded-md transition-all duration-300 ${
-                                                                isItemReviewLoading(bill)
-                                                                    ? 'text-gray-500 cursor-not-allowed'
-                                                                    : isReviewed
-                                                                        ? 'text-green-600 bg-green-50 border border-green-200 hover:bg-green-100'
-                                                                        : 'text-gray-400 hover:bg-green-100 hover:text-green-600'
-                                                            }`}
-                                                            title={isReviewed ? "Mark as not reviewed" : "Mark as reviewed"}
-                                                        >
-                                                            {isItemReviewLoading(bill) ? (
-                                                                <RefreshIcon size={16} className="animate-spin" />
-                                                            ) : (
-                                                                <Check size={16} />
-                                                            )}
-                                                        </button>
+                                                    {/* Desktop Action Buttons - Hidden on Mobile */}
+                                                    <div className="hidden lg:flex items-center justify-end gap-2 flex-shrink-0">
                                                         
-                                                        {/* Highlight Button */}
+                                                        {/* Highlight Button - Touch Friendly */}
                                                         <button
                                                             onClick={(e) => {
                                                                 e.preventDefault();
@@ -1617,10 +1921,10 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                                 }
                                                             }}
                                                             disabled={isBillHighlightLoading(bill)}
-                                                            className={`p-2 rounded-md transition-all duration-300 ${
+                                                            className={`p-3 rounded-lg transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center ${
                                                                 isStateBillHighlighted(bill)
                                                                     ? 'text-yellow-500 bg-yellow-50 border border-yellow-200 hover:bg-yellow-100'
-                                                                    : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500'
+                                                                    : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500 border border-gray-200'
                                                             } ${isBillHighlightLoading(bill) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                             title={
                                                                 isBillHighlightLoading(bill)
@@ -1631,116 +1935,57 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                             }
                                                         >
                                                             {isBillHighlightLoading(bill) ? (
-                                                                <RefreshIcon size={16} className="animate-spin" />
+                                                                <RefreshIcon size={18} className="animate-spin" />
                                                             ) : (
-                                                                <Star size={16} className={isStateBillHighlighted(bill) ? "fill-current" : ""} />
+                                                                <Star size={18} className={isStateBillHighlighted(bill) ? "fill-current" : ""} />
                                                             )}
                                                         </button>
                                                         
-                                                        {/* Expand Button */}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                toggleBillExpansion(bill);
-                                                            }}
-                                                            className="p-2 hover:bg-gray-100 rounded-md transition-all duration-300"
-                                                            title={isExpanded ? "Collapse details" : "Expand details"}
-                                                        >
-                                                            <ChevronDown
-                                                                size={20}
-                                                                className={`text-gray-500 transition-transform duration-200 ${
-                                                                    isExpanded ? 'rotate-180' : ''
-                                                                }`}
-                                                            />
-                                                        </button>
                                                     </div>
                                                 </div>
                                                 
-                                                {/* AI Summary */}
-                                                {bill.summary && bill.summary !== 'No AI summary available' && (
-                                                    <div className="mb-6">
-                                                        <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-5">
-                                                            <div className="flex items-center justify-between mb-4">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="p-2 bg-purple-600 rounded-full">
-                                                                        <FileText size={20} className="text-white" />
-                                                                    </div>
-                                                                    <h3 className="text-lg font-semibold text-purple-900">Legislative Summary</h3>
-                                                                </div>
-                                                                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
-                                                                    <Sparkles size={12} />
-                                                                    AI Generated
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-sm text-purple-800 leading-relaxed">
-                                                                {stripHtmlTags(bill.summary)}
-                                                            </div>
-                                                        </div>
+                                                {/* Progress Bar - Full Width */}
+                                                {getBillStatus(bill) && (
+                                                    <div className="my-6">
+                                                        <StatusProgressBar 
+                                                            status={getBillStatus(bill)} 
+                                                            onStageClick={(stage, index, e) => {
+                                                                openStatusTooltip(stage.label, e, bill);
+                                                            }}
+                                                        />
                                                     </div>
                                                 )}
                                                 
-                                                {/* Expanded Content */}
-                                                {isExpanded && (
-                                                    <div className="space-y-6">
-                                                        {/* AI Talking Points */}
-                                                        {bill.ai_talking_points && (
-                                                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-5">
-                                                                <div className="flex items-center justify-between mb-4">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="p-2 bg-blue-600 rounded-full">
-                                                                            <Target size={20} className="text-white" />
-                                                                        </div>
-                                                                        <h3 className="text-lg font-semibold text-blue-900">Key Talking Points</h3>
-                                                                    </div>
-                                                                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md">
-                                                                        <Sparkles size={12} />
-                                                                        AI Generated
-                                                                    </div>
+                                                {/* Simplified Summary */}
+                                                {bill.summary && bill.summary !== 'No summary available' && (
+                                                    <div className="mb-6">
+                                                        <div className="bg-gradient-to-r from-slate-50 to-gray-50 border border-gray-200 rounded-lg p-5">
+                                                            <div className="flex items-center gap-3 mb-3">
+                                                                <div className="p-2 bg-purple-600 rounded-full">
+                                                                    <Sparkles size={16} className="text-white" />
                                                                 </div>
-                                                                <div className="space-y-4">
-                                                                    {formatTalkingPoints(bill.ai_talking_points)}
-                                                                </div>
+                                                                <h3 className="text-lg font-semibold text-gray-900">{bill.bill_number} AI Generated Summary</h3>
                                                             </div>
-                                                        )}
-                                                        
-                                                        {/* AI Business Impact */}
-                                                        {bill.ai_business_impact && (
-                                                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-5">
-                                                                <div className="flex items-center justify-between mb-4">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="p-2 bg-green-600 rounded-full">
-                                                                            <TrendingUp size={20} className="text-white" />
-                                                                        </div>
-                                                                        <h3 className="text-lg font-semibold text-green-900">Business Impact Analysis</h3>
-                                                                    </div>
-                                                                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white text-xs font-medium rounded-md">
-                                                                        <Sparkles size={12} />
-                                                                        AI Generated
-                                                                    </div>
-                                                                </div>
-                                                                <div className="text-sm text-green-800 leading-relaxed">
-                                                                    {formatUniversalContent(bill.ai_business_impact)}
-                                                                </div>
+                                                            <div className="text-sm text-gray-700 leading-relaxed">
+                                                                {bill.summary}
                                                             </div>
-                                                        )}
-                                                        
-                                                        {/* Action Buttons */}
-                                                        <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-200">
                                                             {bill.legiscan_url && (
-                                                                <a
-                                                                    href={bill.legiscan_url}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-all duration-300"
-                                                                >
-                                                                    <ExternalLink size={14} />
-                                                                    <span>View Source Material</span>
-                                                                </a>
+                                                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                                                    <a 
+                                                                        href={bill.legiscan_url} 
+                                                                        target="_blank" 
+                                                                        rel="noopener noreferrer"
+                                                                        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                                                    >
+                                                                        <ExternalLink size={14} />
+                                                                        <span>View Original Bill Information</span>
+                                                                    </a>
+                                                                </div>
                                                             )}
                                                         </div>
                                                     </div>
                                                 )}
+                                                
                                             </div>
                                         </div>
                                     );
@@ -1776,6 +2021,20 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 onClose={closeStatusTooltip}
                 position={tooltipPosition}
             />
+            
+            {/* Mobile Floating Refresh (only when header is not visible) */}
+            {!headerVisible && (
+                <div className="lg:hidden fixed bottom-4 right-4 z-50">
+                    <ManualRefresh 
+                        stateCode={SUPPORTED_STATES[stateName]}
+                        size="large"
+                        onRefreshStart={handleRefreshStart}
+                        onRefreshComplete={handleRefreshComplete}
+                        onRefreshError={handleRefreshError}
+                        className="shadow-lg"
+                    />
+                </div>
+            )}
         </div>
     );
 };

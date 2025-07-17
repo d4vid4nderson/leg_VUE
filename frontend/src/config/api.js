@@ -25,7 +25,7 @@ export const getApiUrl = () => {
   
   // In development, use localhost
   console.log('✅ Development environment detected, using localhost');
-  return 'http://localhost:8000';
+  return 'http://localhost:8001';
 };
 
 const API_URL = getApiUrl();

@@ -26,7 +26,13 @@ import {
   Brain,
   Eye,
   Download,
-  PlayCircle
+  PlayCircle,
+  Flag,
+  Check,
+  Hash,
+  Calendar,
+  ChevronDown,
+  LayoutGrid
 } from 'lucide-react';
 
 const Homepage = () => {
@@ -114,38 +120,37 @@ const Homepage = () => {
         }
       `}</style>
       {/* Hero Section */}
-      <section className="relative overflow-hidden pb-20 px-6">
+      <section className="relative overflow-hidden pb-16 px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-              <Sparkles size={16} />
-              Powered by AI Technology
+          <div className="text-center mb-12 pt-8">
+            <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1.5 rounded-full text-sm font-medium mb-6">
+              <Bell size={14} />
+              Stay Informed
             </div>
             
-            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-8 leading-relaxed">
-              <span className="block">Stay Ahead of</span>
+            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-8 leading-tight">
+              <span className="block">Track Policy &</span>
               <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent py-2">Legislative Changes</span>
             </h1>
             
-            <p className="text-xl text-gray-600 mb-10 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-lg text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
               LegislationVUE automatically tracks Executive Orders and State Legislation, 
-              then uses advanced AI to deliver instant summaries, key talking points, 
-              and business impact analysis—so you never miss what matters.
+              then uses advanced AI to deliver instant summaries and business impact analysis.
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
               <button 
                 onClick={() => navigate('/executive-orders')}
-                className="gradient-button border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-lg font-semibold text-lg hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
+                className="gradient-button border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
               >
-                <ScrollText size={20} />
+                <ScrollText size={18} />
                 Get Started with Executive Orders
               </button>
               <button 
                 onClick={() => navigate('/state-legislation')}
-                className="gradient-button border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-lg font-semibold text-lg hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
+                className="gradient-button border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
               >
-                <FileText size={20} />
+                <FileText size={18} />
                 Get Started with State Legislation
               </button>
             </div>
@@ -166,48 +171,117 @@ const Homepage = () => {
               <div className="p-8">
                 <div className="grid md:grid-cols-2 gap-6">
                   {/* Executive Order Preview */}
-                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-purple-600 rounded-full">
-                          <FileText size={20} className="text-white" />
-                        </div>
-                        <h3 className="text-lg font-semibold text-purple-900">Executive Summary</h3>
-                      </div>
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
-                        <Sparkles size={12} />
-                        AI Generated
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    {/* Title */}
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 className="text-base font-semibold text-gray-900 flex-1 pr-4 truncate">
+                        Changing the World, One Community at a Time
+                      </h3>
+                      <div className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center">
+                        <ChevronDown size={12} className="text-gray-600" />
                       </div>
                     </div>
-                    <div className="text-sm text-purple-800 leading-relaxed">
-                      This executive order establishes new cybersecurity requirements for federal agencies, 
-                      requiring enhanced security protocols and regular compliance audits...
+
+                    {/* Metadata and Tags */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex items-center gap-1 text-sm">
+                        <Hash size={14} className="text-blue-600" />
+                        <span className="text-gray-700">12345</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm">
+                        <Calendar size={14} className="text-green-600" />
+                        <span className="text-gray-700">1/15/2025</span>
+                      </div>
+                      <div className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-teal-100 text-teal-800 text-xs font-medium rounded border border-teal-200">
+                        <LayoutGrid size={8} />
+                        All Areas
+                      </div>
+                    </div>
+
+                    {/* Executive Summary */}
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center">
+                            <FileText size={10} className="text-white" />
+                          </div>
+                          <h4 className="text-purple-900 font-medium text-base">Executive Summary</h4>
+                        </div>
+                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-600 text-white text-xs font-medium rounded">
+                          <Sparkles size={8} />
+                          AI Generated
+                        </div>
+                      </div>
+                      <p className="text-sm text-purple-800 leading-relaxed">
+                        MOREgroup creates facilities where communities are cared for, educated, and protected. From civic to healthcare projects, we contribute to social infrastructure.
+                      </p>
                     </div>
                   </div>
                   
-                  {/* Talking Points Preview */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-600 rounded-full">
-                          <Target size={20} className="text-white" />
+                  {/* State Legislation Preview with Progress Bar */}
+                  <div className="bg-white border border-gray-200 rounded-lg p-6">
+                    <div className="mb-4">
+                      <h3 className="text-base font-semibold text-gray-900 mb-2">
+                        What we do matters. How we do it matters more.
+                      </h3>
+                      <div className="flex items-center gap-3 text-sm text-gray-600 mb-4">
+                        <div className="flex items-center gap-1">
+                          <Hash size={14} className="text-blue-600" />
+                          <span>HB1234</span>
                         </div>
-                        <h3 className="text-lg font-semibold text-blue-900">Key Talking Points</h3>
-                      </div>
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md">
-                        <Sparkles size={12} />
-                        AI Generated
+                        <div className="flex items-center gap-1">
+                          <Calendar size={14} className="text-green-600" />
+                          <span>3/15/2025</span>
+                        </div>
+                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-teal-100 text-teal-800 text-xs font-medium rounded border border-teal-200">
+                          <LayoutGrid size={8} />
+                          All Areas
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-3">
-                      <div className="flex gap-3">
-                        <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
-                        <p className="text-sm text-blue-800">Mandatory security upgrades required within 90 days</p>
+                    
+                    {/* Progress Bar */}
+                    <div className="mb-4">
+                      <div className="relative">
+                        <div className="absolute top-3 h-2 bg-gray-300 rounded-full" style={{ left: '16px', right: '16px' }}></div>
+                        <div className="absolute top-3 h-2 bg-gradient-to-r from-blue-500 to-green-500 rounded-full" style={{ left: '16px', right: '16px' }}></div>
+                        <div className="flex justify-between items-center relative">
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center relative z-10">
+                              <Check size={12} className="text-white" strokeWidth={3} />
+                            </div>
+                            <span className="text-xs font-medium mt-1 text-blue-500">Intro</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center relative z-10">
+                              <Check size={12} className="text-white" strokeWidth={3} />
+                            </div>
+                            <span className="text-xs font-medium mt-1 text-blue-500">Comm</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 bg-teal-500 rounded-full flex items-center justify-center relative z-10">
+                              <Check size={12} className="text-white" strokeWidth={3} />
+                            </div>
+                            <span className="text-xs font-medium mt-1 text-teal-500">1st</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center relative z-10">
+                              <Check size={12} className="text-white" strokeWidth={3} />
+                            </div>
+                            <span className="text-xs font-medium mt-1 text-green-500">2nd</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center relative z-10">
+                              <Flag size={12} className="text-white" strokeWidth={3} />
+                            </div>
+                            <span className="text-xs font-medium mt-1 text-green-500">Passed</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex gap-3">
-                        <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
-                        <p className="text-sm text-blue-800">Compliance costs estimated at $2.3M annually</p>
-                      </div>
+                    </div>
+                    
+                    <div className="text-sm text-gray-600">
+                      More is what we give, so more is what you get when working with MOREgroup.
                     </div>
                   </div>
                 </div>

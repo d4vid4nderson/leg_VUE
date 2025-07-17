@@ -89,6 +89,8 @@ const AppContent = () => {
   
   // Header dropdown state
   const [showDropdown, setShowDropdown] = useState(false);
+  const [desktopFederalExpanded, setDesktopFederalExpanded] = useState(false);
+  const [desktopStateExpanded, setDesktopStateExpanded] = useState(false);
   const dropdownRef = useRef(null);
 
   // Global highlights state for sharing between pages
@@ -359,6 +361,10 @@ const AppContent = () => {
           fallbackName="Header"
           showDropdown={showDropdown}
           setShowDropdown={setShowDropdown}
+          desktopFederalExpanded={desktopFederalExpanded}
+          setDesktopFederalExpanded={setDesktopFederalExpanded}
+          desktopStateExpanded={desktopStateExpanded}
+          setDesktopStateExpanded={setDesktopStateExpanded}
           dropdownRef={dropdownRef}
           currentPage={location.pathname}
           isAuthenticated={isAuthenticated}
@@ -370,7 +376,7 @@ const AppContent = () => {
 
         {/* Main Content - Match Header's container width exactly */}
         <main className="flex-1 min-h-screen">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-12 py-6">
+          <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-4 sm:py-6">
             <Suspense fallback={
               <div className="flex items-center justify-center min-h-[400px]">
                 <LoadingAnimation />
@@ -526,7 +532,7 @@ const AppContent = () => {
 
         {/* Footer - Match Header's container width exactly */}
         <footer className="bg-gray-50 border-t border-gray-200 py-8 mt-auto">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-12">
+          <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12">
             <div className="text-center text-sm text-gray-600">
               © 2025 Built with ❤️ by MOREgroup Development. All rights reserved. 
               <span className="ml-2">LegislationVUE v{appVersion}</span>

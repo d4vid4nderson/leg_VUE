@@ -146,7 +146,7 @@ const FilterDropdown = forwardRef(({
 
       {/* Dropdown Menu - Standardized Container */}
       {showFilterDropdown && (
-        <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[280px] max-w-[320px] overflow-hidden">
+        <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] min-w-[280px] max-w-[320px] overflow-hidden">
           <div className="p-3 pb-3"> {/* Tighter padding */}
             
             {/* Header - Standardized */}

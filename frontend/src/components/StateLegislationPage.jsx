@@ -11,7 +11,6 @@ import {
   ExternalLink,
   ArrowRight,
   BarChart3,
-  Clock,
   Building,
   GraduationCap,
   HeartPulse,
@@ -28,7 +27,6 @@ import StateOutlineBackground from './StateOutlineBackground';
 
 const StateLegislationOverview = () => {
   const navigate = useNavigate();
-  const [selectedRegion, setSelectedRegion] = useState('all');
 
   // Supported states data
   const supportedStates = [
@@ -136,20 +134,16 @@ const StateLegislationOverview = () => {
     }
   ];
 
-  // Filter states based on region only (removed search)
-  const filteredStates = supportedStates.filter(state => {
-    const matchesRegion = selectedRegion === 'all' || state.region === selectedRegion;
-    return matchesRegion;
-  });
+  // Show all states (removed region filter)
+  const filteredStates = supportedStates;
 
   // Calculate totals
-  const totalBills = supportedStates.reduce((sum, state) => sum + state.activeBills, 0);
   const totalStates = supportedStates.length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50">
       {/* Header Section */}
-      <section className="relative overflow-hidden px-6 pt-12">
+      <section className="relative overflow-hidden px-6 pt-20">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
             <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
@@ -163,28 +157,10 @@ const StateLegislationOverview = () => {
             </h1>
             
             <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Access comprehensive legislative tracking across {totalStates} states. Monitor {totalBills.toLocaleString()}+ active bills 
-              with AI-powered analysis and real-time updates.
+              Access comprehensive legislative tracking across {totalStates} states with AI-powered analysis and real-time updates.
             </p>
           </div>
           
-          {/* Region Filter - Moved into header section */}
-          <div className="flex justify-end mb-4">
-            <div className="flex items-center gap-4">
-              <span className="text-gray-700 font-medium">Region:</span>
-              <select
-                value={selectedRegion}
-                onChange={(e) => setSelectedRegion(e.target.value)}
-                className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="all">All Regions</option>
-                <option value="West">West</option>
-                <option value="South">South</option>
-                <option value="Northeast">Northeast</option>
-                <option value="Midwest">Midwest</option>
-              </select>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -222,21 +198,6 @@ const StateLegislationOverview = () => {
                     </div>
                   </div>
                   
-                  <div className="bg-gray-50 rounded-xl p-4 mb-6">
-                    <div className="flex items-center justify-between">
-                      <div className="text-center">
-                        <div className="text-3xl font-bold text-gray-900">{state.activeBills}</div>
-                        <div className="text-gray-600 text-sm font-medium">Active Bills</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="flex items-center gap-1 text-green-600">
-                          <Clock size={14} />
-                          <span className="text-sm font-medium">Live</span>
-                        </div>
-                        <div className="text-gray-500 text-xs">Updated {state.recentActivity}</div>
-                      </div>
-                    </div>
-                  </div>
                   
                   <p className="text-gray-600 leading-relaxed mb-6 flex-grow">
                     {state.description}
@@ -298,7 +259,7 @@ const StateLegislationOverview = () => {
               <AlertCircle size={48} className="mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-semibold text-gray-800 mb-2">No States Found</h3>
               <p className="text-gray-600">
-                Try adjusting your region filter.
+                No states are currently available.
               </p>
             </div>
           )}

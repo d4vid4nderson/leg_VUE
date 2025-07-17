@@ -110,7 +110,7 @@ const EditableCategoryTag = ({
 
       {/* Dropdown Menu */}
       {isEditing && !disabled && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[140px]">
+        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[120] min-w-[140px]">
           <div className="py-1">
             {availableCategories.map((cat) => {
               const CatIcon = cat.icon;
