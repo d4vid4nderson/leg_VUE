@@ -1049,6 +1049,14 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+        throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
+      }
+
       const data = await response.json();
       console.log('📊 Count check result:', data);
 
@@ -1127,6 +1135,14 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+        throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
       }
 
       const result = await response.json();
@@ -1319,6 +1335,14 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+        throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
       }
 
       const result = await response.json();

@@ -757,6 +757,14 @@ class HighlightsAPI {
         return [];
       }
       
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+        return [];
+      }
+      
       const data = await response.json();
       
       // ⚡ ADD DETAILED LOGGING
@@ -805,6 +813,14 @@ class HighlightsAPI {
       
       if (!response.ok) {
         console.warn('⚠️ Optimized highlights endpoint failed:', response.status);
+        return [];
+      }
+      
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
         return [];
       }
       
@@ -870,6 +886,14 @@ class HighlightsAPI {
 
       if (!response.ok) {
         console.error(`❌ Executive orders API failed: ${response.status}`);
+        return [];
+      }
+      
+      // Check if response is actually JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await response.text();
+        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
         return [];
       }
       
@@ -970,6 +994,14 @@ class HighlightsAPI {
           });
 
           if (response.ok) {
+            // Check if response is actually JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+              const textResponse = await response.text();
+              console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+              continue; // Try next URL
+            }
+            
             const data = await response.json();
             console.log(`📊 State legislation API response from ${url}:`, {
               isArray: Array.isArray(data),
