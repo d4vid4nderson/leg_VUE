@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Check, X, Clock, BarChart3, AlertCircle, Minimize2 } from 'lucide-react';
+import API_URL from '../config/api';
 
 const UpdateProgress = ({ 
     isVisible = false,
@@ -27,7 +28,7 @@ const UpdateProgress = ({
     // Fetch task status
     const fetchTaskStatus = async (id) => {
         try {
-            const response = await fetch(`/api/updates/task-status/${id}`);
+            const response = await fetch(`${API_URL}/api/updates/task-status/${id}`);
             if (!response.ok) {
                 throw new Error('Failed to fetch task status');
             }

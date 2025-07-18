@@ -82,7 +82,7 @@ const StatusFilter = ({
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
-        <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] min-w-[280px] max-h-[400px] overflow-hidden">
+        <div className="absolute top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[280px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
           <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-700">

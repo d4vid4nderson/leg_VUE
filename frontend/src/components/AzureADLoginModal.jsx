@@ -295,10 +295,10 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center">
       {/* Blurred overlay */}
       <div
-        className="absolute inset-0 backdrop-blur-md bg-gray-900 bg-opacity-50"
+        className="absolute inset-0 backdrop-blur-xl bg-gray-900 bg-opacity-70"
         onClick={(e) => {
           if (!isLoading && !isAzureLoading) onClose();
         }}

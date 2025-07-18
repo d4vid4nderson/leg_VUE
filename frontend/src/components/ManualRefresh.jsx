@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Check, X, Clock, AlertCircle } from 'lucide-react';
+import API_URL from '../config/api';
 
 const ManualRefresh = ({ 
     stateCode = null, 
@@ -60,7 +61,7 @@ const ManualRefresh = ({
                 force_update: false
             };
 
-            const response = await fetch('/api/updates/manual-refresh', {
+            const response = await fetch(`${API_URL}/api/updates/manual-refresh`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -69,8 +70,28 @@ const ManualRefresh = ({
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to start refresh');
+                // Check if response is actually JSON before parsing
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    try {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || `Failed to start refresh (${response.status})`);
+                    } catch (jsonError) {
+                        throw new Error(`Failed to start refresh (${response.status}): ${response.statusText}`);
+                    }
+                } else {
+                    const textResponse = await response.text();
+                    console.error('❌ Backend returned non-JSON error:', textResponse.substring(0, 200));
+                    throw new Error(`Backend error (${response.status}): ${response.statusText}. Check if backend is running properly.`);
+                }
+            }
+
+            // Check if response is actually JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
             }
 
             const data = await response.json();
@@ -102,9 +123,17 @@ const ManualRefresh = ({
 
         while (polls < maxPolls) {
             try {
-                const response = await fetch(`/api/task-status/${taskId}`);
+                const response = await fetch(`${API_URL}/api/task-status/${taskId}`);
                 if (!response.ok) {
-                    throw new Error('Failed to check task status');
+                    throw new Error(`Failed to check task status (${response.status}): ${response.statusText}`);
+                }
+
+                // Check if response is actually JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const textResponse = await response.text();
+                    console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                    throw new Error(`Task status API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
                 }
 
                 const data = await response.json();

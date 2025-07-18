@@ -11,7 +11,7 @@ import {
   ChevronRight,
   Building,
   GraduationCap,
-  Stethoscope,
+  HeartPulse,
   Wrench,
   Search,
   Bell,
@@ -304,7 +304,7 @@ const Homepage = () => {
             </p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-3 gap-6">
             {[
               {
                 icon: Download,
@@ -332,15 +332,9 @@ const Homepage = () => {
               },
               {
                 icon: Star,
-                title: "Firm-Wide Highlights",
-                description: "Mark critical legislation for firm-wide visibility and create a centralized reference for leadership",
+                title: "Smart Highlighting",
+                description: "Mark important items on respective pages for easier recall and tracking with integrated filtering",
                 color: "yellow"
-              },
-              {
-                icon: Bell,
-                title: "Smart Alerts",
-                description: "Intelligent notifications for legislation that matters to your industry and interests",
-                color: "red"
               },
               {
                 icon: BarChart3,
@@ -351,19 +345,15 @@ const Homepage = () => {
             ].map((feature, index) => (
               <div
                 key={index}
-                className={`p-8 rounded-xl border-2 transition-all duration-300 cursor-pointer transform hover:scale-105 ${
-                  hoveredFeature === index
-                    ? `border-${feature.color}-500 shadow-xl bg-${feature.color}-50`
-                    : 'border-gray-200 hover:border-gray-300 bg-white'
-                }`}
+                className="p-6 rounded-xl border-2 border-gray-200 bg-white transition-all duration-300 cursor-pointer hover:border-gray-300 hover:shadow-lg"
                 onMouseEnter={() => setHoveredFeature(index)}
                 onMouseLeave={() => setHoveredFeature(null)}
               >
-                <div className={`w-14 h-14 rounded-xl bg-${feature.color}-100 flex items-center justify-center mb-6`}>
-                  <feature.icon size={28} className={`text-${feature.color}-600`} />
+                <div className={`w-12 h-12 rounded-xl bg-${feature.color}-100 flex items-center justify-center mb-4`}>
+                  <feature.icon size={24} className={`text-${feature.color}-600`} />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">{feature.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{feature.title}</h3>
+                <p className="text-gray-600 text-sm leading-relaxed">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -387,8 +377,8 @@ const Homepage = () => {
             {/* Federal Coverage */}
             <div className="bg-white rounded-2xl p-8 shadow-lg">
               <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-blue-100 rounded-xl">
-                  <Building size={32} className="text-blue-600" />
+                <div className="p-3 bg-purple-100 rounded-xl">
+                  <ScrollText size={32} className="text-purple-600" />
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900">Federal Executive Orders</h3>
@@ -415,23 +405,27 @@ const Homepage = () => {
             <div className="bg-white rounded-2xl p-8 shadow-lg">
               <div className="flex items-center gap-4 mb-6">
                 <div className="p-3 bg-green-100 rounded-xl">
-                  <Globe size={32} className="text-green-600" />
+                  <FileText size={32} className="text-green-600" />
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900">State Legislation</h3>
-                  <p className="text-gray-600">Multi-state legislative tracking</p>
+                  <p className="text-gray-600">Session tracking and bill progress monitoring</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 mb-6">
-                {['CA', 'CO', 'KY', 'NV', 'SC', 'TX'].map((state) => (
-                  <div key={state} className="bg-green-100 text-green-800 px-3 py-2 rounded-lg text-center font-semibold">
-                    {state}
-                  </div>
-                ))}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className="text-gray-700">Track legislative sessions across multiple states</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className="text-gray-700">Monitor bill progress through legislative stages</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className="text-gray-700">Visual progress tracking and status updates</span>
+                </div>
               </div>
-              <p className="text-gray-600 text-sm">
-                Currently monitoring 6 states with expansion planned for all 50 states
-              </p>
             </div>
           </div>
         </div>
@@ -452,9 +446,9 @@ const Homepage = () => {
               </h2>
               
               <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-                Mark critical legislation for firm-wide visibility. Create a centralized 
-                highlights page where leadership can quickly reference the most important 
-                regulatory changes affecting your organization.
+                Highlight important items directly on Executive Orders and State Legislation pages 
+                for easier recall and tracking. Combined with other filters, it makes tracking 
+                those important items a breeze.
               </p>
               
               <div className="space-y-4">
@@ -473,8 +467,8 @@ const Homepage = () => {
                     <Users size={16} className="text-yellow-600" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900 mb-1">Centralized Reference</h3>
-                    <p className="text-gray-600 text-sm">All highlighted items appear on a dedicated page for easy firm-wide access</p>
+                    <h3 className="font-semibold text-gray-900 mb-1">Smart Filtering</h3>
+                    <p className="text-gray-600 text-sm">Use highlight filters on respective pages to quickly find your marked items</p>
                   </div>
                 </div>
                 
@@ -497,55 +491,85 @@ const Homepage = () => {
                   <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
                   <div className="w-3 h-3 rounded-full bg-green-400"></div>
                 </div>
-                <div className="text-gray-300 text-sm font-medium">Highlights Dashboard</div>
+                <div className="text-gray-300 text-sm font-medium">Executive Orders - Smart Filtering</div>
               </div>
               
-              <div className="space-y-4">
-                <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-gray-900 text-sm">Executive Order #14028</h3>
-                    <Star size={16} className="text-yellow-500 fill-current" />
+              {/* Filter Controls */}
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Search size={14} className="text-gray-500" />
+                  <span className="text-xs text-gray-600 font-medium">Active Filters:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs border border-yellow-200">
+                    <Star size={10} />
+                    Highlighted Only
                   </div>
-                  <p className="text-xs text-gray-600 mb-2">Cybersecurity Requirements for Federal Agencies</p>
-                  <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                  <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs border border-blue-200">
                     <Building size={10} />
                     Civic
                   </div>
                 </div>
-                
-                <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
+              </div>
+              
+              <div className="space-y-3">
+                <div className="border border-gray-200 rounded-lg p-3 hover:border-yellow-300 transition-colors">
                   <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-gray-900 text-sm">CA Senate Bill 1001</h3>
-                    <Star size={16} className="text-yellow-500 fill-current" />
+                    <h3 className="font-semibold text-gray-900 text-xs">Executive Order #14028</h3>
+                    <Star size={14} className="text-yellow-500 fill-current" />
                   </div>
-                  <p className="text-xs text-gray-600 mb-2">Data Privacy Protection Act</p>
-                  <div className="inline-flex items-center gap-1 bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                    <Wrench size={10} />
-                    Engineering
+                  <p className="text-xs text-gray-600 mb-2">Cybersecurity Requirements for Federal Agencies</p>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                      <Building size={8} />
+                      Civic
+                    </div>
+                    <button className="text-blue-600 hover:text-blue-700 text-xs">View Details</button>
                   </div>
                 </div>
                 
-                <div className="border border-yellow-200 bg-yellow-50 rounded-lg p-4">
+                <div className="border border-gray-200 rounded-lg p-3 hover:border-yellow-300 transition-colors">
                   <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-gray-900 text-sm">TX House Bill 2847</h3>
-                    <Star size={16} className="text-yellow-500 fill-current" />
+                    <h3 className="font-semibold text-gray-900 text-xs">Executive Order #14029</h3>
+                    <Star size={14} className="text-yellow-500 fill-current" />
                   </div>
-                  <p className="text-xs text-gray-600 mb-2">Healthcare Infrastructure Modernization</p>
-                  <div className="inline-flex items-center gap-1 bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs">
-                    <Stethoscope size={10} />
-                    Healthcare
+                  <p className="text-xs text-gray-600 mb-2">Infrastructure Security Enhancement</p>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                      <Building size={8} />
+                      Civic
+                    </div>
+                    <button className="text-blue-600 hover:text-blue-700 text-xs">View Details</button>
+                  </div>
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg p-3 hover:border-yellow-300 transition-colors">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-semibold text-gray-900 text-xs">Executive Order #14030</h3>
+                    <Star size={14} className="text-yellow-500 fill-current" />
+                  </div>
+                  <p className="text-xs text-gray-600 mb-2">Federal Building Standards Update</p>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                      <Building size={8} />
+                      Civic
+                    </div>
+                    <button className="text-blue-600 hover:text-blue-700 text-xs">View Details</button>
                   </div>
                 </div>
               </div>
               
               <div className="mt-6 pt-4 border-t border-gray-200">
-                <p className="text-xs text-gray-500 text-center">3 highlighted items • Updated 2 hours ago</p>
+                <p className="text-xs text-gray-500 text-center">3 highlighted items found • Filter applied</p>
                 <button 
-                  onClick={() => navigate('/highlights')}
-                  className="w-full mt-4 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
+                  onClick={() => {
+                    navigate('/executive-orders');
+                    window.scrollTo(0, 0);
+                  }}
+                  className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
                 >
-                  <Star size={16} />
-                  Visit Highlights
+                  <ScrollText size={16} />
+                  Try Executive Orders
                 </button>
               </div>
             </div>
@@ -572,29 +596,25 @@ const Homepage = () => {
                 icon: Building,
                 title: "Civic & Government",
                 description: "Public policy, municipal regulations, and government operations",
-                color: "blue",
-                count: "150+ Bills"
+                color: "blue"
               },
               {
                 icon: GraduationCap,
                 title: "Education",
                 description: "School policies, university regulations, and educational funding",
-                color: "orange",
-                count: "89+ Bills"
+                color: "orange"
               },
               {
                 icon: Wrench,
                 title: "Engineering & Infrastructure",
                 description: "Construction, technology standards, and infrastructure projects",
-                color: "green",
-                count: "124+ Bills"
+                color: "green"
               },
               {
-                icon: Stethoscope,
+                icon: HeartPulse,
                 title: "Healthcare",
                 description: "Medical regulations, public health policies, and healthcare funding",
-                color: "red",
-                count: "203+ Bills"
+                color: "red"
               }
             ].map((area, index) => (
               <div key={index} className="bg-white border-2 border-gray-200 rounded-xl p-6 hover:border-gray-300 transition-all duration-300 hover:shadow-lg">
@@ -602,11 +622,7 @@ const Homepage = () => {
                   <area.icon size={24} className={`text-${area.color}-600`} />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">{area.title}</h3>
-                <p className="text-gray-600 text-sm mb-4 leading-relaxed">{area.description}</p>
-                <div className={`inline-flex items-center gap-2 text-${area.color}-600 text-sm font-medium`}>
-                  <BarChart3 size={16} />
-                  {area.count}
-                </div>
+                <p className="text-gray-600 text-sm leading-relaxed">{area.description}</p>
               </div>
             ))}
           </div>

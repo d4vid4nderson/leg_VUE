@@ -23,7 +23,6 @@ import {
     X,
     Download, // Added for fetch button
     MapPin,
-    MoreVertical, // Added for mobile menu
     Flag,
     Bell,
     Clock,
@@ -639,16 +638,76 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
     const statusText = mapLegiScanStatus(status);
     const statusDescription = getStatusDescription(status);
 
+    // Calculate position to keep tooltip within viewport
+    const calculatePosition = () => {
+        const tooltipWidth = 256; // w-64 = 16rem = 256px
+        const padding = 16; // padding from screen edges
+        const viewportWidth = window.innerWidth;
+        const containerPadding = 32; // Approximate container padding
+        
+        let left = position?.left || 0;
+        let transform = 'translate(-50%, 8px)';
+        
+        // Check if we're in the left third of the viewport (likely left side of container)
+        const isLeftSide = left < viewportWidth / 3;
+        // Check if we're in the right third of the viewport (likely right side of container)
+        const isRightSide = left > (viewportWidth * 2) / 3;
+        
+        if (isLeftSide) {
+            // For left side elements, align tooltip to the right of the trigger
+            left = left;
+            transform = 'translate(0, 8px)';
+        } else if (isRightSide) {
+            // For right side elements, align tooltip to the left of the trigger
+            left = left - tooltipWidth;
+            transform = 'translate(0, 8px)';
+        } else {
+            // For center elements, keep centered
+            left = left;
+            transform = 'translate(-50%, 8px)';
+        }
+        
+        // Final boundary checks to ensure tooltip stays within viewport
+        if (left < containerPadding) {
+            left = containerPadding;
+            transform = 'translate(0, 8px)';
+        }
+        if (left + tooltipWidth > viewportWidth - containerPadding) {
+            left = viewportWidth - tooltipWidth - containerPadding;
+            transform = 'translate(0, 8px)';
+        }
+        
+        return {
+            top: position?.top || 0,
+            left: left,
+            transform: transform
+        };
+    };
+
+    const calculatedPosition = calculatePosition();
+    
+    // Determine arrow position based on tooltip positioning
+    const getArrowPosition = () => {
+        const originalLeft = position?.left || 0;
+        const tooltipLeft = calculatedPosition.left;
+        const tooltipWidth = 256;
+        
+        // Calculate where the arrow should point (relative to tooltip)
+        const arrowLeft = Math.max(16, Math.min(tooltipWidth - 16, originalLeft - tooltipLeft));
+        
+        return {
+            left: `${arrowLeft}px`
+        };
+    };
+    
+    const arrowPosition = getArrowPosition();
+
     return (
         <div 
-            className="status-tooltip absolute bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64 z-[120]"
-            style={{
-                top: position?.top || 0,
-                left: position?.left || 0,
-                transform: 'translate(-50%, 8px)',
-            }}
+            className="status-tooltip fixed sm:absolute bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64 z-[120]"
+            style={calculatedPosition}
         >
-            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2">
+            <div className="absolute bottom-full transform -translate-y-0" style={arrowPosition}>
                 <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-200"></div>
                 <div className="w-0 h-0 border-l-3 border-r-3 border-b-3 border-transparent border-b-white absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-px"></div>
             </div>
@@ -682,11 +741,9 @@ const StatePage = ({ stateName, stableHandlers }) => {
     const [error, setError] = useState(null);
     const [fetchLoading, setFetchLoading] = useState(false); // New state for fetch loading
     const [fetchSuccess, setFetchSuccess] = useState(null); // Success message for fetch
-    const [activeMobileMenu, setActiveMobileMenu] = useState(null); // Mobile menu state
     
     // Manual refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [headerVisible, setHeaderVisible] = useState(true);
     const [lastUpdateTime, setLastUpdateTime] = useState(null);
     
     // Filter state (matching ExecutiveOrdersPage pattern)
@@ -843,6 +900,14 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 throw new Error(`Failed to update category: ${response.statusText}`);
             }
             
+            // Check if response is actually JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
+            }
+            
             const result = await response.json();
             
             if (result.success) {
@@ -875,9 +940,11 @@ const StatePage = ({ stateName, stableHandlers }) => {
     }, [getStateBillId]);
     const openStatusTooltip = (status, event, bill = null) => {
         const rect = event.target.getBoundingClientRect();
+        const isMobile = window.innerWidth < 640; // sm breakpoint
+        
         setTooltipPosition({
-            top: rect.bottom + window.scrollY,
-            left: rect.left + window.scrollX + rect.width * 0.5
+            top: isMobile ? rect.bottom : rect.bottom + window.scrollY,
+            left: isMobile ? rect.left + rect.width * 0.5 : rect.left + window.scrollX + rect.width * 0.5
         });
         setSelectedStatus(status);
         setStatusTooltipOpen(true);
@@ -903,14 +970,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
         setShowFilterDropdown(false);
     };
     
-    const clearAllFilters = () => {
-        setSelectedFilters([]);
-        setSelectedStatusFilter(null);
-        setSelectedSessions([]);
-        setIsHighlightFilterActive(false);
-        localStorage.setItem('highlightFilterActive', 'false');
-        setCurrentPage(1);
-    };
 
     const clearPracticeAreaFilters = () => {
         setSelectedFilters([]);
@@ -1004,6 +1063,14 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
+            // Check if response is actually JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
+            }
+            
             const result = await response.json();
             
             if (result.success) {
@@ -1072,6 +1139,14 @@ const StatePage = ({ stateName, stableHandlers }) => {
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            // Check if response is actually JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
             }
             
             const data = await response.json();
@@ -1267,17 +1342,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
         }
     }, [stateOrders, isItemReviewed]);
 
-    // Close mobile menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (activeMobileMenu && !event.target.closest('.mobile-menu-container')) {
-                setActiveMobileMenu(null);
-            }
-        };
-
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
-    }, [activeMobileMenu]);
     
     // Filtered orders (simple filtering without fuzzy search)
     const filteredStateOrders = useMemo(() => {
@@ -1390,26 +1454,20 @@ const StatePage = ({ stateName, stableHandlers }) => {
         }
     }, []);
     
-    // Scroll detection for mobile floating refresh
-    useEffect(() => {
-        const handleScroll = () => {
-            const header = document.getElementById('page-header');
-            if (header) {
-                const headerRect = header.getBoundingClientRect();
-                setHeaderVisible(headerRect.bottom > 0);
-            }
-        };
-        
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-    
     // Load highlights on mount
     useEffect(() => {
         const loadHighlights = async () => {
             try {
                 const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
                 if (response.ok) {
+                    // Check if response is actually JSON
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const textResponse = await response.text();
+                        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                        return; // Exit early if not JSON
+                    }
+                    
                     const data = await response.json();
                     let highlights = [];
                     
@@ -1511,10 +1569,10 @@ const StatePage = ({ stateName, stableHandlers }) => {
                             </div>
                             
                             {/* Status Info */}
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-600">
-                                <span className="font-medium text-center">{stateOrders.length} bills loaded</span>
+                            <div className="flex flex-col items-center gap-2 text-sm text-gray-600">
+                                <span className="font-medium">{stateOrders.length} bills loaded</span>
                                 {lastUpdateTime && (
-                                    <span className="flex items-center justify-center gap-1">
+                                    <span className="flex items-center gap-1">
                                         <Clock size={14} />
                                         Last updated: {lastUpdateTime.toLocaleTimeString()}
                                     </span>
@@ -1581,48 +1639,27 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                     <div className="p-6">
                         {/* Controls Bar - Sort/filter controls */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 w-full">
                             {/* Sort Button - Mobile Optimized */}
                             <button
                                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                                className="flex items-center justify-center gap-3 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px]"
+                                className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px]"
                             >
                                 {sortOrder === 'latest' ? (
                                     <>
                                         <ArrowDown size={16} />
-                                        <span>Latest Date</span>
+                                        <span>Latest</span>
                                     </>
                                 ) : (
                                     <>
                                         <ArrowUpIcon size={16} />
-                                        <span>Earliest Date</span>
+                                        <span>Earliest</span>
                                     </>
                                 )}
                             </button>
                             
-                            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
-                                
-                                {/* Clear All Filters Button - Slides in when multiple filters are active */}
-                                <div className={`relative overflow-hidden transition-all duration-300 ease-in-out ${
-                                    (selectedFilters.length > 0 ? 1 : 0) + 
-                                    (selectedStatusFilter ? 1 : 0) + 
-                                    (selectedSessions.length > 0 ? 1 : 0) + 
-                                    (isHighlightFilterActive ? 1 : 0) > 1
-                                        ? 'w-full sm:w-32 opacity-100' 
-                                        : 'w-0 opacity-0'
-                                }`}>
-                                    <button
-                                        onClick={() => {
-                                            clearAllFilters();
-                                        }}
-                                        className="flex items-center justify-center px-3 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-200 w-full sm:w-32 min-h-[44px] text-gray-700"
-                                        title="Clear all active filters"
-                                    >
-                                        <X size={16} className="mr-1" />
-                                        <span className="whitespace-nowrap">Clear All</span>
-                                    </button>
-                                </div>
-                                
+                            {/* Middle button group - equally spaced */}
+                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-6 items-stretch sm:items-center">
                                 {/* Highlights Filter */}
                                 <HighlightsFilter 
                                     isHighlightFilterActive={isHighlightFilterActive}
@@ -1683,8 +1720,9 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                         return counts;
                                     })()}
                                 />
+                            </div>
                                 
-                                {/* Filter Dropdown */}
+                                {/* Filter Dropdown - Right aligned */}
                                 <div className="relative" ref={filterDropdownRef}>
                                     <button
                                         type="button"
@@ -1721,7 +1759,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
 
                                     {/* Dropdown content - Match HighlightsPage structure exactly */}
                                     {showFilterDropdown && (
-                                        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-[120]">
+                                        <div className="absolute top-full mt-2 w-full sm:w-64 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-[120] left-0 sm:left-auto sm:right-0">
                                             {/* Header */}
                                             <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b border-gray-200">
                                                 <div className="flex items-center justify-between">
@@ -1781,7 +1819,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                         </div>
                                     )}
                                 </div>
-                            </div>
                         </div>
                         
                         {/* Success Message */}
@@ -1810,44 +1847,35 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                     return (
                                         <div key={bill.id || index} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 relative">
                                             {/* Mobile Menu Button - Top Right Corner */}
+                                            {/* Mobile Highlight Button */}
                                             <div className="absolute top-4 right-4 lg:hidden">
-                                                <div className="relative mobile-menu-container">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            setActiveMobileMenu(activeMobileMenu === bill.id ? null : bill.id);
-                                                        }}
-                                                        className="p-2 hover:bg-gray-100 rounded-lg transition-all duration-300 border border-gray-200"
-                                                    >
-                                                        <MoreVertical size={20} className="text-gray-600" />
-                                                    </button>
-                                                    
-                                                    {/* Mobile Action Menu */}
-                                                    {activeMobileMenu === bill.id && (
-                                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                                                            
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                    if (!isBillHighlightLoading(bill)) {
-                                                                        handleStateBillHighlight(bill);
-                                                                    }
-                                                                    setActiveMobileMenu(null);
-                                                                }}
-                                                                disabled={isBillHighlightLoading(bill)}
-                                                                className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors ${
-                                                                    isStateBillHighlighted(bill) ? 'text-yellow-500' : 'text-gray-700'
-                                                                }`}
-                                                            >
-                                                                <Star size={18} className={isStateBillHighlighted(bill) ? "fill-current" : ""} />
-                                                                <span>{isStateBillHighlighted(bill) ? 'Highlighted' : 'Add Highlight'}</span>
-                                                            </button>
-                                                            
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        if (!isBillHighlightLoading(bill)) {
+                                                            handleStateBillHighlight(bill);
+                                                        }
+                                                    }}
+                                                    disabled={isBillHighlightLoading(bill)}
+                                                    className={`p-2 rounded-lg transition-all duration-300 border ${
+                                                        isStateBillHighlighted(bill) 
+                                                            ? 'bg-yellow-50 border-yellow-300 hover:bg-yellow-100' 
+                                                            : 'border-gray-200 hover:bg-gray-100'
+                                                    }`}
+                                                    title={isStateBillHighlighted(bill) ? 'Remove from highlights' : 'Add to highlights'}
+                                                >
+                                                    <Star 
+                                                        size={20} 
+                                                        className={
+                                                            isBillHighlightLoading(bill) 
+                                                                ? "text-gray-400 animate-pulse" 
+                                                                : isStateBillHighlighted(bill) 
+                                                                    ? "text-yellow-500 fill-current" 
+                                                                    : "text-gray-600"
+                                                        } 
+                                                    />
+                                                </button>
                                             </div>
                                             
                                             <div className="p-6">
@@ -2021,20 +2049,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 onClose={closeStatusTooltip}
                 position={tooltipPosition}
             />
-            
-            {/* Mobile Floating Refresh (only when header is not visible) */}
-            {!headerVisible && (
-                <div className="lg:hidden fixed bottom-4 right-4 z-50">
-                    <ManualRefresh 
-                        stateCode={SUPPORTED_STATES[stateName]}
-                        size="large"
-                        onRefreshStart={handleRefreshStart}
-                        onRefreshComplete={handleRefreshComplete}
-                        onRefreshError={handleRefreshError}
-                        className="shadow-lg"
-                    />
-                </div>
-            )}
         </div>
     );
 };

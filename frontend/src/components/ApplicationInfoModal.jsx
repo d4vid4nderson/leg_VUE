@@ -53,8 +53,7 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
     { id: 'overview', label: 'What is LegislationVUE', icon: Info },
     { id: 'technology', label: 'Technology & Data', icon: Database },
     { id: 'howto', label: 'How To Use', icon: Play },
-    { id: 'faq', label: 'FAQ & Support', icon: HelpCircle },
-    { id: 'about', label: 'MOREgroup Development', icon: Terminal }
+    { id: 'faq', label: 'FAQ & Support', icon: HelpCircle }
   ];
 
   const TabButton = ({ tab, isActive, onClick }) => {
@@ -62,7 +61,7 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
     return (
       <button
         onClick={() => onClick(tab.id)}
-        className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition-all duration-300 ${
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all duration-300 text-sm ${
           isActive
             ? 'bg-blue-600 text-white shadow-lg'
             : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
@@ -994,50 +993,38 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
         return <HowToTab />;
       case 'faq':
         return <FAQTab />;
-      case 'about':
-        return <AboutTab />;
       default:
         return <OverviewTab />;
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-8 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center rounded-xl shadow-lg">
-              <Info className="w-7 h-7 text-white" />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-[9999] p-4 pt-8 pb-8 overflow-y-auto">
+      <div className="bg-white rounded-md shadow-2xl max-w-4xl w-full min-h-0 flex flex-col my-auto">
+        {/* Tab Navigation with Close Button */}
+        <div className="border-b border-gray-200 bg-gray-50 p-4 flex-shrink-0 rounded-t-md">
+          <div className="flex justify-between items-center">
+            <div className="flex justify-center gap-2 flex-wrap flex-1">
+              {tabs.map((tab) => (
+                <TabButton
+                  key={tab.id}
+                  tab={tab}
+                  isActive={activeTab === tab.id}
+                  onClick={setActiveTab}
+                />
+              ))}
             </div>
-            <h2 className="text-3xl font-bold text-gray-900">
-              LegislationVUE Guide
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-3 hover:bg-gray-100 rounded-xl transition-colors duration-200"
-          >
-            <X className="w-6 h-6 text-gray-500" />
-          </button>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="border-b border-gray-200 bg-gray-50 p-6">
-          <div className="flex justify-center gap-4 flex-wrap">
-            {tabs.map((tab) => (
-              <TabButton
-                key={tab.id}
-                tab={tab}
-                isActive={activeTab === tab.id}
-                onClick={setActiveTab}
-              />
-            ))}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-xl transition-colors duration-200 ml-4"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-8 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="p-6 overflow-y-auto flex-1" style={{ maxHeight: 'calc(100vh - 200px)' }}>
           {renderActiveTab()}
         </div>
       </div>

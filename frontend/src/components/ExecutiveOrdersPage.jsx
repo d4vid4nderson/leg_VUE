@@ -27,8 +27,6 @@ import {
   Download,
   Ban,
   RotateCw as RefreshIcon,
-  Target,
-  TrendingUp,
   Calendar,
   MoreVertical // Added for mobile menu
 } from 'lucide-react';
@@ -266,13 +264,13 @@ const formatTalkingPoints = (content) => {
     
     if (points.length > 0) {
         return (
-            <div className="space-y-4">
+            <div className="space-y-2">
                 {points.slice(0, 5).map((point, idx) => (
-                    <div key={idx} className="flex gap-4">
-                        <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                            {idx + 1}
+                    <div key={idx} className="flex gap-2">
+                        <div className="flex-shrink-0 w-4 flex items-start justify-start text-sm font-bold text-blue-800">
+                            {idx + 1}.
                         </div>
-                        <p className="text-sm text-blue-800 leading-relaxed flex-1 pt-1">
+                        <p className="text-sm text-blue-800 leading-snug flex-1">
                             {point}
                         </p>
                     </div>
@@ -2114,40 +2112,18 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           disabled={fetchingData || loading}
                           isLoading={isItemReviewLoading(orderWithIndex)}
                         />
-                      </div>
-
-                      {/* AI Summary Preview */}
-                      {order.ai_processed && order.ai_summary && !isExpanded && (
-                        <div className="mb-4 bg-purple-50 border border-purple-200 rounded-md p-4">
-                          <div className="flex items-start gap-3">
-                            <FileText size={16} className="text-purple-600 mt-1 flex-shrink-0" />
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="text-sm font-semibold text-purple-900">Executive Summary</span>
-                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-600 text-white text-xs rounded">
-                                  <Sparkles size={10} />
-                                  AI
-                                </span>
-                              </div>
-                              <p className="text-sm text-purple-800 line-clamp-2 leading-relaxed">
-                                {stripHtmlTags(order.ai_summary)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* External Links */}
-                      <div className="flex flex-wrap items-center gap-3 mb-4">
+                        
+                        {/* Source and PDF Links */}
                         {order.html_url && (
                           <a
                             href={order.html_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-300 text-blue-600 rounded-md text-sm font-medium hover:bg-gray-100 transition-all duration-300"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium rounded-md hover:bg-blue-100 transition-all duration-200"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <ExternalLink size={14} className="text-blue-600" />
-                            View Source
+                            <ExternalLink size={12} className="text-blue-600" />
+                            Source
                           </a>
                         )}
                         
@@ -2156,14 +2132,37 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                             href={order.pdf_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-300 text-red-600 rounded-md text-sm font-medium hover:bg-gray-100 transition-all duration-300"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 text-xs font-medium rounded-md hover:bg-red-100 transition-all duration-200"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <FileText size={14} className="text-red-600" />
+                            <FileText size={12} className="text-red-600" />
                             PDF
                           </a>
                         )}
-                        
-                        {/* Read More Button */}
+                      </div>
+
+                      {/* AI Summary Preview */}
+                      {order.ai_processed && order.ai_summary && !isExpanded && (
+                        <div className="mb-4">
+                          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-base font-semibold text-purple-900">Executive Summary</h3>
+                              </div>
+                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
+                                <Sparkles size={10} />
+                                AI Generated
+                              </div>
+                            </div>
+                            <div className="text-sm text-purple-800 line-clamp-2 leading-relaxed">
+                              {stripHtmlTags(order.ai_summary)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Read More Button */}
+                      <div className="flex justify-end mb-4">
                         <button
                           onClick={(e) => {
                             e.preventDefault();
@@ -2203,9 +2202,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
-                                    <div className="p-1.5 bg-purple-600 rounded-full">
-                                      <FileText size={16} className="text-white" />
-                                    </div>
                                     <h3 className="text-base font-semibold text-purple-900">Executive Summary</h3>
                                   </div>
                                   <div className="inline-flex items-center gap-1 px-2 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
@@ -2226,9 +2222,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
-                                    <div className="p-1.5 bg-blue-600 rounded-full">
-                                      <Target size={16} className="text-white" />
-                                    </div>
                                     <h3 className="text-base font-semibold text-blue-900">Key Talking Points</h3>
                                   </div>
                                   <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded-md">
@@ -2249,9 +2242,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
-                                    <div className="p-1.5 bg-green-600 rounded-full">
-                                      <TrendingUp size={16} className="text-white" />
-                                    </div>
                                     <h3 className="text-base font-semibold text-green-900">Business Impact Analysis</h3>
                                   </div>
                                   <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white text-xs font-medium rounded-md">

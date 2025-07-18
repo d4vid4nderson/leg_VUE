@@ -13,7 +13,7 @@ const SessionNotification = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(false);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   // Helper function to safely format dates
   const formatDate = (dateString) => {

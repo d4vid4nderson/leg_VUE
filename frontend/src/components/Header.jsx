@@ -15,7 +15,6 @@ import {
     FileText,
     Trash2,
     ChevronDown,
-    ChevronUp,
     Download,
     ExternalLink,
     Copy,
@@ -59,14 +58,18 @@ const MobileMenuItem = ({ icon: Icon, label, badge, onClick, active = false, cla
         <button
             onClick={onClick}
             className={`
-                w-full flex items-center gap-3 p-3 text-left rounded-lg transition-all duration-200
+                w-full flex items-center gap-3 px-3 py-2.5 text-left rounded-lg transition-all duration-200 relative
                 ${active 
-                    ? 'bg-blue-50 text-blue-700 font-medium border-l-4 border-blue-600' 
+                    ? 'bg-blue-50 text-blue-700 font-medium' 
                     : 'text-gray-700 hover:bg-gray-50'
                 }
                 ${className}
             `}
         >
+            {/* Left border for active state */}
+            {active && (
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-r"></div>
+            )}
             <Icon size={20} className="flex-shrink-0" />
             <span className="flex-1 truncate">{label}</span>
             {badge > 0 && (
@@ -79,134 +82,122 @@ const MobileMenuItem = ({ icon: Icon, label, badge, onClick, active = false, cla
 };
 
 const MobileFederalSubmenu = ({ onNavigate }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
     
-    const isFederalPageActive = location.pathname === '/executive-orders' || 
-                              location.pathname === '/hr1';
-    
     return (
         <div>
-            <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className={`
-                    w-full flex items-center gap-3 p-3 text-left rounded-lg transition-all duration-200
-                    ${isFederalPageActive 
-                        ? 'bg-blue-50 text-blue-700 font-medium' 
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }
-                `}
-            >
+            {/* Federal Legislation Header */}
+            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 font-bold">
                 <ScrollText size={20} className="flex-shrink-0" />
                 <span className="flex-1">Federal Legislation</span>
-                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
+            </div>
             
-            {isExpanded && (
-                <div className="ml-8 mt-2 space-y-1">
-                    {/* Executive Orders */}
-                    <button
-                        onClick={() => {
-                            navigate('/executive-orders');
-                            onNavigate();
-                        }}
-                        className={`
-                            w-full text-left p-2 text-sm rounded transition-all duration-200
-                            ${location.pathname === '/executive-orders' 
-                                ? 'bg-blue-50 text-blue-700 font-medium' 
-                                : 'text-gray-600 hover:bg-gray-50'
-                            }
-                        `}
-                    >
-                        Executive Orders
-                    </button>
-                    
-                    {/* HR1 Policy Analysis */}
-                    <button
-                        onClick={() => {
-                            navigate('/hr1');
-                            onNavigate();
-                        }}
-                        className={`
-                            w-full text-left p-2 text-sm rounded transition-all duration-200
-                            ${location.pathname === '/hr1' 
-                                ? 'bg-blue-50 text-blue-700 font-medium' 
-                                : 'text-gray-600 hover:bg-gray-50'
-                            }
-                        `}
-                    >
-                        HR1 Policy Analysis
-                    </button>
-                </div>
-            )}
+            <div className="ml-8 space-y-1">
+                {/* Executive Orders */}
+                <button
+                    onClick={() => {
+                        navigate('/executive-orders');
+                        onNavigate();
+                    }}
+                    className={`
+                        w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
+                        ${location.pathname === '/executive-orders' 
+                            ? 'bg-blue-50 text-blue-700 font-medium' 
+                            : 'text-gray-600 hover:bg-gray-50'
+                        }
+                    `}
+                >
+                    {location.pathname === '/executive-orders' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-r"></div>
+                    )}
+                    Executive Orders
+                </button>
+                
+                {/* HR1 Policy Analysis */}
+                <button
+                    onClick={() => {
+                        navigate('/hr1');
+                        onNavigate();
+                    }}
+                    className={`
+                        w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
+                        ${location.pathname === '/hr1' 
+                            ? 'bg-blue-50 text-blue-700 font-medium' 
+                            : 'text-gray-600 hover:bg-gray-50'
+                        }
+                    `}
+                >
+                    {location.pathname === '/hr1' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-r"></div>
+                    )}
+                    HR1 Policy Analysis
+                </button>
+            </div>
         </div>
     );
 };
 
 const MobileStateSubmenu = ({ onNavigate }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
     
-    const isStatePageActive = location.pathname.startsWith('/state/');
-    
     return (
         <div>
-            <div className="flex items-center w-full">
+            {/* State Legislation Header */}
+            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 font-bold">
+                <MapIcon size={20} className="flex-shrink-0" />
+                <span className="flex-1">State Legislation</span>
+            </div>
+            
+            <div className="ml-8 space-y-1">
+                {/* All States Overview */}
                 <button
                     onClick={() => {
                         navigate('/state-legislation');
                         onNavigate();
                     }}
                     className={`
-                        flex items-center gap-3 p-3 text-left rounded-lg transition-all duration-200 flex-1
+                        w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
                         ${location.pathname === '/state-legislation'
                             ? 'bg-blue-50 text-blue-700 font-medium' 
-                            : 'text-gray-700 hover:bg-gray-50'
+                            : 'text-gray-600 hover:bg-gray-50'
                         }
                     `}
                 >
-                    <MapIcon size={20} className="flex-shrink-0" />
-                    <span className="flex-1">State Legislation</span>
+                    {location.pathname === '/state-legislation' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-r"></div>
+                    )}
+                    All States Overview
                 </button>
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setIsExpanded(!isExpanded);
-                    }}
-                    className="p-2 hover:bg-gray-200 rounded ml-1"
-                >
-                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
+                
+                {/* Individual States */}
+                {Object.keys(SUPPORTED_STATES).map(state => {
+                    const statePath = `/state/${state.toLowerCase().replace(' ', '-')}`;
+                    const isActive = location.pathname === statePath;
+                    return (
+                        <button
+                            key={state}
+                            onClick={() => {
+                                navigate(statePath);
+                                onNavigate();
+                            }}
+                            className={`
+                                w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
+                                ${isActive 
+                                    ? 'bg-blue-50 text-blue-700 font-medium' 
+                                    : 'text-gray-600 hover:bg-gray-50'
+                                }
+                            `}
+                        >
+                            {isActive && (
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-r"></div>
+                            )}
+                            {state} ({SUPPORTED_STATES[state]})
+                        </button>
+                    );
+                })}
             </div>
-            
-            {isExpanded && (
-                <div className="ml-8 mt-2 space-y-1 max-h-48 overflow-y-auto">
-                    {Object.keys(SUPPORTED_STATES).map(state => {
-                        const statePath = `/state/${state.toLowerCase().replace(' ', '-')}`;
-                        const isActive = location.pathname === statePath;
-                        return (
-                            <button
-                                key={state}
-                                onClick={() => {
-                                    navigate(statePath);
-                                    onNavigate();
-                                }}
-                                className={`
-                                    w-full text-left p-2 text-sm rounded transition-all duration-200
-                                    ${isActive 
-                                        ? 'bg-blue-50 text-blue-700 font-medium' 
-                                        : 'text-gray-600 hover:bg-gray-50'
-                                    }
-                                `}
-                            >
-                                {state} ({SUPPORTED_STATES[state]})
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
         </div>
     );
 };
@@ -219,6 +210,25 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
         navigate(path);
         onClose();
     };
+
+    // Prevent body scroll when menu is open
+    useEffect(() => {
+        if (isOpen) {
+            const scrollY = window.scrollY;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${scrollY}px`;
+            document.body.style.width = '100%';
+            document.body.style.overflow = 'hidden';
+            
+            return () => {
+                document.body.style.position = '';
+                document.body.style.top = '';
+                document.body.style.width = '';
+                document.body.style.overflow = '';
+                window.scrollTo(0, scrollY);
+            };
+        }
+    }, [isOpen]);
     
     return (
         <>
@@ -231,11 +241,13 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
             )}
 
             {/* Slide-out Menu */}
-            <div className={`
-                fixed top-0 right-0 h-full w-80 max-w-[90vw] bg-white shadow-xl z-[210] 
-                transform transition-transform duration-300 ease-in-out lg:hidden
-                ${isOpen ? 'translate-x-0' : 'translate-x-full'}
-            `}>
+            <div 
+                className={`
+                    fixed top-0 right-0 h-full w-80 max-w-[90vw] bg-white shadow-xl z-[210] 
+                    transform transition-transform duration-300 ease-in-out lg:hidden flex flex-col
+                    ${isOpen ? 'translate-x-0' : 'translate-x-full'}
+                `}
+            >
                 {/* Menu Header */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-800">Menu</h3>
@@ -267,7 +279,14 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                 )}
 
                 {/* Navigation Items */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                <div 
+                    className="flex-1 overflow-y-scroll p-4 space-y-2" 
+                    style={{ 
+                        WebkitOverflowScrolling: 'touch',
+                        height: '100%',
+                        maxHeight: 'calc(100vh - 200px)'
+                    }}
+                >
                     {/* Home Link */}
                     <MobileMenuItem
                         icon={Home}
@@ -276,6 +295,7 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                         active={location.pathname === '/'}
                     />
 
+                    {/* Highlights - Hidden on mobile
                     <MobileMenuItem
                         icon={Star}
                         label="Highlighted Items"
@@ -283,10 +303,20 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                         onClick={() => handleNavigate('/highlights')}
                         active={location.pathname === '/highlights'}
                     />
+                    */}
+                    
+                    {/* Separator */}
+                    <div className="border-t border-gray-200 my-2"></div>
                     
                     <MobileFederalSubmenu onNavigate={onClose} />
+                    
+                    {/* Separator */}
+                    <div className="border-t border-gray-200 my-2"></div>
 
                     <MobileStateSubmenu onNavigate={onClose} />
+                    
+                    {/* Separator */}
+                    <div className="border-t border-gray-200 my-2"></div>
 
                     <MobileMenuItem
                         icon={Settings}
@@ -325,12 +355,7 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
 const Header = ({
     showDropdown,
     setShowDropdown,
-    desktopFederalExpanded,
-    setDesktopFederalExpanded,
-    desktopStateExpanded,
-    setDesktopStateExpanded,
     dropdownRef,
-    currentPage,
     isAuthenticated,
     currentUser,
     onLogout,
@@ -355,12 +380,18 @@ const Header = ({
                 <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12">
                     <div className="flex items-center justify-between h-16 lg:h-24">
                         
-                        {/* Logo Section - Responsive sizing */}
+                        {/* Logo Section - Icon on mobile, full text on desktop */}
                         <div 
                             className="flex items-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
                             onClick={() => navigate('/')}
                         >
-                            <div>
+                            {/* Mobile Logo Icon with Gradient Background */}
+                            <div className="sm:hidden w-12 h-12 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                                <img src="/logo.png" alt="LegislativeVUE" className="w-8 h-8" />
+                            </div>
+                            
+                            {/* Desktop Full Logo */}
+                            <div className="hidden sm:block">
                                 <h1 className="text-lg sm:text-xl lg:text-3xl font-bold bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent leading-none">
                                     LegislativeVUE
                                 </h1>
@@ -377,10 +408,10 @@ const Header = ({
                         {/* Right Side Navigation */}
                         <div className="flex items-center gap-2">
                             
-                            {/* Highlights Badge - Mobile optimized */}
+                            {/* Highlights Badge - Hidden on mobile, shown on tablet/desktop */}
                             <button
                                 onClick={() => navigate('/highlights')}
-                                className="relative p-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors lg:hidden"
+                                className="hidden sm:flex relative p-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors lg:hidden"
                                 title="Highlighted Items"
                             >
                                 <Star size={18} className="text-blue-600" />
@@ -398,7 +429,6 @@ const Header = ({
                                 title="Application Information"
                             >
                                 <Info size={18} />
-                                <span className="hidden sm:inline">Info</span>
                             </button>
 
                             {/* Mobile Hamburger Menu */}
@@ -458,7 +488,7 @@ const Header = ({
                                         <button
                                             onClick={() => handleMenuItemClick(() => navigate('/'))}
                                             className={
-                                                "w-full text-left px-6 py-3 text-sm font-bold transition-all duration-300 flex items-center gap-3 " +
+                                                "w-full text-left px-6 py-3 text-sm font-semibold transition-all duration-300 flex items-center gap-3 " +
                                                 (location.pathname === '/'
                                                     ? 'bg-blue-50 text-blue-700'
                                                     : 'text-gray-800 hover:bg-gray-100')
@@ -468,112 +498,91 @@ const Header = ({
                                             <span>Home</span>
                                         </button>
 
-                                        {/* Highlighted Items */}
-                                        <button
-                                            onClick={() => handleMenuItemClick(() => navigate('/highlights'))}
-                                            className={
-                                                "w-full text-left px-6 py-3 text-sm font-bold transition-all duration-300 flex items-center gap-3 " +
-                                                (location.pathname === '/highlights'
-                                                    ? 'bg-blue-50 text-blue-700'
-                                                    : 'text-gray-800 hover:bg-gray-100')
-                                            }
-                                        >
-                                            <Star size={16} />
-                                            <span>
-                                                Highlighted Items
-                                            </span>
-                                        </button>
-
                                         {/* Separator */}
                                         <div className="border-t border-gray-200 my-2"></div>
 
-                                        {/* Federal Legislation - Expandable Header */}
-                                        <button
-                                            onClick={() => setDesktopFederalExpanded(!desktopFederalExpanded)}
-                                            className="w-full flex items-center justify-between px-6 py-3 text-sm font-bold text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
-                                        >
-                                            <div className="flex items-center gap-3">
+                                        {/* Federal Legislation Header */}
+                                        <div className="px-6 py-2">
+                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800">
                                                 <ScrollText size={16} />
                                                 <span>Federal Legislation</span>
                                             </div>
-                                            <ChevronDown 
-                                                size={14} 
-                                                className={`transition-transform duration-200 ${desktopFederalExpanded ? 'rotate-180' : ''}`}
-                                            />
-                                        </button>
+                                        </div>
 
                                         {/* Federal Submenu Items */}
-                                        {desktopFederalExpanded && (
-                                            <div className="mt-1">
-                                                {/* Executive Orders - Sub-item under Federal Legislation */}
-                                                <button
-                                                    onClick={() => handleMenuItemClick(() => navigate('/executive-orders'))}
-                                                    className={
-                                                        "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
-                                                        (location.pathname === '/executive-orders'
-                                                            ? 'bg-blue-50 text-blue-700 font-medium'
-                                                            : 'text-gray-600 hover:bg-gray-100')
-                                                    }
-                                                >
-                                                    Executive Orders
-                                                </button>
+                                        <div className="mb-2">
+                                            {/* Executive Orders - Sub-item under Federal Legislation */}
+                                            <button
+                                                onClick={() => handleMenuItemClick(() => navigate('/executive-orders'))}
+                                                className={
+                                                    "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
+                                                    (location.pathname === '/executive-orders'
+                                                        ? 'bg-blue-50 text-blue-700 font-medium'
+                                                        : 'text-gray-600 hover:bg-gray-100')
+                                                }
+                                            >
+                                                Executive Orders
+                                            </button>
 
-                                                {/* HR1 Page - Sub-item under Federal Legislation */}
-                                                <button
-                                                    onClick={() => handleMenuItemClick(() => navigate('/hr1'))}
-                                                    className={
-                                                        "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
-                                                        (location.pathname === '/hr1'
-                                                            ? 'bg-blue-50 text-blue-700 font-medium'
-                                                            : 'text-gray-600 hover:bg-gray-100')
-                                                    }
-                                                >
-                                                    HR1 Policy Analysis
-                                                </button>
-                                            </div>
-                                        )}
+                                            {/* HR1 Page - Sub-item under Federal Legislation */}
+                                            <button
+                                                onClick={() => handleMenuItemClick(() => navigate('/hr1'))}
+                                                className={
+                                                    "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
+                                                    (location.pathname === '/hr1'
+                                                        ? 'bg-blue-50 text-blue-700 font-medium'
+                                                        : 'text-gray-600 hover:bg-gray-100')
+                                                }
+                                            >
+                                                HR1 Policy Analysis
+                                            </button>
+                                        </div>
 
                                         {/* Separator */}
                                         <div className="border-t border-gray-200 my-2"></div>
 
-                                        {/* State Legislation - Expandable Header */}
-                                        <button
-                                            onClick={() => setDesktopStateExpanded(!desktopStateExpanded)}
-                                            className="w-full flex items-center justify-between px-6 py-3 text-sm font-bold text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
-                                        >
-                                            <div className="flex items-center gap-3">
+                                        {/* State Legislation Header */}
+                                        <div className="px-6 py-2">
+                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800">
                                                 <FileText size={16} />
                                                 <span>State Legislation</span>
                                             </div>
-                                            <ChevronDown 
-                                                size={14} 
-                                                className={`transition-transform duration-200 ${desktopStateExpanded ? 'rotate-180' : ''}`}
-                                            />
-                                        </button>
+                                        </div>
 
                                         {/* State Submenu Items */}
-                                        {desktopStateExpanded && (
-                                            <div className="mt-1 max-h-48 overflow-y-auto">
-                                                {/* State Items */}
-                                                {Object.keys(SUPPORTED_STATES).map(state => {
-                                                    const isActive = location.pathname === `/state/${state.toLowerCase().replace(' ', '-')}`;
-                                                    return (
-                                                        <button
-                                                            key={state}
-                                                            onClick={() => handleMenuItemClick(() => navigate(`/state/${state.toLowerCase().replace(' ', '-')}`))}
-                                                            className={
-                                                                "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
-                                                                (isActive
-                                                                    ? 'bg-blue-50 text-blue-700 font-medium'
-                                                                    : 'text-gray-600 hover:bg-gray-100')
-                                                            }
-                                                        >
-                                                            {state} ({SUPPORTED_STATES[state]})
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
+                                        <div className="mb-2">
+                                            {/* State Overview Page */}
+                                            <button
+                                                onClick={() => handleMenuItemClick(() => navigate('/state-legislation'))}
+                                                className={
+                                                    "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
+                                                    (location.pathname === '/state-legislation'
+                                                        ? 'bg-blue-50 text-blue-700 font-medium'
+                                                        : 'text-gray-600 hover:bg-gray-100')
+                                                }
+                                            >
+                                                All States Overview
+                                            </button>
+                                            
+                                            {/* Individual State Items */}
+                                            {Object.keys(SUPPORTED_STATES).map(state => {
+                                                const isActive = location.pathname === `/state/${state.toLowerCase().replace(' ', '-')}`;
+                                                return (
+                                                    <button
+                                                        key={state}
+                                                        onClick={() => handleMenuItemClick(() => navigate(`/state/${state.toLowerCase().replace(' ', '-')}`))}
+                                                        className={
+                                                            "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
+                                                            (isActive
+                                                                ? 'bg-blue-50 text-blue-700 font-medium'
+                                                                : 'text-gray-600 hover:bg-gray-100')
+                                                        }
+                                                    >
+                                                        {state} ({SUPPORTED_STATES[state]})
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
 
                                         {/* Separator */}
                                         <div className="border-t border-gray-200 my-2"></div>
@@ -582,7 +591,7 @@ const Header = ({
                                         <button
                                             onClick={() => handleMenuItemClick(() => navigate('/settings'))}
                                             className={
-                                                "w-full text-left px-6 py-3 text-sm font-bold transition-all duration-300 flex items-center gap-3 " +
+                                                "w-full text-left px-6 py-3 text-sm font-semibold transition-all duration-300 flex items-center gap-3 " +
                                                 (location.pathname === '/settings'
                                                     ? 'bg-blue-50 text-blue-700'
                                                     : 'text-gray-800 hover:bg-gray-100')

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, RefreshCw, X, Check, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import API_URL from '../config/api';
 
 const UpdateNotification = ({ 
     stateCode = null, 
@@ -28,7 +29,7 @@ const UpdateNotification = ({
             if (stateCode) params.append('state_code', stateCode);
             if (sessionId) params.append('session_id', sessionId);
             
-            const response = await fetch(`/api/updates/status?${params}`);
+            const response = await fetch(`${API_URL}/api/updates/status?${params}`);
             if (!response.ok) {
                 throw new Error('Failed to fetch update status');
             }
@@ -49,7 +50,7 @@ const UpdateNotification = ({
             if (stateCode) params.append('state_code', stateCode);
             params.append('limit', '20');
             
-            const response = await fetch(`/api/updates/notifications?${params}`);
+            const response = await fetch(`${API_URL}/api/updates/notifications?${params}`);
             if (!response.ok) {
                 throw new Error('Failed to fetch notifications');
             }
@@ -75,7 +76,7 @@ const UpdateNotification = ({
                 force_update: false
             };
             
-            const response = await fetch('/api/updates/manual-refresh', {
+            const response = await fetch(`${API_URL}/api/updates/manual-refresh`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -113,7 +114,7 @@ const UpdateNotification = ({
         
         while (polls < maxPolls) {
             try {
-                const response = await fetch(`/api/updates/task-status/${taskId}`);
+                const response = await fetch(`${API_URL}/api/updates/task-status/${taskId}`);
                 if (!response.ok) {
                     throw new Error('Failed to check task status');
                 }
@@ -142,7 +143,7 @@ const UpdateNotification = ({
     // Mark notification as read
     const markAsRead = async (notificationId) => {
         try {
-            const response = await fetch(`/api/updates/notifications/${notificationId}/mark-read`, {
+            const response = await fetch(`${API_URL}/api/updates/notifications/${notificationId}/mark-read`, {
                 method: 'POST'
             });
             
@@ -167,7 +168,7 @@ const UpdateNotification = ({
             const params = new URLSearchParams();
             if (stateCode) params.append('state_code', stateCode);
             
-            const response = await fetch(`/api/updates/notifications/mark-all-read?${params}`, {
+            const response = await fetch(`${API_URL}/api/updates/notifications/mark-all-read?${params}`, {
                 method: 'POST'
             });
             
