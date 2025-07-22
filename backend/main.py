@@ -20,7 +20,7 @@ import requests
 from ai_status import check_azure_ai_configuration
 from ai import convert_status_to_text
 # Import our new fixed modules  
-from database_connection import test_database_connection, get_db_connection, execute_query
+from database_config import test_database_connection, get_db_connection
 # Import LegiScan service
 from legiscan_service import (
     EnhancedLegiScanClient, 
@@ -343,11 +343,11 @@ async def get_database_count():
     """Get total count from your database"""
     try:
         # Use the cursor context manager for cleaner code
-        from database_connection import get_db_cursor
+        from executive_orders_db import get_db_cursor
 
         with get_db_cursor() as cursor:
             # Count all executive orders (no president column exists)
-            cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+            cursor.execute("SELECT COUNT(*) FROM executive_orders")
             count = cursor.fetchone()[0]
             logger.info(f"📊 Database has {count} executive orders")
             return count
@@ -359,7 +359,7 @@ async def get_database_count():
 async def validate_database_schema():
     """Validate database schema for executive orders table"""
     try:
-        from database_connection import get_db_cursor
+        from executive_orders_db import get_db_cursor
         
         logger.info("🔍 Validating database schema...")
         
@@ -1469,8 +1469,8 @@ HIGHLIGHTS_DB_AVAILABLE = AZURE_SQL_AVAILABLE
 
 
 
-from database_connection import (execute_query, get_database_connection,
-                                 get_db_cursor, test_database_connection)
+from database_config import get_db_connection as get_database_connection, test_database_connection
+from executive_orders_db import get_db_cursor
 # 2. Add proper imports for executive orders and highlights
 from executive_orders_db import (add_highlight_direct, create_highlights_table,
                                  get_executive_order_by_number,
@@ -1642,7 +1642,7 @@ except ImportError as e:
 #            content,
 #            tags,
 #            ai_analysis
-#        FROM dbo.executive_orders
+#        FROM executive_orders
 #        """
 #        
 #        # Add WHERE clause if filters exist
@@ -1679,7 +1679,7 @@ except ImportError as e:
 #        cursor = conn.cursor()
 #        
 #        # Get total count
-#        count_query = "SELECT COUNT(*) FROM dbo.executive_orders"
+#        count_query = "SELECT COUNT(*) FROM executive_orders"
 #        if where_conditions:
 #            count_query += " WHERE " + " AND ".join(where_conditions)
 #        
@@ -2482,201 +2482,13 @@ async def test_patch(id: str):
 # ===============================
 
 def get_executive_orders_from_db(limit=1000, offset=0, filters=None):
-    """Get executive orders using EXACT column names from your table"""
+    """Get executive orders - redirect to working version in executive_orders_db.py"""
     try:
-        print(f"🔍 DEBUG: Function called with limit={limit}, offset={offset}")
-        
-        # Build SQL query using YOUR EXACT column names
-        base_query = """
-                SELECT 
-                    id,
-                    document_number,
-                    eo_number,
-                    title,
-                    summary,
-                    signing_date,
-                    publication_date,
-                    citation,
-                    presidential_document_type,
-                    category,
-                    html_url,
-                    pdf_url,
-                    trump_2025_url,
-                    ai_summary,
-                    ai_executive_summary,
-                    ai_key_points,
-                    ai_talking_points,
-                    ai_business_impact,
-                    ai_potential_impact,
-                    ai_version,
-                    source,
-                    raw_data_available,
-                    processing_status,
-                    error_message,
-                    created_at,
-                    last_updated,
-                    last_scraped_at,
-                    content,
-                    tags,
-                    ai_analysis,
-                    reviewed
-                FROM dbo.executive_orders
-                """
-        
-        # Add WHERE clause if filters exist
-        where_conditions = []
-        params = []
-        
-        if filters:
-            if filters.get('search'):
-                where_conditions.append("(title LIKE ? OR summary LIKE ? OR ai_summary LIKE ?)")
-                search_term = f"%{filters['search']}%"
-                params.extend([search_term, search_term, search_term])
-                print(f"🔍 DEBUG: Added search filter: {search_term}")
-            
-            if filters.get('category'):
-                where_conditions.append("category = ?")
-                params.append(filters['category'])
-                print(f"🔍 DEBUG: Added category filter: {filters['category']}")
-        
-        if where_conditions:
-            base_query += " WHERE " + " AND ".join(where_conditions)
-        
-        # Add ORDER BY and pagination
-        base_query += " ORDER BY publication_date DESC, eo_number DESC"
-        base_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
-        
-        print(f"🔍 DEBUG: Final SQL Query:")
-        print(f"    {base_query}")
-        
-        # Execute query
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {'success': False, 'message': 'No database connection', 'results': [], 'count': 0}
-        
-        cursor = conn.cursor()
-        
-        # Get total count
-        count_query = "SELECT COUNT(*) FROM dbo.executive_orders"
-        if where_conditions:
-            count_query += " WHERE " + " AND ".join(where_conditions)
-        
-        cursor.execute(count_query, params if where_conditions else [])
-        total_count = cursor.fetchone()[0]
-        print(f"🔍 DEBUG: Total count from database: {total_count}")
-        
-        # Execute main query
-        cursor.execute(base_query, params)
-        columns = [desc[0] for desc in cursor.description]
-        rows = cursor.fetchall()
-        print(f"🔍 DEBUG: Raw rows fetched: {len(rows)}")
-        
-        # Convert to API format
-        results = []
-        for i, row in enumerate(rows):
-            db_record = dict(zip(columns, row))
-            
-            if i < 3:
-                print(f"🔍 DEBUG: Row {i+1}: eo_number={db_record.get('eo_number')}, title={db_record.get('title', '')[:30]}...")
-            
-            # Map your database columns to API format
-            api_record = {
-                # Core identification
-                'id': db_record.get('id'),
-                'bill_id': db_record.get('id'),
-                'eo_number': db_record.get('eo_number'),
-                'executive_order_number': db_record.get('eo_number'),
-                'bill_number': db_record.get('eo_number'),
-                'document_number': db_record.get('document_number'),
-                
-                # Content
-                'title': db_record.get('title', 'Untitled Executive Order'),
-                'summary': db_record.get('summary', ''),
-                'description': db_record.get('summary', ''),
-                'content': db_record.get('content', ''),
-                
-                # Dates
-                'signing_date': db_record.get('signing_date'),
-                'publication_date': db_record.get('publication_date'),
-                'introduced_date': db_record.get('signing_date'),
-                'last_action_date': db_record.get('publication_date'),
-                
-                # URLs
-                'html_url': db_record.get('html_url', ''),
-                'pdf_url': db_record.get('pdf_url', ''),
-                'trump_2025_url': db_record.get('trump_2025_url', ''),
-                'legiscan_url': db_record.get('html_url', ''),
-                
-                # Metadata
-                'citation': db_record.get('citation', ''),
-                'presidential_document_type': db_record.get('presidential_document_type', ''),
-                'category': db_record.get('category', 'civic'),
-                'source': db_record.get('source', 'Federal Register'),
-                'tags': db_record.get('tags', ''),
-                
-                # AI Analysis
-                'ai_summary': db_record.get('ai_summary', ''),
-                'ai_executive_summary': db_record.get('ai_executive_summary', ''),
-                'ai_key_points': db_record.get('ai_key_points', ''),
-                'ai_talking_points': db_record.get('ai_talking_points', ''),
-                'ai_business_impact': db_record.get('ai_business_impact', ''),
-                'ai_potential_impact': db_record.get('ai_potential_impact', ''),
-                'ai_version': db_record.get('ai_version', ''),
-                'ai_analysis': db_record.get('ai_analysis', ''),
-                'ai_processed': bool(
-                    db_record.get('ai_summary') or 
-                    db_record.get('ai_executive_summary') or 
-                    db_record.get('ai_analysis')
-                ),
-                
-                # Processing Status
-                'processing_status': db_record.get('processing_status', ''),
-                'raw_data_available': db_record.get('raw_data_available', False),
-                'error_message': db_record.get('error_message', ''),
-                
-                # Timestamps
-                'created_at': db_record.get('created_at'),
-                'last_updated': db_record.get('last_updated'),
-                'last_scraped_at': db_record.get('last_scraped_at'),
-                
-                # API-specific fields
-                'bill_type': 'executive_order',
-                'state': 'Federal',
-                'president': 'Donald Trump',
-                
-                # Review status
-                'reviewed': db_record.get('reviewed', False)
-            }
-            
-            # Format dates
-            for date_field in ['signing_date', 'publication_date']:
-                if api_record.get(date_field):
-                    try:
-                        if hasattr(api_record[date_field], 'strftime'):
-                            api_record[f'formatted_{date_field}'] = api_record[date_field].strftime('%Y-%m-%d')
-                        else:
-                            api_record[f'formatted_{date_field}'] = str(api_record[date_field])
-                    except:
-                        api_record[f'formatted_{date_field}'] = str(api_record[date_field])
-            
-            results.append(api_record)
-        
-        cursor.close()
-        conn.close()
-        
-        print(f"🔍 DEBUG: Successfully processed {len(results)} executive orders")
-        
-        return {
-            'success': True,
-            'results': results,
-            'count': len(results),
-            'total': total_count
-        }
-        
+        # Import the working version from executive_orders_db
+        from executive_orders_db import get_executive_orders_from_db as working_version
+        return working_version(limit=limit, offset=offset, filters=filters)
     except Exception as e:
-        print(f"❌ DEBUG: Error in get_executive_orders_from_db: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ DEBUG: Error redirecting to working version: {e}")
         return {
             'success': False,
             'message': str(e),
@@ -2706,7 +2518,7 @@ def save_executive_orders_to_db(orders):
                 'category': order.get('category', 'civic'),
                 'introduced_date': order.get('introduced_date', ''),
                 'last_action_date': order.get('last_action_date', ''),
-                'session_id': order.get('session_id', '2025-trump-admin'),
+                'session_id': order.get('session_id', '2025'),
                 'session_name': order.get('session_name', 'Trump 2025 Administration'),
                 'bill_type': order.get('bill_type', 'executive_order'),
                 'body': order.get('body', 'executive'),
@@ -2756,7 +2568,7 @@ def save_executive_orders_to_db(orders):
 #                        'category': order.get('category', 'civic'),
 #                        'introduced_date': order.get('introduced_date', ''),
 #                        'last_action_date': order.get('last_action_date', ''),  # ✅ Use last_action_date, not last_action
-#                        'session_id': order.get('session_id', '2025-trump-admin'),
+#                        'session_id': order.get('session_id', '2025'),
 #                        'session_name': order.get('session_name', 'Trump 2025 Administration'),
 #                        'bill_type': order.get('bill_type', 'executive_order'),
 #                        'body': order.get('body', 'executive'),
@@ -2813,7 +2625,7 @@ def transform_orders_for_save(orders):
             'category': order.get('category', 'civic'),
             'introduced_date': signing_date,  # Use signing_date as introduced_date
             'last_action_date': publication_date or signing_date,  # Use publication_date as last_action
-            'session_id': '2025-trump-administration',
+            'session_id': '2025',
             'session_name': 'Trump 2025 Administration',
             'bill_type': 'executive_order',
             'body': 'executive',
@@ -2998,6 +2810,7 @@ async def quick_executive_orders_pipeline():
         }
 
 
+
 @app.post("/api/fetch-executive-orders")
 async def legacy_fetch_executive_orders(request: ExecutiveOrderFetchRequest):
     """Legacy endpoint for backward compatibility"""
@@ -3063,13 +2876,31 @@ async def get_task_status(task_id: str):
 # ===============================
 
 def get_azure_sql_connection():
-    """Get Azure SQL connection using our DatabaseConnection class"""
-    try:
-        db_conn = DatabaseConnection()
-        return db_conn.get_connection()
-    except Exception as e:
-        logger.error(f"❌ Azure SQL connection failed: {e}")
-        return None
+    """Get database connection using new multi-database support"""
+    # This returns the actual connection object for backward compatibility
+    # TODO: Update all calling code to use context managers properly
+    from database_config import get_database_config
+    import psycopg2
+    import pyodbc
+    
+    config = get_database_config()
+    
+    if config['type'] == 'postgresql':
+        # PostgreSQL connection
+        conn = psycopg2.connect(
+            host=config['host'],
+            port=config['port'],
+            database=config['database'],
+            user=config['user'],
+            password=config['password']
+        )
+        conn.autocommit = False
+    else:
+        # Azure SQL connection
+        # ... implementation would go here for production
+        conn = None
+    
+    return conn
 
 def create_highlights_table():
     """Create the user highlights table"""
@@ -3538,23 +3369,48 @@ except ImportError as e:
 # MAIN ENDPOINTS
 # ===============================
 
+@app.get("/api/executive-orders/debug-dates")
+async def debug_executive_order_dates():
+    """Debug endpoint to check date retrieval"""
+    try:
+        # Test direct database call
+        from executive_orders_db import get_executive_orders_from_db as db_func
+        db_result = db_func(limit=1, offset=0)
+        
+        if db_result.get('success') and db_result.get('results'):
+            order = db_result['results'][0]
+            return {
+                "database_direct": {
+                    "eo_number": order.get('eo_number'),
+                    "signing_date": order.get('signing_date'),
+                    "publication_date": order.get('publication_date'),
+                    "title": order.get('title', '')[:60]
+                },
+                "database_keys": list(order.keys())[:20]
+            }
+        else:
+            return {"error": "No results from database"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/executive-orders/debug-count")
 async def debug_database_count():
     """Debug endpoint to check database counts"""
     try:
-        from database_connection import get_db_cursor
+        from executive_orders_db import get_db_cursor
         
         with get_db_cursor() as cursor:
             debug_info = {}
             
             # Total count
-            cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+            cursor.execute("SELECT COUNT(*) FROM executive_orders")
             debug_info['total_rows'] = cursor.fetchone()[0]
             
             # By document type (instead of president)
             cursor.execute("""
                 SELECT COALESCE(presidential_document_type, 'Unknown'), COUNT(*) 
-                FROM dbo.executive_orders 
+                FROM executive_orders 
                 GROUP BY presidential_document_type
             """)
             type_counts = cursor.fetchall()
@@ -3563,7 +3419,7 @@ async def debug_database_count():
             # Recent records
             cursor.execute("""
                 SELECT TOP 5 eo_number, document_number, title, signing_date
-                FROM dbo.executive_orders 
+                FROM executive_orders 
                 ORDER BY COALESCE(signing_date, publication_date, created_at) DESC
             """)
             samples = cursor.fetchall()
@@ -3650,12 +3506,12 @@ async def debug_executive_orders_api(
         # Test 4: Database table info
         try:
             with get_db_cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+                cursor.execute("SELECT COUNT(*) FROM executive_orders")
                 total_records = cursor.fetchone()[0]
                 
                 cursor.execute("""
                     SELECT TOP 3 eo_number, title, signing_date 
-                    FROM dbo.executive_orders 
+                    FROM executive_orders 
                     ORDER BY signing_date DESC
                 """)
                 sample_records = cursor.fetchall()
@@ -4063,7 +3919,7 @@ async def test_enhanced_ai():
 async def get_executive_orders_with_highlights(
     category: Optional[str] = Query(None, description="Executive order category filter"),
     page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    per_page: int = Query(100, ge=1, le=1000, description="Items per page"),
     search: Optional[str] = Query(None, description="Search term"),
     sort_by: str = Query("signing_date", description="Sort field"),
     sort_order: str = Query("desc", description="Sort order (asc, desc)"),
@@ -4143,28 +3999,28 @@ async def get_executive_orders_with_highlights(
         validated_orders = []
         for i, order in enumerate(orders):
             try:
-                eo_number = order.get('bill_number', '') or order.get('eo_number', '')
+                eo_number = order.get('eo_number', '') or order.get('bill_number', '')
                 logger.info(f"📝 Processing order {i+1}: eo_number={eo_number}, title={order.get('title', 'No title')[:50]}...")
                 
-                # Map Azure SQL fields to expected EO fields
+                # Map database fields to expected EO fields
                 formatted_order = {
                     'eo_number': eo_number,
                     'executive_order_number': eo_number,
                     'title': order.get('title', ''),
-                    'summary': order.get('description', ''),
-                    'signing_date': order.get('introduced_date', ''),
-                    'publication_date': order.get('last_action_date', ''),
+                    'summary': order.get('summary', ''),
+                    'signing_date': order.get('signing_date', ''),
+                    'publication_date': order.get('publication_date', ''),
                     'category': order.get('category', 'not-applicable'),
-                    'reviewed': order.get('reviewed', False),  # ⚡ ADD MISSING REVIEWED FIELD
-                    'html_url': order.get('legiscan_url', ''),
+                    'reviewed': order.get('reviewed', False),
+                    'html_url': order.get('html_url', ''),
                     'pdf_url': order.get('pdf_url', ''),
                     'ai_summary': order.get('ai_summary', ''),
                     'ai_executive_summary': order.get('ai_executive_summary', ''),
-                    'ai_key_points': order.get('ai_talking_points', ''),
+                    'ai_key_points': order.get('ai_key_points', ''),
                     'ai_talking_points': order.get('ai_talking_points', ''),
                     'ai_business_impact': order.get('ai_business_impact', ''),
                     'ai_potential_impact': order.get('ai_potential_impact', ''),
-                    'source': 'Azure SQL Database'
+                    'source': order.get('source', 'Database')
                 }
                 
                 validated_orders.append(formatted_order)
@@ -4427,7 +4283,7 @@ async def update_executive_order_review_status(
         cursor = conn.cursor()
         
         # First, let's see what's actually in the database
-        cursor.execute("SELECT TOP 3 id, eo_number, title FROM dbo.executive_orders ORDER BY last_updated DESC")
+        cursor.execute("SELECT TOP 3 id, eo_number, title FROM executive_orders ORDER BY last_updated DESC")
         sample_records = cursor.fetchall()
         logger.info(f"🔍 BACKEND: Sample records in database:")
         for record in sample_records:
@@ -4435,10 +4291,10 @@ async def update_executive_order_review_status(
         
         # Try to find the record multiple ways
         search_attempts = [
-            ("Direct ID match", "SELECT id FROM dbo.executive_orders WHERE id = ?", id),
-            ("EO number match (eo- prefix)", "SELECT id FROM dbo.executive_orders WHERE eo_number = ?", id.replace('eo-', '') if id.startswith('eo-') else id),
-            ("Document number match", "SELECT id FROM dbo.executive_orders WHERE document_number = ?", id.replace('eo-', '') if id.startswith('eo-') else id),
-            ("String ID match", "SELECT id FROM dbo.executive_orders WHERE CAST(id AS VARCHAR) = ?", str(id))
+            ("Direct ID match", "SELECT id FROM executive_orders WHERE id = ?", id),
+            ("EO number match (eo- prefix)", "SELECT id FROM executive_orders WHERE eo_number = ?", id.replace('eo-', '') if id.startswith('eo-') else id),
+            ("Document number match", "SELECT id FROM executive_orders WHERE document_number = ?", id.replace('eo-', '') if id.startswith('eo-') else id),
+            ("String ID match", "SELECT id FROM executive_orders WHERE CAST(id AS VARCHAR) = ?", str(id))
         ]
         
         found_record_id = None
@@ -4462,14 +4318,14 @@ async def update_executive_order_review_status(
             raise HTTPException(status_code=404, detail=f"Executive order not found for ID: {id}")
         
         # First, let's check the current reviewed value
-        check_query = "SELECT reviewed FROM dbo.executive_orders WHERE id = ?"
+        check_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
         cursor.execute(check_query, found_record_id)
         current_reviewed_result = cursor.fetchone()
         current_reviewed = current_reviewed_result[0] if current_reviewed_result else "NULL"
         logger.info(f"🔍 BACKEND: Current reviewed status in DB: {current_reviewed}")
         
         # Update the record
-        update_query = "UPDATE dbo.executive_orders SET reviewed = ? WHERE id = ?"
+        update_query = "UPDATE executive_orders SET reviewed = ? WHERE id = ?"
         logger.info(f"🔍 BACKEND: Executing review update: {update_query} with reviewed='{reviewed}', id={found_record_id}")
         cursor.execute(update_query, reviewed, found_record_id)
         rows_affected = cursor.rowcount
@@ -4485,7 +4341,7 @@ async def update_executive_order_review_status(
         conn.commit()
         
         # Verify the update worked by reading back the value
-        verify_query = "SELECT reviewed FROM dbo.executive_orders WHERE id = ?"
+        verify_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
         cursor.execute(verify_query, found_record_id)
         updated_reviewed_result = cursor.fetchone()
         updated_reviewed = updated_reviewed_result[0] if updated_reviewed_result else "NULL"
@@ -4555,9 +4411,9 @@ async def update_executive_order_category(
         # Try direct lookup by eo_number (numeric part)
         try:
             eo_number = id.replace('eo-', '') if id.startswith('eo-') else id
-            query = "SELECT id FROM dbo.executive_orders WHERE eo_number = ?"
+            query = "SELECT id FROM executive_orders WHERE eo_number = %s"
             logger.info(f"🔍 BACKEND: Trying eo_number lookup with: {eo_number}")
-            cursor.execute(query, eo_number)
+            cursor.execute(query, (eo_number,))
             result = cursor.fetchone()
             if result:
                 found_record_id = result[0]
@@ -4568,9 +4424,9 @@ async def update_executive_order_category(
         # If not found, try document_number lookup
         if not found_record_id:
             try:
-                query = "SELECT id FROM dbo.executive_orders WHERE document_number = ?"
+                query = "SELECT id FROM executive_orders WHERE document_number = %s"
                 logger.info(f"🔍 BACKEND: Trying document_number lookup with: {id}")
-                cursor.execute(query, id)
+                cursor.execute(query, (id,))
                 result = cursor.fetchone()
                 if result:
                     found_record_id = result[0]
@@ -4582,9 +4438,9 @@ async def update_executive_order_category(
         if not found_record_id:
             try:
                 if id.isdigit():
-                    query = "SELECT id FROM dbo.executive_orders WHERE id = ?"
+                    query = "SELECT id FROM executive_orders WHERE id = %s"
                     logger.info(f"🔍 BACKEND: Trying direct ID lookup with: {id}")
-                    cursor.execute(query, int(id))
+                    cursor.execute(query, (int(id),))
                     result = cursor.fetchone()
                     if result:
                         found_record_id = result[0]
@@ -4598,16 +4454,16 @@ async def update_executive_order_category(
             raise HTTPException(status_code=404, detail=f"Executive order not found for ID: {id}")
         
         # First, let's check the current category value
-        check_query = "SELECT category FROM dbo.executive_orders WHERE id = ?"
-        cursor.execute(check_query, found_record_id)
+        check_query = "SELECT category FROM executive_orders WHERE id = %s"
+        cursor.execute(check_query, (found_record_id,))
         current_category_result = cursor.fetchone()
         current_category = current_category_result[0] if current_category_result else "NULL"
         logger.info(f"🔍 BACKEND: Current category in DB: {current_category}")
         
         # Update the record
-        update_query = "UPDATE dbo.executive_orders SET category = ? WHERE id = ?"
+        update_query = "UPDATE executive_orders SET category = %s WHERE id = %s"
         logger.info(f"🔍 BACKEND: Executing update: {update_query} with category='{category}', id={found_record_id}")
-        cursor.execute(update_query, category, found_record_id)
+        cursor.execute(update_query, (category, found_record_id))
         rows_affected = cursor.rowcount
         
         logger.info(f"🔍 BACKEND: Update affected {rows_affected} rows")
@@ -4621,8 +4477,8 @@ async def update_executive_order_category(
         conn.commit()
         
         # Verify the update worked by reading back the value
-        verify_query = "SELECT category FROM dbo.executive_orders WHERE id = ?"
-        cursor.execute(verify_query, found_record_id)
+        verify_query = "SELECT category FROM executive_orders WHERE id = %s"
+        cursor.execute(verify_query, (found_record_id,))
         updated_category_result = cursor.fetchone()
         updated_category = updated_category_result[0] if updated_category_result else "NULL"
         logger.info(f"🔍 BACKEND: Verified category in DB after update: {updated_category}")
@@ -4671,7 +4527,7 @@ async def debug_executive_order(id: str):
         # Try direct lookup by eo_number (numeric part)
         try:
             eo_number = id.replace('eo-', '') if id.startswith('eo-') else id
-            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM dbo.executive_orders WHERE eo_number = ?"
+            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE eo_number = ?"
             cursor.execute(query, eo_number)
             result = cursor.fetchone()
             if result:
@@ -4693,7 +4549,7 @@ async def debug_executive_order(id: str):
         
         # Try document_number lookup
         try:
-            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM dbo.executive_orders WHERE document_number = ?"
+            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE document_number = ?"
             cursor.execute(query, id)
             result = cursor.fetchone()
             if result:
@@ -4716,7 +4572,7 @@ async def debug_executive_order(id: str):
         # Try direct ID lookup
         try:
             if id.isdigit():
-                query = "SELECT id, eo_number, document_number, title, category, reviewed FROM dbo.executive_orders WHERE id = ?"
+                query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE id = ?"
                 cursor.execute(query, int(id))
                 result = cursor.fetchone()
                 if result:
@@ -4773,7 +4629,7 @@ async def debug_database_state():
         # Get sample records with key fields
         sample_query = """
         SELECT TOP 5 id, eo_number, document_number, title, category, reviewed, last_updated
-        FROM dbo.executive_orders
+        FROM executive_orders
         ORDER BY last_updated DESC
         """
         cursor.execute(sample_query)
@@ -4794,7 +4650,7 @@ async def debug_database_state():
         # Check for specific record
         specific_query = """
         SELECT id, eo_number, document_number, title, category, reviewed
-        FROM dbo.executive_orders
+        FROM executive_orders
         WHERE eo_number = '14316' OR document_number LIKE '%14316%'
         """
         cursor.execute(specific_query)
@@ -4834,7 +4690,7 @@ async def test_database_persistence():
         cursor = conn.cursor()
         
         # Find a test record
-        cursor.execute("SELECT TOP 1 id, eo_number, reviewed FROM dbo.executive_orders WHERE eo_number IS NOT NULL")
+        cursor.execute("SELECT TOP 1 id, eo_number, reviewed FROM executive_orders WHERE eo_number IS NOT NULL")
         test_record = cursor.fetchone()
         
         if not test_record:
@@ -4851,7 +4707,7 @@ async def test_database_persistence():
         logger.info(f"🧪 TEST: Record {record_id} (EO {eo_number}) - changing reviewed from {current_reviewed} to {new_reviewed}")
         
         # Update the record
-        update_query = "UPDATE dbo.executive_orders SET reviewed = ? WHERE id = ?"
+        update_query = "UPDATE executive_orders SET reviewed = ? WHERE id = ?"
         cursor.execute(update_query, new_reviewed, record_id)
         rows_affected = cursor.rowcount
         
@@ -4862,7 +4718,7 @@ async def test_database_persistence():
         logger.info(f"🧪 TEST: Transaction committed")
         
         # Verify the change in the same connection
-        verify_query = "SELECT reviewed FROM dbo.executive_orders WHERE id = ?"
+        verify_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
         cursor.execute(verify_query, record_id)
         verified_value = cursor.fetchone()[0]
         
@@ -4875,7 +4731,7 @@ async def test_database_persistence():
         new_conn = get_azure_sql_connection()
         new_cursor = new_conn.cursor()
         
-        check_query = "SELECT reviewed FROM dbo.executive_orders WHERE id = ?"
+        check_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
         new_cursor.execute(check_query, record_id)
         final_value = new_cursor.fetchone()[0]
         
@@ -4913,7 +4769,7 @@ async def direct_sql_test():
         logger.info(f"🔍 SQL TEST: Connection autocommit: {autocommit_status}")
         
         # Step 2: Find a test record
-        cursor.execute("SELECT TOP 1 id, eo_number, reviewed FROM dbo.executive_orders WHERE eo_number = '14316'")
+        cursor.execute("SELECT TOP 1 id, eo_number, reviewed FROM executive_orders WHERE eo_number = '14316'")
         test_record = cursor.fetchone()
         
         if not test_record:
@@ -4931,13 +4787,13 @@ async def direct_sql_test():
             logger.info(f"🔍 SQL TEST: Started explicit transaction")
             
             # Perform update
-            update_sql = "UPDATE dbo.executive_orders SET reviewed = ? WHERE id = ?"
+            update_sql = "UPDATE executive_orders SET reviewed = ? WHERE id = ?"
             cursor.execute(update_sql, new_reviewed, record_id)
             rows_affected = cursor.rowcount
             logger.info(f"🔍 SQL TEST: Update executed, rows affected: {rows_affected}")
             
             # Check value before commit
-            cursor.execute("SELECT reviewed FROM dbo.executive_orders WHERE id = ?", record_id)
+            cursor.execute("SELECT reviewed FROM executive_orders WHERE id = ?", record_id)
             value_before_commit = cursor.fetchone()[0]
             logger.info(f"🔍 SQL TEST: Value before commit: {value_before_commit}")
             
@@ -4946,7 +4802,7 @@ async def direct_sql_test():
             logger.info(f"🔍 SQL TEST: Transaction committed")
             
             # Check value after commit
-            cursor.execute("SELECT reviewed FROM dbo.executive_orders WHERE id = ?", record_id)
+            cursor.execute("SELECT reviewed FROM executive_orders WHERE id = ?", record_id)
             value_after_commit = cursor.fetchone()[0]
             logger.info(f"🔍 SQL TEST: Value after commit: {value_after_commit}")
             
@@ -4969,7 +4825,7 @@ async def direct_sql_test():
         logger.info(f"🔍 SQL TEST: Opened new connection")
         
         # Check value with new connection
-        new_cursor.execute("SELECT reviewed FROM dbo.executive_orders WHERE id = ?", record_id)
+        new_cursor.execute("SELECT reviewed FROM executive_orders WHERE id = ?", record_id)
         final_value = new_cursor.fetchone()[0]
         logger.info(f"🔍 SQL TEST: Final value with new connection: {final_value}")
         
@@ -5064,7 +4920,7 @@ async def debug_executive_orders_schema():
         # If reviewed column doesn't exist, add it
         if "reviewed" not in column_names:
             try:
-                cursor.execute("ALTER TABLE dbo.executive_orders ADD reviewed BIT DEFAULT 0")
+                cursor.execute("ALTER TABLE executive_orders ADD reviewed BIT DEFAULT 0")
                 conn.commit()
                 schema_info["reviewed_column_added"] = True
                 logger.info("✅ Added 'reviewed' column to executive_orders table")
@@ -5074,7 +4930,7 @@ async def debug_executive_orders_schema():
         
         # Get sample data
         try:
-            cursor.execute("SELECT TOP 3 id, eo_number, title, reviewed FROM dbo.executive_orders")
+            cursor.execute("SELECT TOP 3 id, eo_number, title, reviewed FROM executive_orders")
             samples = cursor.fetchall()
             schema_info["sample_data"] = [
                 {
@@ -5217,7 +5073,7 @@ async def debug_executive_orders_endpoints():
             conn = get_azure_sql_connection()
             if conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM dbo.executive_orders")
+                cursor.execute("SELECT COUNT(*) FROM executive_orders")
                 count = cursor.fetchone()[0]
                 cursor.close()
                 conn.close()
@@ -5279,7 +5135,7 @@ async def test_review_status_endpoints():
             conn = get_azure_sql_connection()
             cursor = conn.cursor()
             
-            cursor.execute("SELECT TOP 1 id, eo_number FROM dbo.executive_orders")
+            cursor.execute("SELECT TOP 1 id, eo_number FROM executive_orders")
             test_eo = cursor.fetchone()
             
             if test_eo:
@@ -6687,6 +6543,111 @@ async def debug_env_vars():
             "is_container": bool(os.getenv("CONTAINER_APP_NAME"))
         }
     }
+
+
+# ===============================
+# AI REGENERATION ENDPOINT
+# ===============================
+@app.get("/api/test-regenerate")
+async def test_regenerate_endpoint():
+    """Simple test endpoint to verify routing works"""
+    return {"success": True, "message": "Test endpoint works!"}
+
+@app.post("/api/executive-orders/regenerate-ai")
+async def regenerate_executive_orders_ai():
+    """Regenerate AI analysis for all executive orders using updated prompts"""
+    try:
+        logger.info("🤖 Starting AI regeneration for all executive orders")
+        
+        # First, fetch all executive orders from database
+        db_result = get_executive_orders_from_db(limit=1000, offset=0)
+        
+        if not db_result.get('success'):
+            return {
+                "success": False,
+                "message": "Failed to retrieve executive orders from database"
+            }
+        
+        orders = db_result.get('results', [])
+        if not orders:
+            return {
+                "success": False,
+                "message": "No executive orders found in database"
+            }
+        
+        logger.info(f"🔄 Found {len(orders)} executive orders to reprocess")
+        
+        processed_count = 0
+        failed_count = 0
+        
+        # Process each order with AI
+        for i, order in enumerate(orders, 1):
+            try:
+                logger.info(f"🤖 Processing order {i}/{len(orders)}: {order.get('title', 'Unknown')}")
+                
+                # Get the full content for AI processing
+                content_url = order.get('html_url')
+                if not content_url:
+                    logger.warning(f"⚠️ No content URL for order {order.get('eo_number')}")
+                    failed_count += 1
+                    continue
+                
+                # Use existing summary as content for now (faster processing)
+                content = order.get('summary', order.get('title', ''))
+                
+                # Generate AI analysis
+                try:
+                    from ai import get_executive_summary, get_key_talking_points, get_business_impact
+                    
+                    # Generate all AI content with new prompts
+                    ai_summary = await get_executive_summary(content, f"Executive Summary - Executive Order {order.get('eo_number')}")
+                    ai_talking_points = await get_key_talking_points(content, f"Policy Discussion - Executive Order {order.get('eo_number')}")
+                    ai_business_impact = await get_business_impact(content, f"Regulatory Impact - Executive Order {order.get('eo_number')}")
+                    
+                    # Update the order with new AI analysis
+                    update_data = {
+                        'ai_summary': ai_summary,
+                        'ai_executive_summary': ai_summary,
+                        'ai_key_points': ai_talking_points,
+                        'ai_talking_points': ai_talking_points,
+                        'ai_business_impact': ai_business_impact,
+                        'ai_potential_impact': ai_business_impact
+                    }
+                    
+                    # Save to database (use existing bulk save function)
+                    updated_order = {**order, **update_data}
+                    save_result = save_executive_orders_to_db([updated_order])
+                    
+                    if save_result.get('errors', 0) == 0:
+                        processed_count += 1
+                        logger.info(f"✅ Successfully updated AI analysis for order {order.get('eo_number')}")
+                    else:
+                        failed_count += 1
+                        logger.error(f"❌ Failed to save updated order {order.get('eo_number')}: {save_result.get('error_details', [])}")
+                        
+                except Exception as ai_error:
+                    failed_count += 1
+                    logger.error(f"❌ AI processing failed for order {order.get('eo_number')}: {ai_error}")
+                    
+            except Exception as order_error:
+                failed_count += 1
+                logger.error(f"❌ Error processing order {i}: {order_error}")
+        
+        return {
+            "success": True,
+            "message": f"AI regeneration completed",
+            "total_orders": len(orders),
+            "processed_successfully": processed_count,
+            "failed": failed_count,
+            "regeneration_type": "all_executive_orders"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in AI regeneration: {e}")
+        return {
+            "success": False,
+            "message": f"AI regeneration failed: {str(e)}"
+        }
 
 
 # ===============================
