@@ -6,7 +6,7 @@ Run this to create indexes and optimize database performance
 
 import os
 import sys
-from database_connection import get_db_connection
+from database_config import get_db_connection
 import logging
 
 logging.basicConfig(level=logging.INFO)

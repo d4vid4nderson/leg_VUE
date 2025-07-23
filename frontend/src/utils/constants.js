@@ -24,14 +24,14 @@ export const FILTERS = [
 // Centralized filter styling - ACTIVE STATES (when filter is selected)
 export const getFilterActiveClass = (filterKey) => {
   const styles = {
-    'all_practice_areas': 'bg-teal-100 text-teal-700 font-medium',
-    'civic': 'bg-blue-100 text-blue-700 font-medium',
-    'education': 'bg-orange-100 text-orange-700 font-medium',
-    'engineering': 'bg-green-100 text-green-700 font-medium',
-    'healthcare': 'bg-red-100 text-red-700 font-medium',
-    'not-applicable': 'bg-gray-100 text-gray-700 font-medium',
+    'all_practice_areas': 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-medium',
+    'civic': 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium',
+    'education': 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 font-medium',
+    'engineering': 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium',
+    'healthcare': 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium',
+    'not-applicable': 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium',
   };
-  return styles[filterKey] || 'bg-gray-100 text-gray-700 font-medium';
+  return styles[filterKey] || 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium';
 };
 
 // Centralized icon styling - ICON COLORS
@@ -50,14 +50,14 @@ export const getFilterIconClass = (filterKey) => {
 // Category tag styling (for pills/badges)
 export const getCategoryTagClass = (filterKey) => {
   const styles = {
-    'all_practice_areas': 'bg-teal-100 text-teal-800',
-    'civic': 'bg-blue-100 text-blue-800',
-    'education': 'bg-orange-100 text-orange-800',
-    'engineering': 'bg-green-100 text-green-800',
-    'healthcare': 'bg-red-100 text-red-800',
-    'not-applicable': 'bg-gray-100 text-gray-800',
+    'all_practice_areas': 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300',
+    'civic': 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
+    'education': 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300',
+    'engineering': 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
+    'healthcare': 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
+    'not-applicable': 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300',
   };
-  return styles[filterKey] || 'bg-gray-100 text-gray-800';
+  return styles[filterKey] || 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300';
 };
 
 export const filterStyles = {

@@ -23,3 +23,6 @@ aiohttp>=3.8.0
 # Additional SQL Server dependencies
 pymssql>=2.2.7
 sqlalchemy-pytds>=0.3.4
+
+# PostgreSQL dependencies for development
+psycopg2-binary>=2.9.0

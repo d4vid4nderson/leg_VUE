@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Building, Shield, HeartPulse, Wheat, DollarSign, GraduationCap, Landmark, Cog, ChevronDown, ChevronUp, FileText, ExternalLink } from 'lucide-react';
+import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 
 const HR1PolicyPage = () => {
   const navigate = useNavigate();
@@ -17,23 +18,23 @@ const HR1PolicyPage = () => {
     const isExpanded = expandedSections[id] ?? defaultExpanded;
     
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 overflow-hidden hover:shadow-md transition-all duration-300">
+      <div className={getCardClasses('rounded-xl shadow-sm mb-6 overflow-hidden hover:shadow-md transition-all duration-300')}>
         <button
           onClick={() => toggleSection(id)}
-          className="w-full px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between hover:from-blue-100 hover:to-indigo-100 transition-colors"
+          className="w-full px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-between hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/30 dark:hover:to-indigo-900/30 transition-colors"
         >
           <div className="flex items-center space-x-3">
-            <Icon className="h-6 w-6 text-blue-600" />
-            <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+            <Icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            <h3 className={getTextClasses('primary', 'text-lg font-semibold')}>{title}</h3>
           </div>
           {isExpanded ? (
-            <ChevronUp className="h-5 w-5 text-gray-600" />
+            <ChevronUp className="h-5 w-5 text-gray-600 dark:text-dark-text-secondary" />
           ) : (
-            <ChevronDown className="h-5 w-5 text-gray-600" />
+            <ChevronDown className="h-5 w-5 text-gray-600 dark:text-dark-text-secondary" />
           )}
         </button>
         {isExpanded && (
-          <div className="px-6 py-4 border-t border-gray-100">
+          <div className="px-6 py-4 border-t border-gray-100 dark:border-dark-border">
             {children}
           </div>
         )}
@@ -42,35 +43,35 @@ const HR1PolicyPage = () => {
   };
 
   const ImpactCard = ({ title, status, opportunity, action, bgColor, iconColor }) => (
-    <div className={`${bgColor} rounded-xl p-6 mb-6 shadow-sm border hover:shadow-md transition-shadow duration-300`}>
-      <h4 className="font-bold text-gray-900 mb-4 text-xl leading-tight">{title}</h4>
+    <div className={`${bgColor} dark:bg-dark-bg-secondary rounded-xl p-6 mb-6 shadow-sm border border-gray-200 dark:border-dark-border hover:shadow-md transition-shadow duration-300`}>
+      <h4 className={getTextClasses('primary', 'font-bold mb-4 text-xl leading-tight')}>{title}</h4>
       <div className="space-y-4">
-        <div className="bg-white/50 rounded-lg p-4">
+        <div className="bg-white/50 dark:bg-dark-bg-tertiary/50 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <div className={`w-2 h-2 ${iconColor} rounded-full mt-2 flex-shrink-0`}></div>
             <div>
-              <span className="font-semibold text-gray-800 block mb-1">Current Status</span>
-              <p className="text-gray-700 leading-relaxed">{status}</p>
+              <span className={getTextClasses('primary', 'font-semibold block mb-1')}>Current Status</span>
+              <p className={getTextClasses('secondary', 'leading-relaxed')}>{status}</p>
             </div>
           </div>
         </div>
         
-        <div className="bg-white/50 rounded-lg p-4">
+        <div className="bg-white/50 dark:bg-dark-bg-tertiary/50 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
+            <div className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full mt-2 flex-shrink-0"></div>
             <div>
-              <span className="font-semibold text-gray-800 block mb-1">Market Opportunity</span>
-              <p className="text-gray-700 leading-relaxed">{opportunity}</p>
+              <span className={getTextClasses('primary', 'font-semibold block mb-1')}>Market Opportunity</span>
+              <p className={getTextClasses('secondary', 'leading-relaxed')}>{opportunity}</p>
             </div>
           </div>
         </div>
         
-        <div className="bg-white/50 rounded-lg p-4">
+        <div className="bg-white/50 dark:bg-dark-bg-tertiary/50 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+            <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
             <div>
-              <span className="font-semibold text-gray-800 block mb-1">Recommended Action</span>
-              <p className="text-gray-700 leading-relaxed font-medium">{action}</p>
+              <span className={getTextClasses('primary', 'font-semibold block mb-1')}>Recommended Action</span>
+              <p className={getTextClasses('secondary', 'leading-relaxed font-medium')}>{action}</p>
             </div>
           </div>
         </div>
@@ -79,22 +80,18 @@ const HR1PolicyPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className={getPageContainerClasses()}>
       {/* Header Section */}
       <section className="relative overflow-hidden px-6 pt-12">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-              <Landmark size={16} />
-              H.R. 1 Policy Analysis
-            </div>
             
-            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+            <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-6 leading-tight')}>
               <span className="block">H.R.1 - One Big Beautiful</span>
               <span className="block bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent py-2">Bill Act</span>
             </h1>
             
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+            <p className={getTextClasses('secondary', 'text-xl mb-8 max-w-3xl mx-auto leading-relaxed')}>
               A comprehensive analysis of the massive budget reconciliation bill that redirects federal priorities, 
               cuts spending in certain areas, and boosts others across government, energy, and defense sectors.
             </p>
@@ -106,12 +103,12 @@ const HR1PolicyPage = () => {
       <section className="py-8 px-6">
         <div className="max-w-7xl mx-auto">
           {/* What This Bill Does */}
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-6 mb-8 border-l-4 border-amber-400">
-            <h2 className="text-2xl font-bold text-gray-800 mb-3 flex items-center">
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl p-6 mb-8 border-l-4 border-amber-400 dark:border-amber-500">
+            <h2 className={getTextClasses('primary', 'text-2xl font-bold mb-3 flex items-center')}>
               <span className="mr-3">🤔</span>
               What This Bill Does
             </h2>
-            <p className="text-gray-700 leading-relaxed">
+            <p className={getTextClasses('secondary', 'leading-relaxed')}>
               H.R. 1 is a massive budget reconciliation bill that makes major changes across government spending, 
               taxes, and energy policy. Think of it as Congress's way to redirect federal priorities and cut 
               spending in certain areas while boosting others!
@@ -120,13 +117,13 @@ const HR1PolicyPage = () => {
 
           {/* Key Changes */}
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+            <h2 className={getTextClasses('primary', 'text-2xl font-bold mb-6 flex items-center')}>
               <span className="mr-3">🔥</span>
               Key Changes That Matter
             </h2>
 
             <PolicySection id="energy" icon={Building} title="Energy & Environment - Major Shift Away from Green Programs" defaultExpanded={true}>
-              <ul className="space-y-3 text-gray-700">
+              <ul className={getTextClasses('secondary', 'space-y-3')}>
                 <li className="flex items-start space-x-3">
                   <span className="text-red-500 mt-1 text-lg">•</span>
                   <span>Eliminates most clean energy tax credits (electric vehicles, solar panels, wind energy)</span>
@@ -143,7 +140,7 @@ const HR1PolicyPage = () => {
             </PolicySection>
 
             <PolicySection id="defense" icon={Shield} title="Defense - Big Spending Increases">
-              <ul className="space-y-3 text-gray-700">
+              <ul className={getTextClasses('secondary', 'space-y-3')}>
                 <li className="flex items-start space-x-3">
                   <span className="text-green-500 mt-1 text-lg">•</span>
                   <span>Major military investment in shipbuilding, weapons, missile defense</span>
@@ -160,7 +157,7 @@ const HR1PolicyPage = () => {
             </PolicySection>
 
             <PolicySection id="healthcare" icon={HeartPulse} title="Healthcare - Stricter Rules, Less Spending">
-              <ul className="space-y-3 text-gray-700">
+              <ul className={getTextClasses('secondary', 'space-y-3')}>
                 <li className="flex items-start space-x-3">
                   <span className="text-red-500 mt-1 text-lg">•</span>
                   <span>Tighter Medicaid eligibility - harder to qualify, shorter coverage periods</span>
@@ -177,7 +174,7 @@ const HR1PolicyPage = () => {
             </PolicySection>
 
             <PolicySection id="agriculture" icon={Wheat} title="Agriculture - Mixed Changes">
-              <ul className="space-y-3 text-gray-700">
+              <ul className={getTextClasses('secondary', 'space-y-3')}>
                 <li className="flex items-start space-x-3">
                   <span className="text-red-500 mt-1 text-lg">•</span>
                   <span>Stricter food stamp work requirements</span>
@@ -194,7 +191,7 @@ const HR1PolicyPage = () => {
             </PolicySection>
 
             <PolicySection id="taxes" icon={DollarSign} title="Taxes - Less Support for Individuals, More Business Incentives">
-              <ul className="space-y-3 text-gray-700">
+              <ul className={getTextClasses('secondary', 'space-y-3')}>
                 <li className="flex items-start space-x-3">
                   <span className="text-red-500 mt-1 text-lg">•</span>
                   <span>Ends clean energy tax breaks for homeowners and businesses</span>
@@ -213,7 +210,7 @@ const HR1PolicyPage = () => {
 
           {/* Impact by Practice Area */}
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+            <h2 className={getTextClasses('primary', 'text-2xl font-bold mb-6 flex items-center')}>
               <span className="mr-3">🎯</span>
               Impact by Practice Area
             </h2>
@@ -249,8 +246,8 @@ const HR1PolicyPage = () => {
           </div>
 
           {/* Strategic Takeaways */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+          <div className={getCardClasses('rounded-xl shadow-sm p-6 mb-8')}>
+            <h2 className={getTextClasses('primary', 'text-2xl font-bold mb-6 flex items-center')}>
               <span className="mr-3">🚀</span>
               Quick Strategic Takeaways
             </h2>
@@ -258,24 +255,24 @@ const HR1PolicyPage = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b-2 border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Practice Area</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">Immediate Action</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-800">6-Month Goal</th>
+                  <tr className="border-b-2 border-gray-200 dark:border-dark-border">
+                    <th className={getTextClasses('primary', 'text-left py-3 px-4 font-semibold')}>Practice Area</th>
+                    <th className={getTextClasses('primary', 'text-left py-3 px-4 font-semibold')}>Immediate Action</th>
+                    <th className={getTextClasses('primary', 'text-left py-3 px-4 font-semibold')}>6-Month Goal</th>
                   </tr>
                 </thead>
-                <tbody className="text-gray-700">
-                  <tr className="border-b border-gray-100 hover:bg-gray-50">
+                <tbody className={getTextClasses('secondary')}>
+                  <tr className="border-b border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary">
                     <td className="py-3 px-4 font-medium">Education</td>
                     <td className="py-3 px-4">Pause aggressive expansion plans</td>
                     <td className="py-3 px-4">Diversify to state/local clients</td>
                   </tr>
-                  <tr className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr className="border-b border-gray-100 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary">
                     <td className="py-3 px-4 font-medium">Civic</td>
                     <td className="py-3 px-4">Target defense sector networking</td>
                     <td className="py-3 px-4">Secure first military project</td>
                   </tr>
-                  <tr className="hover:bg-gray-50">
+                  <tr className="hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary">
                     <td className="py-3 px-4 font-medium">Engineering</td>
                     <td className="py-3 px-4">Hire defense-experienced staff</td>
                     <td className="py-3 px-4">Build oil/gas client pipeline</td>
@@ -286,7 +283,7 @@ const HR1PolicyPage = () => {
           </div>
 
           {/* Bottom Line */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl p-8 text-center shadow-lg mb-8">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-700 dark:to-indigo-700 text-white rounded-xl p-8 text-center shadow-lg mb-8">
             <h2 className="text-2xl font-bold mb-4 flex items-center justify-center">
               <span className="mr-3">🎯</span>
               BOTTOM LINE
@@ -297,12 +294,12 @@ const HR1PolicyPage = () => {
           </div>
 
           {/* Source Data */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 text-center">
-            <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center justify-center">
+          <div className={getCardClasses('rounded-xl shadow-sm p-6 text-center')}>
+            <h3 className={getTextClasses('primary', 'text-lg font-bold mb-3 flex items-center justify-center')}>
               <span className="mr-2">📄</span>
               Official Source Data
             </h3>
-            <p className="text-gray-600 mb-4 leading-relaxed">
+            <p className={getTextClasses('secondary', 'mb-4 leading-relaxed')}>
               This analysis is based on the official H.R. 1 bill text from the 119th Congress. 
               Review the complete legislation and official details on Congress.gov.
             </p>
@@ -310,13 +307,13 @@ const HR1PolicyPage = () => {
               href="https://www.congress.gov/bill/119th-congress/house-bill/1"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 shadow-sm hover:shadow-md"
+              className="inline-flex items-center gap-2 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold transition-all duration-300 shadow-sm hover:shadow-md"
             >
               <ExternalLink size={18} />
               View H.R. 1 on Congress.gov
             </a>
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <p className="text-sm text-gray-500">
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-dark-border">
+              <p className={getTextClasses('muted', 'text-sm')}>
                 Last updated: January 2025 • Source: U.S. House of Representatives
               </p>
             </div>

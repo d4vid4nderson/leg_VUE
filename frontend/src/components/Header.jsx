@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ApplicationInfoModal from './ApplicationInfoModal';
+import DarkModeToggle from './DarkModeToggle';
 import {
     Building,
     GraduationCap,
@@ -50,7 +51,9 @@ import {
 
 import { SUPPORTED_STATES } from '../utils/constants';
 import { InformationModal } from './CommonComponents';
+import { useDarkMode } from '../context/DarkModeContext';
 import byMOREgroupLogo from './byMOREgroup.PNG';
+import byMOREgroupLogoDark from './byMOREgroup_drk.png';
 
 // Mobile Navigation Components
 const MobileMenuItem = ({ icon: Icon, label, badge, onClick, active = false, className = "" }) => {
@@ -60,8 +63,8 @@ const MobileMenuItem = ({ icon: Icon, label, badge, onClick, active = false, cla
             className={`
                 w-full flex items-center gap-3 px-3 py-2.5 text-left rounded-lg transition-all duration-200 relative
                 ${active 
-                    ? 'bg-blue-50 text-blue-700 font-medium' 
-                    : 'text-gray-700 hover:bg-gray-50'
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' 
+                    : 'text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                 }
                 ${className}
             `}
@@ -88,8 +91,8 @@ const MobileFederalSubmenu = ({ onNavigate }) => {
     return (
         <div>
             {/* Federal Legislation Header */}
-            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 font-bold">
-                <ScrollText size={20} className="flex-shrink-0" />
+            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 dark:text-dark-text font-bold">
+                <ScrollText size={20} className="flex-shrink-0 text-gray-600 dark:text-dark-text-secondary" />
                 <span className="flex-1">Federal Legislation</span>
             </div>
             
@@ -103,8 +106,8 @@ const MobileFederalSubmenu = ({ onNavigate }) => {
                     className={`
                         w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
                         ${location.pathname === '/executive-orders' 
-                            ? 'bg-blue-50 text-blue-700 font-medium' 
-                            : 'text-gray-600 hover:bg-gray-50'
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' 
+                            : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                         }
                     `}
                 >
@@ -123,8 +126,8 @@ const MobileFederalSubmenu = ({ onNavigate }) => {
                     className={`
                         w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
                         ${location.pathname === '/hr1' 
-                            ? 'bg-blue-50 text-blue-700 font-medium' 
-                            : 'text-gray-600 hover:bg-gray-50'
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' 
+                            : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                         }
                     `}
                 >
@@ -145,8 +148,8 @@ const MobileStateSubmenu = ({ onNavigate }) => {
     return (
         <div>
             {/* State Legislation Header */}
-            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 font-bold">
-                <MapIcon size={20} className="flex-shrink-0" />
+            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 dark:text-dark-text font-bold">
+                <MapIcon size={20} className="flex-shrink-0 text-gray-600 dark:text-dark-text-secondary" />
                 <span className="flex-1">State Legislation</span>
             </div>
             
@@ -160,8 +163,8 @@ const MobileStateSubmenu = ({ onNavigate }) => {
                     className={`
                         w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
                         ${location.pathname === '/state-legislation'
-                            ? 'bg-blue-50 text-blue-700 font-medium' 
-                            : 'text-gray-600 hover:bg-gray-50'
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' 
+                            : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                         }
                     `}
                 >
@@ -185,8 +188,8 @@ const MobileStateSubmenu = ({ onNavigate }) => {
                             className={`
                                 w-full text-left px-3 py-2.5 text-sm rounded transition-all duration-200 relative
                                 ${isActive 
-                                    ? 'bg-blue-50 text-blue-700 font-medium' 
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' 
+                                    : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                                 }
                             `}
                         >
@@ -243,17 +246,17 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
             {/* Slide-out Menu */}
             <div 
                 className={`
-                    fixed top-0 right-0 h-full w-80 max-w-[90vw] bg-white shadow-xl z-[210] 
+                    fixed top-0 right-0 h-full w-80 max-w-[90vw] bg-white dark:bg-dark-bg shadow-xl z-[210] 
                     transform transition-transform duration-300 ease-in-out lg:hidden flex flex-col
                     ${isOpen ? 'translate-x-0' : 'translate-x-full'}
                 `}
             >
                 {/* Menu Header */}
-                <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-800">Menu</h3>
+                <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-dark-text">Menu</h3>
                     <button 
                         onClick={onClose} 
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary rounded-lg transition-colors text-gray-600 dark:text-dark-text-secondary"
                     >
                         <XIcon size={20} />
                     </button>
@@ -261,16 +264,16 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
 
                 {/* User Profile Section */}
                 {isAuthenticated && (
-                    <div className="p-4 border-b border-gray-200 bg-gray-50">
+                    <div className="p-4 border-b border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg-secondary">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                <User size={18} className="text-blue-600" />
+                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                                <User size={18} className="text-blue-600 dark:text-blue-400" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="font-medium text-gray-800 truncate">
+                                <p className="font-medium text-gray-800 dark:text-dark-text truncate">
                                     {currentUser?.name || currentUser?.username || 'User'}
                                 </p>
-                                <p className="text-sm text-gray-500 truncate">
+                                <p className="text-sm text-gray-500 dark:text-dark-text-secondary truncate">
                                     {currentUser?.email || currentUser?.username || ''}
                                 </p>
                             </div>
@@ -306,17 +309,17 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                     */}
                     
                     {/* Separator */}
-                    <div className="border-t border-gray-200 my-2"></div>
+                    <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
                     
                     <MobileFederalSubmenu onNavigate={onClose} />
                     
                     {/* Separator */}
-                    <div className="border-t border-gray-200 my-2"></div>
+                    <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
                     <MobileStateSubmenu onNavigate={onClose} />
                     
                     {/* Separator */}
-                    <div className="border-t border-gray-200 my-2"></div>
+                    <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
                     <MobileMenuItem
                         icon={Settings}
@@ -327,11 +330,11 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                 </div>
 
                 {/* Bottom Actions */}
-                <div className="p-4 border-t border-gray-200 bg-gray-50">
+                <div className="p-4 border-t border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg-secondary">
                     {isAuthenticated ? (
                         <button
                             onClick={() => { onLogout(); onClose(); }}
-                            className="w-full flex items-center gap-3 p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="w-full flex items-center gap-3 p-3 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                         >
                             <LogOut size={18} />
                             <span>Sign Out</span>
@@ -339,7 +342,7 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                     ) : (
                         <button
                             onClick={() => { onLogin(); onClose(); }}
-                            className="w-full flex items-center gap-3 p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            className="w-full flex items-center gap-3 p-3 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors"
                         >
                             <LogIn size={18} />
                             <span>Sign In</span>
@@ -364,6 +367,7 @@ const Header = ({
 }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { isDarkMode } = useDarkMode();
     
     // State management
     const [showInfoModal, setShowInfoModal] = useState(false);
@@ -376,7 +380,7 @@ const Header = ({
 
     return (
         <>
-            <header className="bg-white shadow-sm sticky top-0 z-[100]">
+            <header className="bg-white dark:bg-dark-bg shadow-sm sticky top-0 z-[100]">
                 <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12">
                     <div className="flex items-center justify-between h-16 lg:h-24">
                         
@@ -397,7 +401,7 @@ const Header = ({
                                 </h1>
                                 <div className="flex justify-end mb-1">
                                     <img 
-                                        src={byMOREgroupLogo} 
+                                        src={isDarkMode ? byMOREgroupLogoDark : byMOREgroupLogo} 
                                         alt="byMOREgroup Logo" 
                                         className="h-3 sm:h-4 w-auto"
                                     />
@@ -411,10 +415,10 @@ const Header = ({
                             {/* Highlights Badge - Hidden on mobile, shown on tablet/desktop */}
                             <button
                                 onClick={() => navigate('/highlights')}
-                                className="hidden sm:flex relative p-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors lg:hidden"
+                                className="hidden sm:flex relative p-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors lg:hidden"
                                 title="Highlighted Items"
                             >
-                                <Star size={18} className="text-blue-600" />
+                                <Star size={18} className="text-blue-600 dark:text-blue-400" />
                                 {highlightedCount > 0 && (
                                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                                         {highlightedCount}
@@ -422,10 +426,13 @@ const Header = ({
                                 )}
                             </button>
 
+                            {/* Dark Mode Toggle */}
+                            <DarkModeToggle />
+
                             {/* Information Button - Mobile friendly */}
                             <button
                                 onClick={() => setShowInfoModal(true)}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 transition-all duration-300 border border-gray-200"
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-dark-text-secondary hover:text-gray-800 dark:hover:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary transition-all duration-300 border border-gray-200 dark:border-dark-border"
                                 title="Application Information"
                             >
                                 <Info size={18} />
@@ -444,7 +451,7 @@ const Header = ({
                             <div className="relative hidden lg:block">
                                 <button
                                     onClick={() => setShowDropdown(!showDropdown)}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 transition-all duration-300 border border-gray-200"
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-dark-text-secondary hover:text-gray-800 dark:hover:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary transition-all duration-300 border border-gray-200 dark:border-dark-border"
                                 >
                                     <HamburgerIcon size={20} />
                                     <span>Menu</span>
@@ -460,7 +467,7 @@ const Header = ({
                                 {showDropdown && (
                                     <div 
                                         ref={dropdownRef}
-                                        className="absolute top-full right-0 mt-2 w-72 bg-white rounded-md shadow-lg border border-gray-200 py-3 z-[9999] max-h-[80vh] overflow-y-auto"
+                                        className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-dark-bg-secondary rounded-md shadow-lg border border-gray-200 dark:border-dark-border py-3 z-[9999] max-h-[80vh] overflow-y-auto"
                                     >
                                         
                                         {/* User Profile Section - Show when authenticated */}
@@ -469,13 +476,13 @@ const Header = ({
                                                 <div className="px-6 py-4 border-b border-gray-200">
                                                     <div className="flex items-center gap-4">
                                                         <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                                            <User size={18} className="text-blue-600" />
+                                                            <User size={18} className="text-blue-600 dark:text-blue-400" />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium text-gray-800 truncate">
+                                                            <p className="text-sm font-medium text-gray-800 dark:text-dark-text truncate">
                                                                 {currentUser?.name || currentUser?.username || 'User'}
                                                             </p>
-                                                            <p className="text-xs text-gray-500 truncate">
+                                                            <p className="text-xs text-gray-500 dark:text-dark-text-secondary truncate">
                                                                 {currentUser?.email || currentUser?.username || ''}
                                                             </p>
                                                         </div>
@@ -490,8 +497,8 @@ const Header = ({
                                             className={
                                                 "w-full text-left px-6 py-3 text-sm font-semibold transition-all duration-300 flex items-center gap-3 " +
                                                 (location.pathname === '/'
-                                                    ? 'bg-blue-50 text-blue-700'
-                                                    : 'text-gray-800 hover:bg-gray-100')
+                                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                                                    : 'text-gray-800 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary')
                                             }
                                         >
                                             <Home size={16} />
@@ -499,12 +506,12 @@ const Header = ({
                                         </button>
 
                                         {/* Separator */}
-                                        <div className="border-t border-gray-200 my-2"></div>
+                                        <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
                                         {/* Federal Legislation Header */}
                                         <div className="px-6 py-2">
-                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800">
-                                                <ScrollText size={16} />
+                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-dark-text">
+                                                <ScrollText size={16} className="text-gray-800 dark:text-dark-text" />
                                                 <span>Federal Legislation</span>
                                             </div>
                                         </div>
@@ -517,8 +524,8 @@ const Header = ({
                                                 className={
                                                     "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
                                                     (location.pathname === '/executive-orders'
-                                                        ? 'bg-blue-50 text-blue-700 font-medium'
-                                                        : 'text-gray-600 hover:bg-gray-100')
+                                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                                                        : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary')
                                                 }
                                             >
                                                 Executive Orders
@@ -530,8 +537,8 @@ const Header = ({
                                                 className={
                                                     "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
                                                     (location.pathname === '/hr1'
-                                                        ? 'bg-blue-50 text-blue-700 font-medium'
-                                                        : 'text-gray-600 hover:bg-gray-100')
+                                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                                                        : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary')
                                                 }
                                             >
                                                 HR1 Policy Analysis
@@ -539,12 +546,12 @@ const Header = ({
                                         </div>
 
                                         {/* Separator */}
-                                        <div className="border-t border-gray-200 my-2"></div>
+                                        <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
                                         {/* State Legislation Header */}
                                         <div className="px-6 py-2">
-                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800">
-                                                <FileText size={16} />
+                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-dark-text">
+                                                <FileText size={16} className="text-gray-800 dark:text-dark-text" />
                                                 <span>State Legislation</span>
                                             </div>
                                         </div>
@@ -557,8 +564,8 @@ const Header = ({
                                                 className={
                                                     "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
                                                     (location.pathname === '/state-legislation'
-                                                        ? 'bg-blue-50 text-blue-700 font-medium'
-                                                        : 'text-gray-600 hover:bg-gray-100')
+                                                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                                                        : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary')
                                                 }
                                             >
                                                 All States Overview
@@ -574,8 +581,8 @@ const Header = ({
                                                         className={
                                                             "w-full text-left px-10 py-2.5 text-sm transition-all duration-300 " +
                                                             (isActive
-                                                                ? 'bg-blue-50 text-blue-700 font-medium'
-                                                                : 'text-gray-600 hover:bg-gray-100')
+                                                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                                                                : 'text-gray-600 dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary')
                                                         }
                                                     >
                                                         {state} ({SUPPORTED_STATES[state]})
@@ -585,7 +592,7 @@ const Header = ({
                                         </div>
 
                                         {/* Separator */}
-                                        <div className="border-t border-gray-200 my-2"></div>
+                                        <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
                                         {/* Settings */}
                                         <button
@@ -593,8 +600,8 @@ const Header = ({
                                             className={
                                                 "w-full text-left px-6 py-3 text-sm font-semibold transition-all duration-300 flex items-center gap-3 " +
                                                 (location.pathname === '/settings'
-                                                    ? 'bg-blue-50 text-blue-700'
-                                                    : 'text-gray-800 hover:bg-gray-100')
+                                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                                                    : 'text-gray-800 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary')
                                             }
                                         >
                                             <Settings size={16} />
@@ -602,12 +609,12 @@ const Header = ({
                                         </button>
 
                                         {/* Authentication Section */}
-                                        <div className="border-t border-gray-200 my-2"></div>
+                                        <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
                                         
                                         {isAuthenticated ? (
                                             <button
                                                 onClick={() => handleMenuItemClick(onLogout)}
-                                                className="w-full text-left px-6 py-3 text-sm font-medium text-red-600 hover:bg-red-50 transition-all duration-300 flex items-center gap-3"
+                                                className="w-full text-left px-6 py-3 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-300 flex items-center gap-3"
                                             >
                                                 <LogOut size={16} />
                                                 <span>Sign Out</span>
@@ -615,7 +622,7 @@ const Header = ({
                                         ) : (
                                             <button
                                                 onClick={() => handleMenuItemClick(onLogin)}
-                                                className="w-full text-left px-6 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-all duration-300 flex items-center gap-3"
+                                                className="w-full text-left px-6 py-3 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-300 flex items-center gap-3"
                                             >
                                                 <LogIn size={16} />
                                                 <span>Sign In</span>

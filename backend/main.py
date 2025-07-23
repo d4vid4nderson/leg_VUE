@@ -1364,6 +1364,13 @@ class ExecutiveOrderFetchRequest(BaseModel):
     save_to_db: Optional[bool] = True
     with_ai: Optional[bool] = True
 
+class ProclamationFetchRequest(BaseModel):
+    start_date: Optional[str] = "2025-01-20"
+    end_date: Optional[str] = None
+    per_page: Optional[int] = 1000
+    save_to_db: Optional[bool] = True
+    with_ai: Optional[bool] = True
+
 class ExecutiveOrderSearchRequest(BaseModel):
     category: Optional[str] = None
     search: Optional[str] = None
@@ -1493,7 +1500,9 @@ EXECUTIVE_ORDERS_AVAILABLE = True
 # With:
 try:
     from simple_executive_orders import \
-        fetch_executive_orders_simple_integration
+        fetch_executive_orders_simple_integration, \
+        SimpleProclamations, \
+        SimpleExecutiveOrders
     SIMPLE_EO_AVAILABLE = True
     print("✅ Simple Executive Orders API available")
 except ImportError as e:
@@ -2345,7 +2354,7 @@ async def update_state_legislation_review_status(
         for attempt_name, query, param in search_attempts:
             try:
                 print(f"🔍 BACKEND: Trying {attempt_name} with param: {param}")
-                cursor.execute(query, param)
+                cursor.execute(query, (param,))
                 result = cursor.fetchone()
                 if result:
                     found_record_id = result[0]
@@ -2363,7 +2372,7 @@ async def update_state_legislation_review_status(
         
         # Update the record
         update_query = "UPDATE dbo.state_legislation SET reviewed = ? WHERE id = ?"
-        cursor.execute(update_query, reviewed, found_record_id)
+        cursor.execute(update_query, (reviewed, found_record_id))
         rows_affected = cursor.rowcount
         
         print(f"🔍 BACKEND: Updated {rows_affected} rows")
@@ -2427,7 +2436,7 @@ async def update_state_legislation_category(
         for attempt_name, query, param in search_attempts:
             try:
                 logger.info(f"🔍 BACKEND: Trying {attempt_name} with param: {param}")
-                cursor.execute(query, param)
+                cursor.execute(query, (param,))
                 result = cursor.fetchone()
                 if result:
                     found_record_id = result[0]
@@ -2445,7 +2454,7 @@ async def update_state_legislation_category(
         
         # Update the record
         update_query = "UPDATE dbo.state_legislation SET category = ? WHERE id = ?"
-        cursor.execute(update_query, category, found_record_id)
+        cursor.execute(update_query, (category, found_record_id))
         rows_affected = cursor.rowcount
         
         logger.info(f"🔍 BACKEND: Updated {rows_affected} rows")
@@ -2912,26 +2921,25 @@ def create_highlights_table():
         cursor = conn.cursor()
         
         create_table_sql = """
-        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='user_highlights' AND xtype='U')
-        CREATE TABLE user_highlights (
-            id INT IDENTITY(1,1) PRIMARY KEY,
-            user_id NVARCHAR(50) NOT NULL,
-            order_id NVARCHAR(100) NOT NULL,
-            order_type NVARCHAR(50) NOT NULL,
-            title NVARCHAR(MAX),
-            description NVARCHAR(MAX),
-            ai_summary NVARCHAR(MAX),
-            category NVARCHAR(50),
-            state NVARCHAR(50),
-            signing_date NVARCHAR(50),
-            html_url NVARCHAR(500),
-            pdf_url NVARCHAR(500),
-            legiscan_url NVARCHAR(500),
-            highlighted_at DATETIME2 DEFAULT GETUTCDATE(),
-            notes NVARCHAR(MAX),
+        CREATE TABLE IF NOT EXISTS user_highlights (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(50) NOT NULL,
+            order_id VARCHAR(100) NOT NULL,
+            order_type VARCHAR(50) NOT NULL,
+            title TEXT,
+            description TEXT,
+            ai_summary TEXT,
+            category VARCHAR(50),
+            state VARCHAR(50),
+            signing_date VARCHAR(50),
+            html_url VARCHAR(500),
+            pdf_url VARCHAR(500),
+            legiscan_url VARCHAR(500),
+            highlighted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            notes TEXT,
             priority_level INT DEFAULT 1,
-            tags NVARCHAR(MAX),
-            is_archived BIT DEFAULT 0,
+            tags TEXT,
+            is_archived BOOLEAN DEFAULT FALSE,
             CONSTRAINT UQ_user_highlight UNIQUE (user_id, order_id, order_type)
         );
         """
@@ -2960,9 +2968,9 @@ def add_highlight_direct(user_id: str, order_id: str, order_type: str, item_data
         # Check if highlight already exists
         check_query = """
         SELECT id FROM user_highlights 
-        WHERE user_id = ? AND order_id = ? AND order_type = ? AND is_archived = 0
+        WHERE user_id = %s AND order_id = %s AND order_type = %s AND is_archived = FALSE
         """
-        cursor.execute(check_query, user_id, order_id, order_type)
+        cursor.execute(check_query, (user_id, order_id, order_type))
         existing = cursor.fetchone()
         
         if existing:
@@ -2976,7 +2984,7 @@ def add_highlight_direct(user_id: str, order_id: str, order_type: str, item_data
             user_id, order_id, order_type, title, description, ai_summary, 
             category, state, signing_date, html_url, pdf_url, legiscan_url,
             notes, priority_level, tags, is_archived
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
         # Prepare values with proper defaults
@@ -2996,7 +3004,7 @@ def add_highlight_direct(user_id: str, order_id: str, order_type: str, item_data
             None,  # notes
             1,     # priority_level
             None,  # tags
-            0      # is_archived
+            False  # is_archived
         )
         
         cursor.execute(insert_query, values)
@@ -3028,15 +3036,15 @@ def remove_highlight_direct(user_id: str, order_id: str, order_type: str = None)
         if order_type:
             delete_query = """
             DELETE FROM user_highlights 
-            WHERE user_id = ? AND order_id = ? AND order_type = ?
+            WHERE user_id = %s AND order_id = %s AND order_type = %s
             """
-            cursor.execute(delete_query, user_id, order_id, order_type)
+            cursor.execute(delete_query, (user_id, order_id, order_type))
         else:
             delete_query = """
             DELETE FROM user_highlights 
-            WHERE user_id = ? AND order_id = ?
+            WHERE user_id = %s AND order_id = %s
             """
-            cursor.execute(delete_query, user_id, order_id)
+            cursor.execute(delete_query, (user_id, order_id))
         
         rows_affected = cursor.rowcount
         conn.commit()
@@ -3915,6 +3923,81 @@ async def test_enhanced_ai():
 # ===============================
 
 
+@app.get("/api/executive-orders/check-updates")
+async def check_for_executive_order_updates():
+    """Check if Federal Register has more executive orders than our database"""
+    try:
+        logger.info("🔍 Checking for executive order updates...")
+        
+        if not SIMPLE_EO_AVAILABLE:
+            return {
+                "success": False,
+                "error": "Simple Executive Orders API not available",
+                "has_updates": False,
+                "federal_count": 0,
+                "database_count": 0
+            }
+        
+        # Get count from Federal Register
+        simple_eo = SimpleExecutiveOrders()
+        federal_result = simple_eo.get_executive_orders_count()
+        
+        if not federal_result.get('success'):
+            logger.error(f"❌ Failed to get Federal Register count: {federal_result.get('error')}")
+            return {
+                "success": False,
+                "error": federal_result.get('error'),
+                "has_updates": False,
+                "federal_count": 0,
+                "database_count": 0
+            }
+        
+        federal_count = federal_result.get('count', 0)
+        
+        # Get count from database
+        try:
+            config = get_database_config()
+            table_name = "executive_orders" if config['type'] == 'postgresql' else "dbo.executive_orders"
+            
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                database_count = cursor.fetchone()[0]
+                
+        except Exception as db_error:
+            logger.error(f"❌ Database count error: {db_error}")
+            return {
+                "success": False,
+                "error": f"Database error: {str(db_error)}",
+                "has_updates": False,
+                "federal_count": federal_count,
+                "database_count": 0
+            }
+        
+        has_updates = federal_count > database_count
+        update_count = max(0, federal_count - database_count)
+        
+        logger.info(f"📊 Update check: Federal={federal_count}, Database={database_count}, Updates={update_count}")
+        
+        return {
+            "success": True,
+            "has_updates": has_updates,
+            "federal_count": federal_count,
+            "database_count": database_count,
+            "update_count": update_count,
+            "message": f"Found {update_count} new executive orders available" if has_updates else "Database is up to date"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking for updates: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "has_updates": False,
+            "federal_count": 0,
+            "database_count": 0
+        }
+
 @app.get("/api/executive-orders")
 async def get_executive_orders_with_highlights(
     category: Optional[str] = Query(None, description="Executive order category filter"),
@@ -4291,17 +4374,17 @@ async def update_executive_order_review_status(
         
         # Try to find the record multiple ways
         search_attempts = [
-            ("Direct ID match", "SELECT id FROM executive_orders WHERE id = ?", id),
-            ("EO number match (eo- prefix)", "SELECT id FROM executive_orders WHERE eo_number = ?", id.replace('eo-', '') if id.startswith('eo-') else id),
-            ("Document number match", "SELECT id FROM executive_orders WHERE document_number = ?", id.replace('eo-', '') if id.startswith('eo-') else id),
-            ("String ID match", "SELECT id FROM executive_orders WHERE CAST(id AS VARCHAR) = ?", str(id))
+            ("Direct ID match", "SELECT id FROM executive_orders WHERE id = %s", id),
+            ("EO number match (eo- prefix)", "SELECT id FROM executive_orders WHERE eo_number = %s", id.replace('eo-', '') if id.startswith('eo-') else id),
+            ("Document number match", "SELECT id FROM executive_orders WHERE document_number = %s", id.replace('eo-', '') if id.startswith('eo-') else id),
+            ("String ID match", "SELECT id FROM executive_orders WHERE CAST(id AS VARCHAR) = %s", str(id))
         ]
         
         found_record_id = None
         for attempt_name, query, param in search_attempts:
             try:
                 logger.info(f"🔍 BACKEND: Trying {attempt_name} with param: {param}")
-                cursor.execute(query, param)
+                cursor.execute(query, (param,))
                 result = cursor.fetchone()
                 if result:
                     found_record_id = result[0]
@@ -4318,16 +4401,16 @@ async def update_executive_order_review_status(
             raise HTTPException(status_code=404, detail=f"Executive order not found for ID: {id}")
         
         # First, let's check the current reviewed value
-        check_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
-        cursor.execute(check_query, found_record_id)
+        check_query = "SELECT reviewed FROM executive_orders WHERE id = %s"
+        cursor.execute(check_query, (found_record_id,))
         current_reviewed_result = cursor.fetchone()
         current_reviewed = current_reviewed_result[0] if current_reviewed_result else "NULL"
         logger.info(f"🔍 BACKEND: Current reviewed status in DB: {current_reviewed}")
         
         # Update the record
-        update_query = "UPDATE executive_orders SET reviewed = ? WHERE id = ?"
+        update_query = "UPDATE executive_orders SET reviewed = %s WHERE id = %s"
         logger.info(f"🔍 BACKEND: Executing review update: {update_query} with reviewed='{reviewed}', id={found_record_id}")
-        cursor.execute(update_query, reviewed, found_record_id)
+        cursor.execute(update_query, (reviewed, found_record_id))
         rows_affected = cursor.rowcount
         
         logger.info(f"🔍 BACKEND: Review update affected {rows_affected} rows")
@@ -4341,8 +4424,8 @@ async def update_executive_order_review_status(
         conn.commit()
         
         # Verify the update worked by reading back the value
-        verify_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
-        cursor.execute(verify_query, found_record_id)
+        verify_query = "SELECT reviewed FROM executive_orders WHERE id = %s"
+        cursor.execute(verify_query, (found_record_id,))
         updated_reviewed_result = cursor.fetchone()
         updated_reviewed = updated_reviewed_result[0] if updated_reviewed_result else "NULL"
         logger.info(f"🔍 BACKEND: Verified reviewed status in DB after update: {updated_reviewed}")
@@ -4527,7 +4610,7 @@ async def debug_executive_order(id: str):
         # Try direct lookup by eo_number (numeric part)
         try:
             eo_number = id.replace('eo-', '') if id.startswith('eo-') else id
-            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE eo_number = ?"
+            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE eo_number = %s"
             cursor.execute(query, eo_number)
             result = cursor.fetchone()
             if result:
@@ -4549,7 +4632,7 @@ async def debug_executive_order(id: str):
         
         # Try document_number lookup
         try:
-            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE document_number = ?"
+            query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE document_number = %s"
             cursor.execute(query, id)
             result = cursor.fetchone()
             if result:
@@ -4572,8 +4655,8 @@ async def debug_executive_order(id: str):
         # Try direct ID lookup
         try:
             if id.isdigit():
-                query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE id = ?"
-                cursor.execute(query, int(id))
+                query = "SELECT id, eo_number, document_number, title, category, reviewed FROM executive_orders WHERE id = %s"
+                cursor.execute(query, (int(id),))
                 result = cursor.fetchone()
                 if result:
                     conn.close()
@@ -4707,7 +4790,7 @@ async def test_database_persistence():
         logger.info(f"🧪 TEST: Record {record_id} (EO {eo_number}) - changing reviewed from {current_reviewed} to {new_reviewed}")
         
         # Update the record
-        update_query = "UPDATE executive_orders SET reviewed = ? WHERE id = ?"
+        update_query = "UPDATE executive_orders SET reviewed = %s WHERE id = %s"
         cursor.execute(update_query, new_reviewed, record_id)
         rows_affected = cursor.rowcount
         
@@ -4718,7 +4801,7 @@ async def test_database_persistence():
         logger.info(f"🧪 TEST: Transaction committed")
         
         # Verify the change in the same connection
-        verify_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
+        verify_query = "SELECT reviewed FROM executive_orders WHERE id = %s"
         cursor.execute(verify_query, record_id)
         verified_value = cursor.fetchone()[0]
         
@@ -4731,7 +4814,7 @@ async def test_database_persistence():
         new_conn = get_azure_sql_connection()
         new_cursor = new_conn.cursor()
         
-        check_query = "SELECT reviewed FROM executive_orders WHERE id = ?"
+        check_query = "SELECT reviewed FROM executive_orders WHERE id = %s"
         new_cursor.execute(check_query, record_id)
         final_value = new_cursor.fetchone()[0]
         
@@ -4787,13 +4870,13 @@ async def direct_sql_test():
             logger.info(f"🔍 SQL TEST: Started explicit transaction")
             
             # Perform update
-            update_sql = "UPDATE executive_orders SET reviewed = ? WHERE id = ?"
+            update_sql = "UPDATE executive_orders SET reviewed = %s WHERE id = %s"
             cursor.execute(update_sql, new_reviewed, record_id)
             rows_affected = cursor.rowcount
             logger.info(f"🔍 SQL TEST: Update executed, rows affected: {rows_affected}")
             
             # Check value before commit
-            cursor.execute("SELECT reviewed FROM executive_orders WHERE id = ?", record_id)
+            cursor.execute("SELECT reviewed FROM executive_orders WHERE id = %s", record_id)
             value_before_commit = cursor.fetchone()[0]
             logger.info(f"🔍 SQL TEST: Value before commit: {value_before_commit}")
             
@@ -4802,7 +4885,7 @@ async def direct_sql_test():
             logger.info(f"🔍 SQL TEST: Transaction committed")
             
             # Check value after commit
-            cursor.execute("SELECT reviewed FROM executive_orders WHERE id = ?", record_id)
+            cursor.execute("SELECT reviewed FROM executive_orders WHERE id = %s", record_id)
             value_after_commit = cursor.fetchone()[0]
             logger.info(f"🔍 SQL TEST: Value after commit: {value_after_commit}")
             
@@ -4825,7 +4908,7 @@ async def direct_sql_test():
         logger.info(f"🔍 SQL TEST: Opened new connection")
         
         # Check value with new connection
-        new_cursor.execute("SELECT reviewed FROM executive_orders WHERE id = ?", record_id)
+        new_cursor.execute("SELECT reviewed FROM executive_orders WHERE id = %s", record_id)
         final_value = new_cursor.fetchone()[0]
         logger.info(f"🔍 SQL TEST: Final value with new connection: {final_value}")
         
@@ -6648,6 +6731,171 @@ async def regenerate_executive_orders_ai():
             "success": False,
             "message": f"AI regeneration failed: {str(e)}"
         }
+
+
+# ===============================
+# PRESIDENTIAL PROCLAMATIONS ENDPOINTS
+# ===============================
+
+@app.get("/api/proclamations/check-count")
+async def check_proclamations_count():
+    """
+    Check Federal Register for total proclamations count and compare with database count
+    Returns status indicating if fetch is needed
+    """
+    try:
+        if not SIMPLE_EO_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Simple Executive Orders API not available"
+            )
+        
+        # Initialize SimpleProclamations instance
+        proclamations_client = SimpleProclamations()
+        
+        # Get count from Federal Register API
+        federal_register_count = await proclamations_client.get_proclamations_count_from_federal_register()
+        
+        # Get count from database
+        database_count = await proclamations_client.get_proclamations_count_from_database()
+        
+        # Calculate difference
+        new_proclamations_available = max(0, federal_register_count - database_count)
+        needs_fetch = new_proclamations_available > 0
+        
+        logger.info(f"📊 Proclamations Count Check - Federal Register: {federal_register_count}, Database: {database_count}, New: {new_proclamations_available}")
+        
+        return {
+            "success": True,
+            "federal_register_count": federal_register_count,
+            "database_count": database_count,
+            "new_proclamations_available": new_proclamations_available,
+            "needs_fetch": needs_fetch,
+            "last_checked": datetime.now().isoformat(),
+            "message": f"Found {new_proclamations_available} new proclamations available" if needs_fetch else "Database is up to date"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking proclamations counts: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "federal_register_count": 0,
+            "database_count": 0,
+            "new_proclamations_available": 0,
+            "needs_fetch": False,
+            "message": "Error checking for proclamations updates"
+        }
+
+@app.post("/api/proclamations/fetch")
+async def fetch_proclamations_endpoint(request: ProclamationFetchRequest):
+    """Fetch proclamations from Federal Register API with AI processing"""
+    try:
+        logger.info(f"🚀 Starting proclamations fetch via Federal Register API")
+        logger.info(f"📋 Request: {request.model_dump()}")
+        
+        if not SIMPLE_EO_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Simple Executive Orders API not available"
+            )
+        
+        # Initialize SimpleProclamations instance
+        proclamations_client = SimpleProclamations()
+        
+        # Call the fetch method
+        result = await proclamations_client.fetch_and_save_proclamations(
+            start_date=request.start_date,
+            end_date=request.end_date,
+            with_ai=request.with_ai,
+            save_to_db=request.save_to_db
+        )
+        
+        logger.info(f"📊 Proclamations fetch result: {result.get('count', 0)} proclamations")
+        
+        if result.get('success'):
+            return {
+                "success": True,
+                "results": result.get('results', []),
+                "count": result.get('count', 0),
+                "proclamations_saved": result.get('proclamations_saved', 0),
+                "total_found": result.get('total_found', 0),
+                "ai_successful": result.get('ai_successful', 0),
+                "ai_failed": result.get('ai_failed', 0),
+                "message": result.get('message', 'Proclamations fetched successfully'),
+                "date_range_used": result.get('date_range_used'),
+                "method": "federal_register_api_direct"
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=result.get('error', 'Unknown error occurred')
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in proclamations fetch endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch proclamations: {str(e)}"
+        )
+
+@app.get("/api/proclamations")
+async def get_proclamations_endpoint(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    search: Optional[str] = Query(None, description="Search term"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(25, ge=1, le=100, description="Items per page"),
+    sort_by: str = Query("signing_date", description="Sort field"),
+    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
+    user_id: Optional[str] = Query(None, description="User ID for highlights")
+):
+    """Get proclamations from database with filtering and pagination"""
+    try:
+        if not SIMPLE_EO_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="Simple Executive Orders API not available"
+            )
+        
+        # Initialize SimpleProclamations instance
+        proclamations_client = SimpleProclamations()
+        
+        # Get proclamations from database
+        result = await proclamations_client.get_proclamations_from_db(
+            category=category,
+            search=search,
+            limit=per_page,
+            offset=(page - 1) * per_page,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        if result.get('success'):
+            return {
+                "success": True,
+                "results": result.get('results', []),
+                "total": result.get('total', 0),
+                "page": page,
+                "per_page": per_page,
+                "total_pages": math.ceil(result.get('total', 0) / per_page),
+                "message": result.get('message', 'Proclamations retrieved successfully')
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=result.get('error', 'Failed to retrieve proclamations')
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in get proclamations endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get proclamations: {str(e)}"
+        )
 
 
 # ===============================

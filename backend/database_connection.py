@@ -10,8 +10,15 @@ logger = logging.getLogger(__name__)
 def get_connection_string():
     """Get database connection string with proper environment detection"""
     
-    # Check for container environment indicators
+    # Check environment - only use Azure SQL in production
+    environment = os.getenv('ENVIRONMENT', 'development').lower()
     is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
+    
+    # Force local development to NOT use Azure SQL
+    if environment == 'development' and not is_container:
+        print("🔧 Development mode detected - refusing Azure SQL connection")
+        print("💡 Consider using SQLite or PostgreSQL for local development")
+        raise ValueError("❌ Development should not connect to production Azure SQL database. Please configure a local database.")
     
     server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
     database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')

@@ -8,7 +8,7 @@ import httpx
 from typing import Dict, Any
 
 # Import our improved modules
-from database_connection import test_database_connection, get_database_connection
+from database_config import test_database_connection, get_db_connection
 from ai_status import get_ai_status_for_api
 
 logger = logging.getLogger(__name__)

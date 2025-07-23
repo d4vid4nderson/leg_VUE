@@ -11,7 +11,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from database_connection import get_db_cursor, test_database_connection
+    from database_config import get_db_connection, test_database_connection
 except ImportError as e:
     print(f"❌ Cannot import database modules: {e}")
     sys.exit(1)
@@ -32,7 +32,8 @@ def analyze_schema():
     print("\n🔍 Analyzing table schema...")
     
     try:
-        with get_db_cursor() as cursor:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
             # Check table exists
             cursor.execute("""
                 SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
@@ -82,6 +83,7 @@ def analyze_schema():
             count = cursor.fetchone()[0]
             print(f"\n📊 Total records: {count}")
             
+            cursor.close()
             return True
             
     except Exception as e:
@@ -99,7 +101,8 @@ def test_queries():
     ]
     
     try:
-        with get_db_cursor() as cursor:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
             for name, query in queries:
                 print(f"\n🔍 {name}:")
                 try:
@@ -111,6 +114,8 @@ def test_queries():
                             print(f"      {row}")
                 except Exception as e:
                     print(f"   ❌ Failed: {e}")
+            
+            cursor.close()
                     
     except Exception as e:
         print(f"❌ Query testing failed: {e}")

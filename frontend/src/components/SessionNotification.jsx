@@ -125,10 +125,10 @@ const SessionNotification = ({
   // Don't render during loading unless there's an error
   if (loading && !error) {
     return (
-      <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6">
+      <div className="bg-gray-50 dark:bg-slate-700 border border-gray-300 dark:border-slate-500 rounded-lg p-4 mb-6">
         <div className="flex items-center gap-3">
-          <RotateCw size={16} className="text-gray-600 animate-spin" />
-          <span className="text-sm text-gray-700">Checking for active legislative sessions...</span>
+          <RotateCw size={16} className="text-gray-600 dark:text-gray-300 animate-spin" />
+          <span className="text-sm text-gray-700 dark:text-gray-200">Checking for active legislative sessions...</span>
         </div>
       </div>
     );
@@ -137,22 +137,22 @@ const SessionNotification = ({
   // Show error state
   if (error) {
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 mb-6">
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <AlertCircle size={16} className="text-yellow-600 mt-0.5" />
+            <AlertCircle size={16} className="text-yellow-600 dark:text-yellow-400 mt-0.5" />
             <div>
-              <p className="text-sm text-yellow-700 font-medium">
+              <p className="text-sm text-yellow-700 dark:text-yellow-200 font-medium">
                 Unable to check session status
               </p>
-              <p className="text-xs text-yellow-600 mt-1">
+              <p className="text-xs text-yellow-600 dark:text-yellow-300 mt-1">
                 {error}
               </p>
             </div>
           </div>
           <button
             onClick={() => setDismissed(true)}
-            className="text-yellow-400 hover:text-yellow-600 ml-4"
+            className="text-yellow-400 dark:text-yellow-500 hover:text-yellow-600 dark:hover:text-yellow-400 ml-4"
           >
             <X size={16} />
           </button>
@@ -184,20 +184,20 @@ const SessionNotification = ({
   const hasActiveSession = activeSessions.some(session => isSessionCurrentlyActive(session));
   
   return (
-    <div className="bg-gray-50 border-gray-300 border rounded-lg p-4 mb-6">
+    <div className="bg-gray-50 dark:bg-slate-700 border-gray-300 dark:border-slate-500 border rounded-lg p-4 mb-6">
       <div className="flex items-center justify-between">
         {/* Left content - left aligned */}
         <div className="flex items-center gap-3">
-          <div className="bg-gray-100 rounded-full p-1">
-            <Calendar size={14} className="text-gray-600" />
+          <div className="bg-gray-100 dark:bg-slate-600 rounded-full p-1">
+            <Calendar size={14} className="text-gray-600 dark:text-gray-300" />
           </div>
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-gray-800">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
               Active Legislative Session
             </h3>
             <div className="flex items-center gap-1" title={hasActiveSession ? "Legislative session is currently in progress" : "Legislative session is scheduled/planned"}>
               <div className={`w-2 h-2 rounded-full ${hasActiveSession ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
-              <span className={`text-xs font-medium ${hasActiveSession ? 'text-green-600' : 'text-gray-500'}`}>
+              <span className={`text-xs font-medium ${hasActiveSession ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
                 {hasActiveSession ? 'IN SESSION' : 'SCHEDULED'}
               </span>
             </div>
@@ -208,7 +208,7 @@ const SessionNotification = ({
         <div className="flex items-center justify-center flex-shrink-0">
           <button
             onClick={handleToggleExpanded}
-            className="text-gray-600 hover:text-gray-800 transition-colors"
+            className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors"
             title={expanded ? "Collapse details" : "Expand details"}
           >
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -221,23 +221,23 @@ const SessionNotification = ({
         <div className="mt-4">
           <div className="space-y-2">
                 {activeSessions.map((session, index) => (
-                  <div key={session.session_id || index} className="text-sm text-gray-700">
+                  <div key={session.session_id || index} className="text-sm text-gray-700 dark:text-gray-200">
                     <div className="flex items-center gap-2 mb-1">
-                      <MapPin size={12} className="text-gray-600" />
+                      <MapPin size={12} className="text-gray-600 dark:text-gray-300" />
                       <span className="font-medium">{stateName}</span>
                       <span className={session.session_name.toLowerCase().includes('special') ? 'text-purple-600' : 'text-blue-600'}>•</span>
-                      <span className={session.session_name.toLowerCase().includes('special') ? 'text-purple-700' : 'text-blue-700'}>{session.session_name}</span>
+                      <span className={session.session_name.toLowerCase().includes('special') ? 'text-purple-700 dark:text-purple-300' : 'text-blue-700 dark:text-blue-300'}>{session.session_name}</span>
                     </div>
                     
                     <div className="ml-5 space-y-1">
                       {/* Session Status Indicator */}
                       <div className="flex items-center gap-2 text-xs">
                         <Clock size={10} />
-                        <span className="font-medium text-gray-700">Status:</span>
+                        <span className="font-medium text-gray-700 dark:text-gray-200">Status:</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                           isSessionCurrentlyActive(session) 
-                            ? session.session_name.toLowerCase().includes('special') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800' 
-                            : 'bg-gray-100 text-gray-800'
+                            ? session.session_name.toLowerCase().includes('special') ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' 
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
                         }`}>
                           {isSessionCurrentlyActive(session) ? 'Currently Active' : 'Scheduled/Planned'}
                         </span>
@@ -245,7 +245,7 @@ const SessionNotification = ({
 
                       {/* Session Years */}
                       {session.year_start && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                           <Calendar size={10} />
                           <span className="font-medium">Session Year:</span>
                           <span>
@@ -259,7 +259,7 @@ const SessionNotification = ({
                       
                       {/* Specific Session Dates */}
                       {(session.session_start_date || session.session_end_date) && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                           <Calendar size={10} />
                           <span className="font-medium">Session Period:</span>
                           <span>
@@ -273,7 +273,7 @@ const SessionNotification = ({
                       
                       {/* Sine Die Date (adjournment) */}
                       {session.sine_die && formatDate(session.sine_die) && (
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                           <Calendar size={10} />
                           <span className="font-medium">Adjournment:</span>
                           <span>
@@ -291,7 +291,7 @@ const SessionNotification = ({
                   </div>
                 ))}
                 
-                <div className="mt-3 text-xs text-gray-600">
+                <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
                   <p>
                     📋 Legislative activity is currently ongoing. 
                     {activeSessions.length > 1 
@@ -303,14 +303,14 @@ const SessionNotification = ({
             
             {/* Refresh invitation when updates available */}
             {hasUpdates && onRefreshNeeded && (
-              <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-blue-700 font-medium">
+                  <span className="text-xs text-blue-700 dark:text-blue-200 font-medium">
                     📢 New updates available
                   </span>
                   <button
                     onClick={onRefreshNeeded}
-                    className="text-xs text-blue-600 hover:text-blue-700 underline font-medium"
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline font-medium"
                   >
                     Refresh now
                   </button>

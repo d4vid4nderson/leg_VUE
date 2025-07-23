@@ -7,7 +7,6 @@ import {
   RotateCw,
   ScrollText,
   Star,
-  FileText,
   ExternalLink,
   Check,
   AlertTriangle,
@@ -41,7 +40,7 @@ import { calculateAllCounts } from '../utils/filterUtils';
 import API_URL from '../config/api';
 import ShimmerLoader from '../components/ShimmerLoader';
 import ExecutiveOrderSkeleton from '../components/ExecutiveOrderSkeleton';
-import useReviewStatus from '../hooks/useReviewStatus';
+import { getPageContainerClasses, getCardClasses, getButtonClasses, getTextClasses } from '../utils/darkModeClasses';
 
 // =====================================
 // CONFIGURATION AND CONSTANTS
@@ -49,26 +48,76 @@ import useReviewStatus from '../hooks/useReviewStatus';
 // Use the full FILTERS array to match StatePage
 const CATEGORY_FILTERS = FILTERS;
 
+
 // =====================================
 // SIMPLE FETCH BUTTON COMPONENT
 // =====================================
-const FetchButtonGroup = ({ onFetch, isLoading }) => {
+const FetchButtonGroup = ({ onFetch, isLoading, updateInfo }) => {
+  const handleFetch = () => {
+    onFetch('executive_orders');
+  };
+
+  const hasUpdates = updateInfo?.has_updates;
+  const updateCount = updateInfo?.update_count || 0;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={handleFetch}
+        disabled={isLoading}
+        className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap min-w-fit ${
+          isLoading 
+            ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
+            : hasUpdates
+            ? 'bg-orange-600 dark:bg-orange-700 text-white border-orange-600 dark:border-orange-700 hover:bg-orange-700 dark:hover:bg-orange-600 hover:border-orange-700 dark:hover:border-orange-600'
+            : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
+        }`}
+      >
+        {isLoading ? (
+          <RefreshIcon size={16} className="animate-spin" />
+        ) : hasUpdates ? (
+          <Download size={16} className="animate-bounce" />
+        ) : (
+          <Download size={16} />
+        )}
+        <span>
+          {isLoading ? 'Checking...' : hasUpdates ? `${updateCount} New Updates` : 'Check for Updates'}
+        </span>
+      </button>
+      
+      {/* Notification Badge */}
+      {hasUpdates && !isLoading && (
+        <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+          {updateCount > 99 ? '99+' : updateCount}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =====================================
+// REGENERATE AI BUTTON COMPONENT
+// =====================================
+const RegenerateAIButton = ({ onRegenerate, isLoading, totalOrders }) => {
   return (
     <button
-      onClick={() => onFetch()}
-      disabled={isLoading}
-      className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 ${
+      onClick={() => onRegenerate()}
+      disabled={isLoading || totalOrders === 0}
+      className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap min-w-fit ${
         isLoading 
-          ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-          : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700'
+          ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
+          : totalOrders === 0
+          ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
+          : 'bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white border-purple-600 dark:border-purple-500 hover:from-purple-700 hover:to-indigo-700 dark:hover:from-purple-400 dark:hover:to-indigo-400 hover:border-purple-700 dark:hover:border-purple-400'
       }`}
+      title={totalOrders === 0 ? 'No orders to regenerate' : `Regenerate AI analysis for all ${totalOrders} orders`}
     >
       {isLoading ? (
-        <RefreshIcon size={16} className="animate-spin" />
+        <RotateCw size={16} className="animate-spin" />
       ) : (
-        <Download size={16} />
+        <Sparkles size={16} />
       )}
-      <span>{isLoading ? 'Checking...' : 'Check for New Orders'}</span>
+      <span>{isLoading ? 'Regenerating...' : 'Regenerate AI'}</span>
     </button>
   );
 };
@@ -134,6 +183,12 @@ const getExecutiveOrderNumber = (order) => {
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   try {
+    // Handle YYYY-MM-DD format to avoid timezone issues
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateStr.split('-');
+      return `${parseInt(month)}/${parseInt(day)}/${year}`;
+    }
+    
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', {
       month: 'numeric',
@@ -161,7 +216,65 @@ const getOrderId = (order) => {
 
 const stripHtmlTags = (content) => {
   if (!content) return '';
-  return content.replace(/<[^>]*>/g, '');
+  
+  // Strip HTML tags and decode entities
+  let text = content
+    .replace(/<[^>]*>/g, '')
+    .replace(/&bull;/g, '•')
+    .replace(/&bullet;/g, '•')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&hellip;/g, '…')
+    .replace(/&rsquo;/g, "'")
+    .replace(/&lsquo;/g, "'")
+    .replace(/&rdquo;/g, '"')
+    .replace(/&ldquo;/g, '"');
+  
+  // Fix spacing issues - add spaces between concatenated words
+  text = text
+    // Add space between lowercase and uppercase letters (camelCase)
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    // Add space between letters and numbers
+    .replace(/([a-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Z])/g, '$1 $2')
+    // Fix missing spaces after periods
+    .replace(/\.([A-Z])/g, '. $1')
+    // Fix missing spaces after commas
+    .replace(/,([A-Z])/g, ', $1')
+    // Fix missing spaces after semicolons
+    .replace(/;([A-Z])/g, '; $1')
+    // Clean up multiple spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // Simplify complex language for executive summaries
+  text = text
+    // Replace complex terms with simpler ones
+    .replace(/\breassess\b/gi, 'review')
+    .replace(/\baccommodate\b/gi, 'adjust for')
+    .replace(/\bfluctuating\b/gi, 'changing')
+    .replace(/\bretaliatory actions\b/gi, 'responses')
+    .replace(/\bpronounced impacts\b/gi, 'major effects')
+    .replace(/\bimport-dependent sectors\b/gi, 'industries that rely on imports')
+    .replace(/\benforcement will be immediate and ongoing\b/gi, 'rules will be enforced right away')
+    .replace(/\bproactively model scenario-based risks\b/gi, 'plan for different possible outcomes')
+    .replace(/\bengage in stakeholder dialogue\b/gi, 'talk with key partners')
+    .replace(/\bmitigate downstream disruptions\b/gi, 'reduce business problems')
+    .replace(/\bC-level leaders\b/gi, 'senior executives')
+    .replace(/\breciprocal tariff rates\b/gi, 'matching tax rates on trade')
+    .replace(/\brecalibrate trade relationships\b/gi, 'adjust trade deals')
+    .replace(/\benhance U\.S\. leverage\b/gi, "strengthen America's position")
+    .replace(/\bincentivizing trading partners\b/gi, 'encouraging other countries')
+    .replace(/\bequitable tariff structures\b/gi, 'fair trade taxes');
+  
+  return text;
 };
 
 const cleanOrderTitle = (title) => {
@@ -267,10 +380,10 @@ const formatTalkingPoints = (content) => {
             <div className="space-y-2">
                 {points.slice(0, 5).map((point, idx) => (
                     <div key={idx} className="flex gap-2">
-                        <div className="flex-shrink-0 w-4 flex items-start justify-start text-sm font-bold text-blue-800">
+                        <div className="flex-shrink-0 w-4 flex items-start justify-start text-sm font-bold text-gray-700 dark:text-gray-300">
                             {idx + 1}.
                         </div>
-                        <p className="text-sm text-blue-800 leading-snug flex-1">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-snug flex-1">
                             {point}
                         </p>
                     </div>
@@ -279,327 +392,153 @@ const formatTalkingPoints = (content) => {
         );
     }
     
-    return <div className="text-sm text-gray-700 leading-relaxed">{textContent}</div>;
+    return <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{textContent}</div>;
 };
+
 
 const formatUniversalContent = (content) => {
     if (!content) return null;
     
-    let textContent = content.replace(/<(?!\/?(strong|b)\b)[^>]*>/g, '');
-    textContent = textContent.replace(/<(strong|b)>(.*?)<\/(strong|b)>/g, '*$2*');
+    // Step 1: Strip HTML and decode entities
+    let text = content
+        .replace(/<[^>]*>/g, '') // Remove all HTML tags
+        .replace(/&bull;/g, '•')
+        .replace(/&bullet;/g, '•')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&mdash;/g, '—')
+        .replace(/&ndash;/g, '–')
+        .replace(/&hellip;/g, '…')
+        .replace(/&rsquo;/g, "'")
+        .replace(/&lsquo;/g, "'")
+        .replace(/&rdquo;/g, '"')
+        .replace(/&ldquo;/g, '"');
     
-    const sectionKeywords = [
-        'Risk Assessment', 'Market Opportunity', 'Implementation Requirements',
-        'Financial Implications', 'Competitive Implications', 'Timeline Pressures', 'Summary'
-    ];
+    // Step 2: Completely remove all formatting artifacts and symbols
+    text = text
+        // Remove ALL bullets, asterisks, colons that are formatting artifacts
+        .replace(/[•*:]+/g, ' ')
+        .replace(/^\s*[•*:]+\s*/gm, '')
+        .replace(/\s+[•*:]+\s+/g, ' ')
+        // Remove markdown and numbering
+        .replace(/#{1,6}\s*/g, '')
+        .replace(/\d+\.\s*/g, '')
+        // Remove section headers that are creating duplicates - with proper spacing
+        .replace(/\b(Risk Assessment|Market Opportunity|Implementation Requirements|Financial Implications|Competitive Implications|Timeline Pressures|Summary|Business Impact|Key Points|Recommendations|Actionable Next Steps|Financial and Operational Considerations|Executive Recommendation)\b/gi, ' ')
+        // Fix common word concatenation issues
+        .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space between camelCase words
+        .replace(/([A-Z]{2,})([A-Z][a-z])/g, '$1 $2') // Handle ACRONYM followed by Word
+        .replace(/([a-z])(\d)/g, '$1 $2') // Add space between letters and numbers
+        .replace(/(\d)([A-Z])/g, '$1 $2') // Add space between numbers and capital letters
+        // Fix specific concatenated words commonly seen in business content
+        .replace(/([a-z])(Summary)/g, '$1 $2')
+        .replace(/([a-z])(Organizations)/g, '$1 $2') 
+        .replace(/([a-z])(Recommendation)/g, '$1 $2')
+        .replace(/([a-z])(Executive)/g, '$1 $2')
+        .replace(/([a-z])(Business)/g, '$1 $2')
+        .replace(/([a-z])(Impact)/g, '$1 $2')
+        .replace(/([a-z])(Analysis)/g, '$1 $2')
+        // Handle longer concatenated phrases
+        .replace(/(Executive)(Recommendation)/g, '$1 $2')
+        .replace(/(Recommendation)(Summary)/g, '$1 $2')
+        .replace(/(Summary)(Organizations)/g, '$1 $2')
+        // Clean up spacing
+        .replace(/\s+/g, ' ')
+        .replace(/\n+/g, ' ')
+        .trim();
     
-    const inlinePattern = new RegExp(`(${sectionKeywords.join('|')})[:.]?\\s*([^]*?)(?=\\s*(?:${sectionKeywords.join('|')}|$))`, 'gi');
-    const inlineMatches = [];
-    let match;
+    // Step 3: Extract specific business impacts for architectural engineering firm
+    // Clean and process the text to find actionable business insights
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 30);
     
-    while ((match = inlinePattern.exec(textContent)) !== null) {
-        inlineMatches.push({
-            header: match[1].trim(),
-            content: match[2].trim(),
-            fullMatch: match[0]
-        });
+    // Create 3 specific business impact statements
+    const businessImpacts = [];
+    
+    // Process sentences to create meaningful business impacts
+    for (let i = 0; i < sentences.length && businessImpacts.length < 3; i++) {
+        let sentence = sentences[i].trim();
+        
+        // Skip overly technical or non-business content
+        if (sentence.length < 40 || sentence.length > 300) continue;
+        
+        // Convert to business-focused impact statement
+        let impact = sentence;
+        
+        // Make it more business-specific by adding context
+        if (impact.toLowerCase().includes('cost') || impact.toLowerCase().includes('investment')) {
+            if (!impact.toLowerCase().includes('business') && !impact.toLowerCase().includes('firm')) {
+                impact = `${impact} This may require budget adjustments for our firm.`;
+            }
+        } else if (impact.toLowerCase().includes('compliance') || impact.toLowerCase().includes('regulation')) {
+            if (!impact.toLowerCase().includes('review') && !impact.toLowerCase().includes('assess')) {
+                impact = `${impact} We should review our current procedures and project delivery methods.`;
+            }
+        } else if (impact.toLowerCase().includes('market') || impact.toLowerCase().includes('industry')) {
+            if (!impact.toLowerCase().includes('opportunity') && !impact.toLowerCase().includes('consider')) {
+                impact = `${impact} Consider how this affects our competitive positioning and client relationships.`;
+            }
+        } else {
+            // For other content, add general business context
+            impact = `${impact} This requires careful evaluation of potential impacts on our operations.`;
+        }
+        
+        // Clean up the impact statement
+        impact = impact
+            .replace(/\s+/g, ' ')
+            .replace(/([.!?])\s*([A-Z])/g, '$1 $2') // Ensure proper spacing after periods
+            .trim();
+        
+        // Ensure it ends with proper punctuation
+        if (!impact.match(/[.!?]$/)) {
+            impact += '.';
+        }
+        
+        businessImpacts.push(impact);
     }
     
-    if (inlineMatches.length > 0) {
-        const sections = [];
-        
-        inlineMatches.forEach(({ header, content }) => {
-            if (header && content && content.length > 5) {
-                let cleanHeader = header.trim();
-                if (!cleanHeader.endsWith(':')) {
-                    cleanHeader += ':';
-                }
-                
-                const items = [];
-                const sentences = content.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 5);
-                
-                if (sentences.length === 1 || content.length < 200) {
-                    items.push(content.trim());
-                } else {
-                    sentences.forEach(sentence => {
-                        if (sentence.length > 10) {
-                            items.push(sentence);
-                        }
-                    });
-                }
-                
-                if (items.length > 0) {
-                    sections.push({ title: cleanHeader, items: items });
-                }
-            }
-        });
-        
-        if (sections.length > 0) {
-            return (
-                <div>
-                    {sections.map((section, idx) => (
-                        <div key={idx} style={{ marginBottom: '16px' }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>
-                                {section.title}
-                            </div>
-                            {section.items.map((item, itemIdx) => (
-                                <div key={itemIdx} style={{
-                                    marginBottom: '6px',
-                                    fontSize: '14px',
-                                    lineHeight: '1.6',
-                                    wordWrap: 'break-word',
-                                    overflowWrap: 'break-word'
-                                }}>
-                                    {section.items.length === 1 ? item : `• ${item}`}
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </div>
-            );
+    // If we don't have enough impacts from the text, create relevant architectural/engineering ones
+    const defaultImpacts = [
+        'Project compliance requirements may need review to ensure all designs meet new federal standards. This could affect project timelines and require additional documentation.',
+        'Building codes and design specifications may be updated, requiring our team to adapt current practices. We should monitor implementation dates and training requirements.',
+        'Client expectations and project scopes may shift based on new regulatory requirements. Consider proactive communication with current and prospective clients about potential changes.'
+    ];
+    
+    // Fill remaining slots with relevant defaults
+    while (businessImpacts.length < 3) {
+        const defaultIndex = businessImpacts.length;
+        if (defaultIndex < defaultImpacts.length) {
+            businessImpacts.push(defaultImpacts[defaultIndex]);
+        } else {
+            businessImpacts.push('Monitor regulatory developments and assess potential impacts on firm operations and client projects.');
         }
     }
     
-    return <div className="universal-text-content" style={{
-        fontSize: '14px',
-        lineHeight: '1.6',
-        wordWrap: 'break-word',
-        overflowWrap: 'break-word'
-    }}>{textContent}</div>;
+    // Ensure exactly 3 impacts
+    const finalImpacts = businessImpacts.slice(0, 3);
+    
+    return (
+        <div className="space-y-2">
+            {finalImpacts.map((impact, idx) => (
+                <div key={idx} className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full mt-2 flex-shrink-0"></div>
+                    <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {impact}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
 };
 
 // =====================================
 // SUB-COMPONENTS
 // =====================================
 
-const FilterDropdown = React.forwardRef(({ 
-  selectedFilters, 
-  showFilterDropdown, 
-  onToggleDropdown, 
-  onToggleFilter, 
-  onClearAllFilters, 
-  counts, 
-  buttonText = "Filters"
-}, ref) => {
-
-  const isFilterActive = (filterKey) => selectedFilters.includes(filterKey);
-
-  const handleFilterToggle = (filterKey) => {
-    if (filterKey === 'all_practice_areas') {
-      onToggleFilter(filterKey);
-    } else if (['civic', 'education', 'engineering', 'healthcare'].includes(filterKey)) {
-      if (selectedFilters.includes('all_practice_areas')) {
-        onToggleFilter('all_practice_areas');
-      }
-      onToggleFilter(filterKey);
-    } else {
-      onToggleFilter(filterKey);
-    }
-  };
-
-  const isAllPracticeAreasActive = () => {
-    return selectedFilters.includes('all_practice_areas');
-  };
-
-  const getFilterButtonText = () => {
-    if (selectedFilters.length === 0) return 'Filters';
-    if (selectedFilters.length === 1) {
-      if (selectedFilters[0] === 'all_practice_areas') {
-        return 'All Practice Areas';
-      }
-      const filter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
-      return filter?.label || 'Filter';
-    }
-    return `${selectedFilters.length} Filters`;
-  };
-
-  const getAllPracticeAreasCount = () => {
-    return counts?.all_practice_areas || 0;
-  };
-
-  const getFilterStyles = (filterKey, isActive) => {
-    if (!isActive) return 'hover:bg-gray-50 text-gray-700';
-    
-    const styleMap = {
-      'civic': 'bg-blue-100 text-blue-700',
-      'education': 'bg-orange-100 text-orange-700',
-      'engineering': 'bg-green-100 text-green-700',
-      'healthcare': 'bg-red-100 text-red-700',
-      'reviewed': 'bg-green-100 text-green-700',
-      'not_reviewed': 'bg-red-100 text-red-700',
-      'all_practice_areas': 'bg-teal-100 text-teal-700'
-    };
-    
-    return styleMap[filterKey] || 'bg-gray-100 text-gray-700';
-  };
-
-  const getIconColor = (filterKey, isActive) => {
-    if (!isActive) return 'text-gray-500';
-    
-    const colorMap = {
-      'civic': 'text-blue-600',
-      'education': 'text-orange-600',
-      'engineering': 'text-green-600',
-      'healthcare': 'text-red-600',
-      'reviewed': 'text-green-600',
-      'not_reviewed': 'text-red-600',
-      'all_practice_areas': 'text-teal-600'
-    };
-    
-    return colorMap[filterKey] || 'text-gray-600';
-  };
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={onToggleDropdown}
-        className={`flex items-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 ${
-          selectedFilters.length > 0
-            ? 'bg-blue-100 text-blue-700 border-blue-300'
-            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-        }`}
-      >
-        <span>{getFilterButtonText()}</span>
-        {selectedFilters.length > 0 && (
-          <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
-            {selectedFilters.length}
-          </span>
-        )}
-        <ChevronDown 
-          size={16} 
-          className={`transition-transform duration-200 ${showFilterDropdown ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {showFilterDropdown && (
-        <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] min-w-[280px] max-w-[320px]">
-          <div className="py-2">
-            {/* Clear All Button */}
-            {selectedFilters.length > 0 && (
-              <div className="px-4 py-2 border-b border-gray-200">
-                <button
-                  onClick={onClearAllFilters}
-                  className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
-                >
-                  Clear All Filters ({selectedFilters.length})
-                </button>
-              </div>
-            )}
-            
-            {/* Practice Areas Section */}
-            <div className="border-b border-gray-200 pb-2">
-              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Practice Areas
-              </div>
-              
-              {/* All Practice Areas */}
-              <button
-                onClick={() => handleFilterToggle('all_practice_areas')}
-                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                  isAllPracticeAreasActive()
-                    ? 'bg-teal-100 text-teal-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <LayoutGrid size={16} />
-                  <span>All Practice Areas</span>
-                </div>
-                <span className="text-xs text-gray-500">({getAllPracticeAreasCount()})</span>
-              </button>
-
-              {/* Individual Categories */}
-              {CATEGORY_FILTERS.map((filter) => {
-                const IconComponent = filter.icon;
-                const isActive = selectedFilters.includes(filter.key);
-                const count = counts?.[filter.key] || 0;
-                
-                return (
-                  <button
-                    key={filter.key}
-                    onClick={() => handleFilterToggle(filter.key)}
-                    className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                      isActive
-                        ? filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
-                          filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
-                          filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
-                          filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
-                          'bg-gray-100 text-gray-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <IconComponent size={16} />
-                      <span>{filter.label}</span>
-                    </div>
-                    <span className="text-xs text-gray-500">({count})</span>
-                  </button>
-                );
-              })}
-
-              {/* Not Applicable */}
-              <button
-                onClick={() => handleFilterToggle('not-applicable')}
-                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                  selectedFilters.includes('not-applicable')
-                    ? 'bg-gray-100 text-gray-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Ban size={16} />
-                  <span>Not Applicable</span>
-                </div>
-                <span className="text-xs text-gray-500">({counts?.['not-applicable'] || 0})</span>
-              </button>
-              </div>
-            </div>
-
-            {/* Review Status Section */}
-            <div>
-              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Review Status
-              </div>
-              
-              {/* Reviewed */}
-              <button
-                onClick={() => handleFilterToggle('reviewed')}
-                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                  selectedFilters.includes('reviewed')
-                    ? 'bg-green-100 text-green-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Check size={16} />
-                  <span>Reviewed</span>
-                </div>
-                <span className="text-xs text-gray-500">({counts?.reviewed || 0})</span>
-              </button>
-
-              {/* Not Reviewed */}
-              <button
-                onClick={() => handleFilterToggle('not_reviewed')}
-                className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                  selectedFilters.includes('not_reviewed')
-                    ? 'bg-yellow-100 text-yellow-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <AlertTriangle size={16} />
-                  <span>Not Reviewed</span>
-                </div>
-                <span className="text-xs text-gray-500">({counts?.not_reviewed || 0})</span>
-              </button>
-            </div>
-          </div>
-
-      )}
-      </div>
-  );
-});
 
 // Custom Category Tag Component - Editable version (StatePage style with updated colors)
 const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, disabled }) => {
@@ -647,12 +586,12 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
     
     const getCategoryStyle = (cat) => {
         switch (cat) {
-            case 'civic': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'education': return 'bg-orange-100 text-orange-800 border-orange-200';
-            case 'engineering': return 'bg-green-100 text-green-800 border-green-200';
-            case 'healthcare': return 'bg-red-100 text-red-800 border-red-200';
-            case 'all_practice_areas': return 'bg-teal-100 text-teal-800 border-teal-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+            case 'civic': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-700';
+            case 'education': return 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-700';
+            case 'engineering': return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700';
+            case 'healthcare': return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 border-red-200 dark:border-red-700';
+            case 'all_practice_areas': return 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-700';
+            default: return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-600';
         }
     };
     
@@ -683,7 +622,7 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
             </button>
             
             {isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[100] min-w-[160px] w-max max-h-64 overflow-y-auto">
+                <div className="absolute top-full left-0 mt-1 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-xl z-[100] min-w-[160px] w-max max-h-64 overflow-y-auto">
                     <div className="py-1">
                         {FILTERS.map((filter) => {
                             const isSelected = filter.key === cleanedCategory;
@@ -691,8 +630,8 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
                                 <button
                                     key={filter.key}
                                     onClick={() => handleCategorySelect(filter.key)}
-                                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 ${
-                                        isSelected ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary flex items-center gap-2 ${
+                                        isSelected ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300'
                                     }`}
                                 >
                                     <filter.icon size={12} />
@@ -823,8 +762,8 @@ const PaginationControls = ({
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-gray-200">
-      <div className="text-sm text-gray-700">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 dark:bg-dark-bg-tertiary border-t border-gray-200 dark:border-dark-border">
+      <div className="text-sm text-gray-700 dark:text-dark-text">
         Showing <span className="font-medium">{startItem}</span> to{' '}
         <span className="font-medium">{endItem}</span> of{' '}
         <span className="font-medium">{totalItems}</span> {itemType}
@@ -836,8 +775,8 @@ const PaginationControls = ({
           disabled={currentPage === 1}
           className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
             currentPage === 1
-              ? 'text-gray-400 cursor-not-allowed'
-              : 'text-gray-700 hover:bg-gray-100'
+              ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+              : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
           }`}
         >
           <ChevronLeft size={16} />
@@ -851,10 +790,10 @@ const PaginationControls = ({
               disabled={page === '...'}
               className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
                 page === currentPage
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-blue-600 dark:bg-blue-700 text-white'
                   : page === '...'
-                  ? 'text-gray-400 cursor-default'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'text-gray-400 dark:text-gray-500 cursor-default'
+                  : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
               }`}
             >
               {page}
@@ -867,8 +806,8 @@ const PaginationControls = ({
           disabled={currentPage === totalPages}
           className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
             currentPage === totalPages
-              ? 'text-gray-400 cursor-not-allowed'
-              : 'text-gray-700 hover:bg-gray-100'
+              ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+              : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
           }`}
         >
           <ChevronRight size={16} />
@@ -891,38 +830,8 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // Database-driven review status using useReviewStatus hook
-  const {
-    toggleReviewStatus,
-    isItemReviewed,
-    isItemReviewLoading,
-    reviewedItems,
-    reviewCounts
-  } = useReviewStatus(allOrders, 'executive_order');
+  // Note: Review status functionality removed
 
-  // Debug logging for review status initialization  
-  useEffect(() => {
-    if (allOrders.length > 0) {
-      // Debug specific order 14316
-      const debugOrder = allOrders.find(order => order.eo_number === '14316');
-      if (debugOrder) {
-        console.log('🔍 DEBUG EO 14316 data:', {
-          eo_number: debugOrder.eo_number,
-          reviewed: debugOrder.reviewed,
-          reviewed_type: typeof debugOrder.reviewed,
-          is_reviewed_check: isItemReviewed(debugOrder)
-        });
-      }
-      console.log('🔍 DEBUG: Review status initialization');
-      allOrders.forEach((order, index) => {
-        if (index < 5) {
-          const orderId = getExecutiveOrderId(order);
-          console.log(`Order ${orderId}: reviewed=${order.reviewed}, type=${typeof order.reviewed}`);
-        }
-      });
-      console.log(`Total orders with reviewed=true: ${allOrders.filter(o => o.reviewed === true).length}`);
-    }
-  }, [allOrders]);
   
   const [selectedFilters, setSelectedFilters] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
@@ -943,35 +852,12 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const [hasData, setHasData] = useState(false);
   const [fetchStatus, setFetchStatus] = useState('');
   
-  const [reviewError, setReviewError] = useState(null);
+  const [regeneratingAI, setRegeneratingAI] = useState(false);
+  const [regenerationStatus, setRegenerationStatus] = useState('');
   
-  // Handle review toggle with error handling
-  const handleReviewToggle = async (order) => {
-    setReviewError(null); // Clear previous errors
-    
-    const success = await toggleReviewStatus(order);
-    
-    if (success === null || success === undefined) {
-      setReviewError(`Failed to update review status for ${order.title}. Please try again.`);
-      
-      // Clear error after 5 seconds
-      setTimeout(() => setReviewError(null), 5000);
-    } else {
-      // Update the main allOrders state to persist the change
-      const orderId = getOrderId(order);
-      setAllOrders(prevOrders => 
-        prevOrders.map(o => {
-          const currentOrderId = getOrderId(o);
-          if (currentOrderId === orderId) {
-            console.log(`🔄 Updating order ${currentOrderId} reviewed status: ${o.reviewed} → ${success}`);
-            return { ...o, reviewed: success };
-          }
-          return o;
-        })
-      );
-      console.log(`✅ Successfully updated reviewed status for order ${orderId}`);
-    }
-  };
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  
 
   
   const [pagination, setPagination] = useState({
@@ -1001,29 +887,20 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       healthcare: 0,
       'not-applicable': 0,
       all_practice_areas: allOrders.filter(order => order?.category === 'all_practice_areas').length,
-      reviewed: 0,
-      not_reviewed: 0,
       total: allOrders.length
     };
 
     allOrders.forEach(order => {
       const category = order?.category;
-      const isReviewed = isItemReviewed(order);
       
       if (category && counts.hasOwnProperty(category)) {
         counts[category]++;
-      }
-      
-      if (isReviewed) {
-        counts.reviewed++;
-      } else {
-        counts.not_reviewed++;
       }
     });
 
     console.log('🔢 Manual filter counts:', counts);
     return counts;
-  }, [allOrders, isItemReviewed, categoryUpdateTrigger]);
+  }, [allOrders, categoryUpdateTrigger]);
 
 
 
@@ -1069,16 +946,42 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     }
   }, []);
 
-  const fetchExecutiveOrders = useCallback(async () => {
+  const fetchExecutiveOrders = useCallback(async (docType = 'executive_orders') => {
     try {
       setFetchingData(true);
-      setFetchStatus('Checking for new Executive Orders...');
-      console.log('🔄 Checking for new Executive Orders...');
+      
+      // Set status message based on document type
+      const getDocTypeName = (type) => {
+        switch (type) {
+          case 'all': return 'All Documents';
+          case 'executive_orders': return 'Executive Orders';
+          case 'proclamations': return 'Proclamations';
+          case 'other': return 'Other Documents';
+          default: return 'Executive Orders';
+        }
+      };
+      
+      const docTypeName = getDocTypeName(docType);
+      setFetchStatus(`Checking for new ${docTypeName}...`);
+      console.log(`🔄 Checking for new ${docTypeName}...`);
 
-      // Use the existing check-count endpoint
+      // Use the appropriate check-count endpoint based on document type
+      const getCheckCountEndpoint = (type) => {
+        switch (type) {
+          case 'proclamations': return '/api/proclamations/check-count';
+          case 'executive_orders':
+          case 'all':
+          case 'other':
+          default: return '/api/executive-orders/check-count';
+        }
+      };
+
       setFetchStatus('Checking counts...');
       console.log('📊 Checking counts...');
-      const checkCountResponse = await fetch(`${API_URL}/api/executive-orders/check-count`, {
+      const checkCountEndpoint = getCheckCountEndpoint(docType);
+      console.log(`🔗 Using endpoint: ${checkCountEndpoint}`);
+      
+      const checkCountResponse = await fetch(`${API_URL}${checkCountEndpoint}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -1101,28 +1004,51 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       console.log(`📊 Database count: ${databaseCount}`);
       console.log(`📊 New orders to fetch: ${newOrdersCount}`);
 
+      // Check if we actually need to fetch anything
       if (newOrdersCount <= 0) {
-        console.log('✅ No new executive orders to fetch');
-        setFetchStatus(`No new orders found (Federal Register: ${federalRegisterCount}, Database: ${databaseCount})`);
+        console.log('✅ Database is already up to date - no new orders to fetch');
+        setFetchStatus('Database is already up to date');
         setTimeout(() => setFetchStatus(''), 3000);
+        await fetchFromDatabase(); // Refresh the display
         return;
       }
 
-      setFetchStatus(`Fetching ${newOrdersCount} new executive orders...`);
-      console.log(`🔄 Fetching ${newOrdersCount} new executive orders from Federal Register...`);
+      // Only fetch new orders if there are actually new ones
+      setFetchStatus(`Fetching ${newOrdersCount} new ${docTypeName.toLowerCase()} from Federal Register...`);
+      console.log(`🔄 Fetching only ${newOrdersCount} new ${docTypeName.toLowerCase()} from Federal Register...`);
 
-      // Fetch only new orders using the simple endpoint
+      // Fetch only new orders using intelligent limit
+      // We'll fetch with a small buffer to ensure we get all new orders
+      const bufferAmount = Math.max(5, Math.ceil(newOrdersCount * 0.1)); // 10% buffer or minimum 5
+      const fetchLimit = newOrdersCount + bufferAmount;
+
+      console.log(`📊 Fetching ${fetchLimit} orders (${newOrdersCount} new + ${bufferAmount} buffer)`);
+
       const requestBody = {
         start_date: "2025-01-20",
         end_date: null,
         with_ai: true,
         save_to_db: true,
         force_fetch: false,
-        fetch_only_new: true,
+        limit: fetchLimit, // Only fetch what we need plus buffer
         max_concurrent: 3
       };
 
-      const response = await fetch(`${API_URL}/api/fetch-executive-orders-simple`, {
+      // Use the appropriate fetch endpoint based on document type
+      const getFetchEndpoint = (type) => {
+        switch (type) {
+          case 'proclamations': return '/api/proclamations/fetch';
+          case 'executive_orders':
+          case 'all':
+          case 'other':
+          default: return '/api/fetch-executive-orders-simple';
+        }
+      };
+
+      const fetchEndpoint = getFetchEndpoint(docType);
+      console.log(`🔗 Using fetch endpoint: ${fetchEndpoint}`);
+
+      const response = await fetch(`${API_URL}${fetchEndpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1147,12 +1073,17 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       console.log('📥 Fetch Result:', result);
 
       if (result.success !== false) {
-        console.log(`✅ Successfully fetched ${newOrdersCount} new executive orders`);
-        setFetchStatus(`Successfully fetched ${newOrdersCount} new executive orders`);
+        const actualNewOrders = result.orders_saved || result.count || 0;
+        console.log(`✅ Successfully processed ${actualNewOrders} orders (${newOrdersCount} expected new orders)`);
+        setFetchStatus(`Successfully fetched ${actualNewOrders} new ${docTypeName.toLowerCase()}`);
         setTimeout(() => setFetchStatus(''), 3000);
+        
+        // Clear update notification since we just fetched new orders
+        setUpdateInfo(null);
         
         setTimeout(async () => {
           await fetchFromDatabase();
+          // Database refreshed - updates will be checked on next manual refresh  
         }, 2000);
         
       } else {
@@ -1168,7 +1099,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     }
   }, []);
 
-  // Define fetchFromDatabase FIRST (before handleFetch that depends on it)
+  // Define fetchFromDatabase FIRST (before handleFetch and regenerateAI that depend on it)
   const fetchFromDatabase = useCallback(async () => {
     try {
       setLoading(true);
@@ -1277,6 +1208,59 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     }
   }, []);
 
+  // Regenerate AI Analysis function
+  const regenerateAI = useCallback(async () => {
+    try {
+      setRegeneratingAI(true);
+      setRegenerationStatus(`Regenerating AI analysis for all ${allOrders.length} executive orders...`);
+      console.log('🤖 Starting AI regeneration for all executive orders...');
+
+      // Use the existing run-pipeline endpoint which processes with AI
+      const response = await fetch(`${API_URL}/api/executive-orders/run-pipeline`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          start_date: "2025-01-20",
+          end_date: null,
+          with_ai: true,
+          save_to_db: true
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API returned ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('🤖 AI Regeneration Result:', result);
+
+      if (result.success) {
+        const ordersProcessed = result.orders_saved || result.orders_fetched || 0;
+        console.log(`✅ Successfully regenerated AI for ${ordersProcessed} orders`);
+        setRegenerationStatus(`✅ Successfully updated ${ordersProcessed} orders with new AI analysis`);
+        
+        // Refresh the data to show new AI analysis
+        setTimeout(async () => {
+          await fetchFromDatabase();
+          setRegenerationStatus('');
+        }, 3000);
+        
+      } else {
+        throw new Error(result.message || 'AI regeneration failed');
+      }
+    } catch (err) {
+      console.error('❌ AI Regeneration failed:', err);
+      setError(`Failed to regenerate AI analysis: ${err.message}`);
+      setRegenerationStatus('');
+    } finally {
+      setRegeneratingAI(false);
+    }
+  }, [allOrders.length, fetchFromDatabase]);
+
   // Close mobile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1293,6 +1277,40 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const handleCategoryUpdate = useCallback(async (itemId, newCategory) => {
     try {
       console.log(`🔄 Updating category for order ${itemId} to ${newCategory}`);
+      
+      // Find the actual order to get more debugging info
+      const targetOrder = allOrders.find(order => getOrderId(order) === itemId);
+      console.log(`🔍 DEBUG: allOrders length: ${allOrders.length}, looking for: ${itemId}`);
+      if (targetOrder) {
+        console.log(`🔍 Found target order:`, {
+          id: targetOrder.id,
+          eo_number: targetOrder.eo_number,
+          executive_order_number: targetOrder.executive_order_number,
+          document_number: targetOrder.document_number,
+          bill_number: targetOrder.bill_number,
+          title: targetOrder.title?.substring(0, 50) + '...',
+          generatedId: getOrderId(targetOrder)
+        });
+        
+        // Try alternative ID formats that might work with the backend
+        const alternativeIds = [];
+        if (targetOrder.eo_number) alternativeIds.push(targetOrder.eo_number.toString());
+        if (targetOrder.executive_order_number) alternativeIds.push(targetOrder.executive_order_number.toString());
+        if (targetOrder.document_number) alternativeIds.push(targetOrder.document_number.toString());
+        if (targetOrder.id) alternativeIds.push(targetOrder.id.toString());
+        
+        console.log(`🔍 Possible alternative IDs to try:`, alternativeIds);
+      } else {
+        console.warn(`⚠️ Could not find order with ID ${itemId} in current orders`);
+        
+        // Log a few orders for comparison
+        console.log(`🔍 Available orders (first 3):`, allOrders.slice(0, 3).map(order => ({
+          id: order.id,
+          eo_number: order.eo_number,
+          document_number: order.document_number,
+          generatedId: getOrderId(order)
+        })));
+      }
       
       // Update local state immediately for better UX
       setAllOrders(prevOrders => 
@@ -1320,19 +1338,128 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       // Trigger filter counts recalculation immediately
       setCategoryUpdateTrigger(prev => prev + 1);
 
-      // Send update to backend
-      const response = await fetch(`${API_URL}/api/executive-orders/${itemId}/category`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          category: newCategory
-        })
-      });
+      // Send update to backend - try different ID formats if first fails
+      let response;
+      let lastError;
+      
+      // Get possible ID formats to try
+      const idsToTry = [itemId]; // Start with the original ID
+      if (targetOrder) {
+        // Add alternative formats based on the actual order data
+        if (targetOrder.eo_number && targetOrder.eo_number.toString() !== itemId.replace('eo-', '')) {
+          idsToTry.push(`eo-${targetOrder.eo_number}`);
+          idsToTry.push(targetOrder.eo_number.toString());
+        }
+        if (targetOrder.document_number && targetOrder.document_number !== itemId) {
+          idsToTry.push(targetOrder.document_number);
+        }
+        if (targetOrder.id && targetOrder.id.toString() !== itemId) {
+          idsToTry.push(targetOrder.id.toString());
+        }
+      }
+      
+      // Remove duplicates
+      const uniqueIds = [...new Set(idsToTry)];
+      console.log(`🔄 Will try these ID formats:`, uniqueIds);
+      
+      for (const tryId of uniqueIds) {
+        const apiUrl = `${API_URL}/api/executive-orders/${tryId}/category`;
+        console.log(`🌐 Making PATCH request to: ${apiUrl}`);
+        console.log(`📤 Request body:`, { category: newCategory });
+        
+        try {
+          response = await fetch(apiUrl, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              category: newCategory
+            })
+          });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          console.log(`📥 Response status: ${response.status} ${response.statusText}`);
+
+          if (response.ok) {
+            console.log(`✅ Successfully updated with ID format: ${tryId}`);
+            break; // Success! Exit the loop
+          } else {
+            // Store this error but try the next ID format
+            const errorResponse = await response.text();
+            console.log(`❌ Failed with ID ${tryId}. Error response body:`, errorResponse);
+            lastError = { status: response.status, statusText: response.statusText, body: errorResponse };
+          }
+        } catch (fetchError) {
+          console.log(`❌ Network error with ID ${tryId}:`, fetchError);
+          lastError = { error: fetchError };
+        }
+      }
+
+      if (!response || !response.ok) {
+        // All ID formats failed - try to get more info about what exists in backend
+        console.log(`🔍 All ID formats failed. Checking what exists in backend...`);
+        try {
+          const debugResponse = await fetch(`${API_URL}/api/debug/executive-order/${itemId}`);
+          if (debugResponse.ok) {
+            const debugData = await debugResponse.json();
+            console.log(`🔍 Backend debug info:`, debugData);
+          } else {
+            console.log(`🔍 Debug endpoint also failed:`, debugResponse.status);
+          }
+        } catch (debugError) {
+          console.log(`🔍 Could not call debug endpoint:`, debugError);
+        }
+        
+        // Also check what EOs are available in first page
+        try {
+          const listResponse = await fetch(`${API_URL}/api/executive-orders?page=1&per_page=5`);
+          if (listResponse.ok) {
+            const listData = await listResponse.json();
+            console.log(`🔍 Full backend response structure:`, listData);
+            console.log(`🔍 Sample of available EOs in backend:`, listData.results?.slice(0, 3).map(eo => ({
+              id: eo.id,
+              eo_number: eo.eo_number,
+              document_number: eo.document_number,
+              title: eo.title?.substring(0, 50),
+              category: eo.category
+            })));
+            
+            // Look for the specific EO we're trying to update
+            const targetEO = listData.results?.find(eo => 
+              eo.eo_number === "14316" || eo.eo_number === 14316 || 
+              eo.id === "14316" || eo.id === 14316 ||
+              eo.document_number === "14316"
+            );
+            if (targetEO) {
+              console.log(`🎯 Found target EO 14316 in backend:`, {
+                id: targetEO.id,
+                eo_number: targetEO.eo_number,
+                document_number: targetEO.document_number,
+                category: targetEO.category,
+                title: targetEO.title?.substring(0, 50)
+              });
+            } else {
+              console.log(`❌ EO 14316 not found in first 5 results`);
+            }
+          }
+        } catch (listError) {
+          console.log(`🔍 Could not fetch sample EOs:`, listError);
+        }
+        
+        let errorDetail = `Failed with all ID formats. Last error: `;
+        if (lastError) {
+          if (lastError.body) {
+            try {
+              const errorJson = JSON.parse(lastError.body);
+              errorDetail += errorJson.detail || `HTTP ${lastError.status}: ${lastError.statusText}`;
+            } catch {
+              errorDetail += lastError.body.substring(0, 200);
+            }
+          } else if (lastError.error) {
+            errorDetail += lastError.error.message;
+          }
+        }
+        throw new Error(errorDetail);
       }
 
       // Check if response is actually JSON
@@ -1395,13 +1522,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     setSelectedFilters(prev => {
       let newFilters;
       
+      // Single selection logic - only one filter can be selected at a time
       if (prev.includes(filterKey)) {
-        newFilters = prev.filter(f => f !== filterKey);
+        // If clicking the same filter, deselect it (clear all)
+        newFilters = [];
       } else {
-        newFilters = [...prev, filterKey];
+        // Select only this filter (replace any existing selection)
+        newFilters = [filterKey];
       }
       
-      console.log('🔄 Filter toggled:', filterKey, 'Previous filters:', prev, 'New filters:', newFilters);
+      console.log('🔄 Filter selected:', filterKey, 'Previous filters:', prev, 'New filters:', newFilters);
       
       setPagination(prev => ({ ...prev, page: 1 }));
       
@@ -1549,17 +1679,6 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       console.log(`🔍 After category filter: ${result.length} orders`);
     }
 
-    // Apply review status filters
-    const hasReviewedFilter = selectedFilters.includes('reviewed');
-    const hasNotReviewedFilter = selectedFilters.includes('not_reviewed');
-    
-    if (hasReviewedFilter && !hasNotReviewedFilter) {
-      result = result.filter(order => isItemReviewed(order));
-      console.log(`🔍 After reviewed filter: ${result.length} orders`);
-    } else if (hasNotReviewedFilter && !hasReviewedFilter) {
-      result = result.filter(order => !isItemReviewed(order));
-      console.log(`🔍 After not-reviewed filter: ${result.length} orders`);
-    }
 
     // Apply highlight filter
     if (showHighlightsOnly) {
@@ -1585,7 +1704,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     });
 
     return result;
-  }, [allOrders, selectedFilters, isItemReviewed, sortOrder, showHighlightsOnly, isOrderHighlighted]);
+  }, [allOrders, selectedFilters, sortOrder, showHighlightsOnly, isOrderHighlighted]);
 
   const paginatedOrders = useMemo(() => {
     const startIndex = (pagination.page - 1) * pagination.per_page;
@@ -1676,6 +1795,37 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     }
   }, [allOrders.length]);
 
+  // Check for updates from Federal Register
+  const checkForUpdates = async () => {
+    if (checkingUpdates) return;
+    
+    try {
+      setCheckingUpdates(true);
+      console.log('🔍 Checking for executive order updates...');
+      
+      const response = await fetch(`${API_URL}/api/executive-orders/check-updates`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setUpdateInfo(result);
+        console.log(`📊 Update check complete: ${result.message}`);
+        
+        if (result.has_updates) {
+          console.log(`🆕 Found ${result.update_count} new executive orders available!`);
+        }
+      } else {
+        console.warn('⚠️ Update check failed:', result.error);
+        setUpdateInfo(null);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking for updates:', error);
+      setUpdateInfo(null);
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
   useEffect(() => {
     console.log('🚀 Component mounted - attempting auto-load...');
     
@@ -1684,6 +1834,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         await fetchFromDatabase();
         setTimeout(() => {
           checkForNewExecutiveOrders();
+          // Initial load complete - updates will be checked manually or on refresh
         }, 1000);
       } catch (err) {
         console.error('❌ Auto-load failed:', err);
@@ -1730,7 +1881,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   // RENDER COMPONENT
   // =====================================
   return (
-    <div className="pt-6 min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+    <div className={getPageContainerClasses()}>
       <ScrollToTopButton />
       
 
@@ -1740,97 +1891,100 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       <section className="relative overflow-hidden px-6 pt-12 pb-12">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-              <ScrollText size={16} />
-              Executive Orders
-            </div>
             
-            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-              <span className="block">Executive Order</span>
+            <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-6 leading-tight')}>
+              <span className="block">Executive Orders</span>
               <span className="block bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent py-2">Intelligence</span>
             </h1>
             
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Access the latest federal executive orders with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of presidential directives.
+            <p className={getTextClasses('secondary', 'text-xl mb-8 max-w-3xl mx-auto leading-relaxed')}>
+              Access the latest executive orders with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of presidential directives.
             </p>
           </div>
         </div>
       </section>
 
       {/* Results Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div className="p-6">
+      <div className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg shadow-sm overflow-visible">
+        <div className="p-4 sm:p-6">
           {/* Controls Bar - Mobile Responsive */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            {/* Left side - FetchButtonGroup matching StatePage */}
-            <FetchButtonGroup 
-              onFetch={fetchExecutiveOrders} 
-              isLoading={fetchingData}
-            />
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
+            {/* Left side - FetchButtonGroup and RegenerateAIButton */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <FetchButtonGroup 
+                onFetch={(docType) => fetchExecutiveOrders(docType)} 
+                isLoading={fetchingData}
+                updateInfo={updateInfo}
+              />
+              <RegenerateAIButton 
+                onRegenerate={regenerateAI} 
+                isLoading={regeneratingAI} 
+                totalOrders={allOrders.length}
+              />
+            </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-stretch sm:items-center">
+            <div className="flex flex-wrap gap-2 sm:gap-3 items-center justify-end pb-2 sm:pb-0" style={{overflow: 'visible'}}>
               {/* Highlight Filter Button */}
               <button
                 type="button"
                 onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
-                className={`flex items-center justify-center gap-3 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 min-h-[44px] ${
+                className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 min-h-[40px] sm:min-h-[44px] flex-shrink-0 ${
                   showHighlightsOnly
-                    ? 'bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
+                    : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                 }`}
               >
                 <Star size={16} className={showHighlightsOnly ? 'fill-current' : ''} />
-                <span>{showHighlightsOnly ? 'Highlights Only' : 'All Items'}</span>
+                <span className="whitespace-nowrap">{showHighlightsOnly ? 'Highlights' : 'All Items'}</span>
               </button>
 
               {/* Sort Button - Mobile Optimized */}
               <button
                 type="button"
                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center justify-center gap-3 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px]"
+                className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[40px] sm:min-h-[44px] flex-shrink-0"
               >
                 {sortOrder === 'latest' ? (
                   <>
                     <ArrowDown size={16} />
-                    <span>Latest Date</span>
+                    <span className="whitespace-nowrap">Latest Date</span>
                   </>
                 ) : (
                   <>
                     <ArrowUp size={16} />
-                    <span>Earliest Date</span>
+                    <span className="whitespace-nowrap">Earliest Date</span>
                   </>
                 )}
               </button>
               
               {/* Filter Dropdown */}
-              <div className="relative" ref={filterDropdownRef}>
+              <div className="relative z-[90]" ref={filterDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                  className="flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-full sm:w-48 min-h-[44px]"
+                  className={`flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 dark:border-dark-border rounded-lg text-xs sm:text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-w-[140px] sm:min-w-[224px] min-h-[40px] sm:min-h-[44px] flex-shrink-0 ${
+                    selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
+                  }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="truncate">
-                      {selectedFilters.length === 0 
-                        ? 'Filters'
-                        : selectedFilters.length === 1
-                        ? (() => {
-                            const filter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
-                            if (filter) return filter.label;
-                            if (selectedFilters[0] === 'all_practice_areas') return 'All Practice Areas';
-                            if (selectedFilters[0] === 'not-applicable') return 'Not Applicable';
-                            if (selectedFilters[0] === 'reviewed') return 'Reviewed';
-                            if (selectedFilters[0] === 'not_reviewed') return 'Not Reviewed';
-                            return 'Filter';
-                          })()
-                        : `${selectedFilters.length} Filters`
+                    {(() => {
+                      if (selectedFilters.length > 0) {
+                        const selectedFilter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
+                        if (selectedFilter) {
+                          const IconComponent = selectedFilter.icon;
+                          return <IconComponent size={16} className="text-gray-500 dark:text-gray-400" />;
+                        }
                       }
+                      return <LayoutGrid size={16} className="text-gray-500 dark:text-gray-400" />;
+                    })()}
+                    <span className="truncate">
+                      {selectedFilters.length > 0 ? (
+                        (() => {
+                          const selectedFilter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
+                          return selectedFilter ? selectedFilter.label : 'All Practice Areas';
+                        })()
+                      ) : 'All Practice Areas'}
                     </span>
-                    {selectedFilters.length > 0 && (
-                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
-                        {selectedFilters.length}
-                      </span>
-                    )}
                   </div>
                   <ChevronDown 
                     size={16} 
@@ -1840,30 +1994,55 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
                 {/* Dropdown content - Match StatePage structure exactly */}
                 {showFilterDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-[120]">
-                    {/* Clear All Button */}
-                    {selectedFilters.length > 0 && (
-                      <div className="px-4 py-2 border-b border-gray-200">
-                        <button
-                          onClick={() => {
-                            clearAllFilters();
-                            setShowFilterDropdown(false);
-                          }}
-                          className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-all duration-300"
-                        >
-                          Clear All Filters ({selectedFilters.length})
-                        </button>
+                  <div className="absolute top-full mt-2 w-full sm:w-64 bg-white dark:bg-dark-bg-secondary rounded-lg shadow-xl border border-gray-200 dark:border-dark-border z-[95] left-0 sm:left-auto sm:right-0" style={{transform: 'translateZ(0)'}}>
+                    {/* Header */}
+                    <div className="bg-gray-50 dark:bg-dark-bg-tertiary px-4 py-2 border-b border-gray-200 dark:border-dark-border">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-gray-700 dark:text-dark-text">
+                          Filter by Practice Area
+                        </span>
+                        {selectedFilters.length > 0 && (
+                          <button
+                            onClick={() => {
+                              clearAllFilters();
+                              setShowFilterDropdown(false);
+                            }}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+                          >
+                            Clear
+                          </button>
+                        )}
                       </div>
-                    )}
+                    </div>
                     
                     {/* Practice Areas Section */}
-                    <div className="border-b border-gray-200 pb-2">
-                      <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        Practice Areas
-                      </div>
+                    <div className="pb-2">
                       
-                      {/* All filter options from CATEGORY_FILTERS array */}
-                      {CATEGORY_FILTERS.map((filter) => {
+                      {/* All Practice Areas First */}
+                      {CATEGORY_FILTERS.filter(filter => filter.key === 'all_practice_areas').map((filter) => {
+                        const IconComponent = filter.icon;
+                        const isActive = selectedFilters.includes(filter.key);
+                        const count = filterCounts[filter.key] || 0;
+                        
+                        return (
+                          <button
+                            key={filter.key}
+                            onClick={() => toggleFilter(filter.key)}
+                            className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
+                              isActive ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-medium' : 'text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <IconComponent size={16} />
+                              <span>{filter.label}</span>
+                            </div>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">({count})</span>
+                          </button>
+                        );
+                      })}
+                      
+                      {/* Individual Practice Areas */}
+                      {CATEGORY_FILTERS.filter(filter => filter.key !== 'all_practice_areas').map((filter) => {
                         const IconComponent = filter.icon;
                         const isActive = selectedFilters.includes(filter.key);
                         const count = filterCounts[filter.key] || 0;
@@ -1874,80 +2053,26 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                             onClick={() => toggleFilter(filter.key)}
                             className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                               isActive
-                                ? filter.key === 'all_practice_areas' ? 'bg-teal-100 text-teal-700 font-medium' :
-                                  filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
-                                  filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
-                                  filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
-                                  filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
-                                  filter.key === 'not-applicable' ? 'bg-gray-100 text-gray-700 font-medium' :
-                                  'bg-gray-100 text-gray-700 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
+                                ? filter.key === 'civic' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' :
+                                  filter.key === 'education' ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 font-medium' :
+                                  filter.key === 'engineering' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium' :
+                                  filter.key === 'healthcare' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium' :
+                                  filter.key === 'not-applicable' ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium' :
+                                  'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium'
+                                : 'text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                             }`}
                           >
                             <div className="flex items-center gap-3">
                               <IconComponent size={16} />
                               <span>{filter.label}</span>
                             </div>
-                            <span className="text-xs text-gray-500">({count})</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">({count})</span>
                           </button>
                         );
                       })}
 
-                      {/* Not Applicable */}
-                      <button
-                        onClick={() => toggleFilter('not-applicable')}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                          selectedFilters.includes('not-applicable')
-                            ? 'bg-gray-100 text-gray-700 font-medium'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Ban size={16} />
-                          <span>Not Applicable</span>
-                        </div>
-                        <span className="text-xs text-gray-500">({filterCounts['not-applicable'] || 0})</span>
-                      </button>
                     </div>
 
-                    {/* Review Status Section */}
-                    <div>
-                      <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        Review Status
-                      </div>
-                      
-                      {/* Reviewed */}
-                      <button
-                        onClick={() => toggleFilter('reviewed')}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                          selectedFilters.includes('reviewed')
-                            ? 'bg-green-100 text-green-700 font-medium'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Check size={16} />
-                          <span>Reviewed</span>
-                        </div>
-                        <span className="text-xs text-gray-500">({filterCounts.reviewed || 0})</span>
-                      </button>
-
-                      {/* Not Reviewed */}
-                      <button
-                        onClick={() => toggleFilter('not_reviewed')}
-                        className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
-                          selectedFilters.includes('not_reviewed')
-                            ? 'bg-yellow-100 text-yellow-700 font-medium'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <AlertTriangle size={16} />
-                          <span>Not Reviewed</span>
-                        </div>
-                        <span className="text-xs text-gray-500">({filterCounts.not_reviewed || 0})</span>
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
@@ -1961,42 +2086,30 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               ))}
             </div>
           ) : error ? (
-            <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-300 p-4 rounded-md">
               <p className="font-semibold mb-2">Error loading executive orders:</p>
               <p className="text-sm mb-4">{error}</p>
               <div className="flex gap-2">
                 <button
                   onClick={fetchFromDatabase}
-                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-all duration-300"
+                  className="px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-600 transition-all duration-300"
                 >
                   Try Again
                 </button>
                 <button
                   onClick={fetchExecutiveOrders}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-all duration-300"
+                  className="px-4 py-2 bg-purple-600 dark:bg-purple-700 text-white rounded-md hover:bg-purple-700 dark:hover:bg-purple-600 transition-all duration-300"
                 >
-                  Check for New Orders
+                  Check for Executive Orders
                 </button>
               </div>
             </div>
-          ) : (
-            <>
-              {/* Review Error Display */}
-              {reviewError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle size={16} />
-                    <span>{reviewError}</span>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          ) : null}
           
           {orders.length === 0 ? (
             <div className="text-center py-12">
               <Database size={48} className="mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">No Executive Orders Found</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">No Presidential Documents Found</h3>
               <p className="text-gray-600 mb-4">
                 {selectedFilters.length > 0 
                   ? `No executive orders match your current filter criteria.` 
@@ -2033,6 +2146,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                   </div>
                 </div>
               )}
+
+              {/* Regeneration Status Display */}
+              {regenerationStatus && (
+                <div className="mt-4 text-center">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm">
+                    {regeneratingAI && <Sparkles size={16} className="animate-pulse" />}
+                    <span>{regenerationStatus}</span>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-6 relative">
@@ -2040,23 +2163,22 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 const orderWithIndex = { ...order, index };
                 const orderId = getOrderId(orderWithIndex);
                 const isExpanded = expandedOrders.has(orderId);
-                const isReviewed = isItemReviewed(order);
                 
                 return (
-                  <div key={`order-${orderId}-${index}`} className="bg-white border rounded-lg transition-all duration-300 border-gray-200 hover:shadow-md relative" style={{ zIndex: 50 - index }}>
+                  <div key={`order-${orderId}-${index}`} className="bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg transition-all duration-300 hover:shadow-md relative" style={{ zIndex: 50 - index }}>
                     <div className="p-6">
 
                       {/* Header with Title and Star */}
                       <div className="flex items-start justify-between gap-4 mb-4">
-                        <h3 className="text-lg font-semibold text-gray-800 leading-relaxed flex-1">
+                        <h3 className={getTextClasses('primary', 'text-lg font-semibold leading-relaxed flex-1')}>
                           {cleanOrderTitle(order.title)}
                         </h3>
                         <button
                           type="button"
                           className={`p-2 rounded-md transition-all duration-300 flex-shrink-0 ${
                             isOrderHighlighted(orderWithIndex)
-                              ? 'text-yellow-500 bg-yellow-50 hover:bg-yellow-100'
-                              : 'text-gray-400 hover:text-yellow-500 hover:bg-gray-50'
+                              ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
+                              : 'text-gray-400 dark:text-gray-500 hover:text-yellow-500 dark:hover:text-yellow-400 hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
                           } ${isOrderHighlightLoading(orderWithIndex) ? 'opacity-50 cursor-not-allowed' : ''}`}
                           onClick={async (e) => {
                             e.preventDefault();
@@ -2087,12 +2209,12 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                       
                       {/* Metadata Row */}
                       <div className="flex flex-wrap items-center gap-4 text-sm mb-4">
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <Hash size={14} className="text-blue-600" />
+                        <div className={getTextClasses('secondary', 'flex items-center gap-2')}>
+                          <Hash size={14} className="text-blue-600 dark:text-blue-400" />
                           <span className="font-medium">{getExecutiveOrderNumber(order)}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <Calendar size={14} className="text-green-600" />
+                        <div className={getTextClasses('secondary', 'flex items-center gap-2')}>
+                          <Calendar size={14} className="text-green-600 dark:text-green-400" />
                           <span className="font-medium">{order.formatted_signing_date || 'N/A'}</span>
                         </div>
                         <EditableCategoryTag 
@@ -2102,114 +2224,98 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           onCategoryChange={handleCategoryUpdate}
                           disabled={fetchingData || loading}
                         />
-                        <ReviewStatusTag 
-                          isReviewed={isReviewed}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleReviewToggle(orderWithIndex);
-                          }}
-                          disabled={fetchingData || loading}
-                          isLoading={isItemReviewLoading(orderWithIndex)}
-                        />
                         
-                        {/* Source and PDF Links */}
-                        {order.html_url && (
-                          <a
-                            href={order.html_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium rounded-md hover:bg-blue-100 transition-all duration-200"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <ExternalLink size={12} className="text-blue-600" />
-                            Source
-                          </a>
-                        )}
-                        
-                        {order.pdf_url && (
-                          <a
-                            href={order.pdf_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 text-xs font-medium rounded-md hover:bg-red-100 transition-all duration-200"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <FileText size={12} className="text-red-600" />
-                            PDF
-                          </a>
-                        )}
                       </div>
 
                       {/* AI Summary Preview */}
                       {order.ai_processed && order.ai_summary && !isExpanded && (
                         <div className="mb-4">
-                          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                          <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-2">
-                                <h3 className="text-base font-semibold text-purple-900">Executive Summary</h3>
+                                <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Executive Summary</h3>
                               </div>
-                              <div className="inline-flex items-center gap-1 px-2 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
-                                <Sparkles size={10} />
-                                AI Generated
+                              <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                AI
                               </div>
                             </div>
-                            <div className="text-sm text-purple-800 line-clamp-2 leading-relaxed">
+                            <div className={getTextClasses('secondary', 'text-sm leading-relaxed')}>
                               {stripHtmlTags(order.ai_summary)}
                             </div>
+                          </div>
+                          <div className="border-b border-gray-200 dark:border-dark-border mt-4"></div>
+                          
+                          {/* Source and PDF Links with Read More Button */}
+                          <div className="flex items-center justify-between mt-4">
+                            <div className="flex items-center gap-6">
+                              {order.html_url && (
+                                <a
+                                  href={order.html_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span>View Source Page</span>
+                                  <ExternalLink size={14} />
+                                </a>
+                              )}
+                              
+                              {order.pdf_url && (
+                                <a
+                                  href={order.pdf_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span>View PDF Document</span>
+                                  <ExternalLink size={14} />
+                                </a>
+                              )}
+                            </div>
+                            
+                            {/* Read More Button */}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setExpandedOrders(prev => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(orderId)) {
+                                    newSet.delete(orderId);
+                                  } else {
+                                    newSet.add(orderId);
+                                  }
+                                  return newSet;
+                                });
+                              }}
+                              className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm flex items-center gap-1"
+                            >
+                              {isExpanded ? 'Read Less' : 'Read More'}
+                              <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
                           </div>
                         </div>
                       )}
 
-                      {/* Read More Button */}
-                      <div className="flex justify-end mb-4">
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setExpandedOrders(prev => {
-                              const newSet = new Set(prev);
-                              if (newSet.has(orderId)) {
-                                newSet.delete(orderId);
-                              } else {
-                                newSet.add(orderId);
-                              }
-                              return newSet;
-                            });
-                          }}
-                          className="ml-auto inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-all duration-200"
-                        >
-                          {isExpanded ? (
-                            <>
-                              Show Less
-                              <ChevronDown size={14} className="rotate-180 transition-transform duration-200" />
-                            </>
-                          ) : (
-                            <>
-                              Read More
-                              <ChevronDown size={14} className="transition-transform duration-200" />
-                            </>
-                          )}
-                        </button>
-                      </div>
 
                       {/* Expanded Content */}
                       {isExpanded && (
-                        <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="mt-3">
                           {/* Full Executive Summary */}
                           {order.ai_processed && order.ai_summary && (
                             <div className="mb-4">
-                              <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                              <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
-                                    <h3 className="text-base font-semibold text-purple-900">Executive Summary</h3>
+                                    <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Executive Summary</h3>
                                   </div>
-                                  <div className="inline-flex items-center gap-1 px-2 py-1 bg-purple-600 text-white text-xs font-medium rounded-md">
-                                    <Sparkles size={10} />
-                                    AI Generated
+                                  <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                    AI
                                   </div>
                                 </div>
-                                <div className="text-sm text-purple-800 leading-relaxed">
+                                <div className={getTextClasses('secondary', 'text-sm leading-relaxed')}>
                                   {stripHtmlTags(order.ai_summary)}
                                 </div>
                               </div>
@@ -2219,14 +2325,13 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           {/* Azure AI Talking Points */}
                           {order.ai_processed && order.ai_talking_points && (
                             <div className="mb-4">
-                              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                              <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
-                                    <h3 className="text-base font-semibold text-blue-900">Key Talking Points</h3>
+                                    <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Key Talking Points</h3>
                                   </div>
-                                  <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-xs font-medium rounded-md">
-                                    <Sparkles size={10} />
-                                    AI Generated
+                                  <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                    AI
                                   </div>
                                 </div>
                                 <div className="space-y-3">
@@ -2239,17 +2344,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           {/* Azure AI Business Impact */}
                           {order.ai_processed && order.ai_business_impact && (
                             <div className="mb-4">
-                              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
+                              <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
-                                    <h3 className="text-base font-semibold text-green-900">Business Impact Analysis</h3>
+                                    <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Business Impact Assessment</h3>
                                   </div>
-                                  <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-600 text-white text-xs font-medium rounded-md">
-                                    <Sparkles size={10} />
-                                    AI Generated
+                                  <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                    AI
                                   </div>
                                 </div>
-                                <div className="text-sm text-green-800 leading-relaxed">
+                                <div className={getTextClasses('secondary', 'text-sm leading-relaxed')}>
                                   {formatUniversalContent(order.ai_business_impact)}
                                 </div>
                               </div>
@@ -2258,18 +2362,18 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
                           {/* No AI Analysis Message */}
                           {!order.ai_processed && (
-                            <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+                            <div className="bg-yellow-50 dark:bg-yellow-900/30 p-4 rounded-md border border-yellow-200 dark:border-yellow-700">
                               <div className="flex items-center justify-between">
                                 <div>
-                                  <h4 className="font-medium text-yellow-800">No AI Analysis Available</h4>
-                                  <p className="text-yellow-700 text-sm">
+                                  <h4 className="font-medium text-yellow-800 dark:text-yellow-300">No AI Analysis Available</h4>
+                                  <p className="text-yellow-700 dark:text-yellow-300 text-sm">
                                     Fetch executive orders to get Azure AI analysis for this order.
                                   </p>
                                 </div>
                                 <button
                                   onClick={fetchExecutiveOrders}
                                   disabled={fetchingData}
-                                  className="px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-all duration-300 flex items-center gap-2"
+                                  className="px-3 py-2 bg-yellow-600 dark:bg-yellow-700 text-white rounded-md hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-all duration-300 flex items-center gap-2"
                                 >
                                   <Sparkles size={14} />
                                   Check for New Orders
@@ -2277,6 +2381,58 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               </div>
                             </div>
                           )}
+
+                          {/* Source and PDF Links with Read More Button - Expanded */}
+                          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-dark-border">
+                            <div className="flex items-center gap-6">
+                              {order.html_url && (
+                                <a
+                                  href={order.html_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span>View Source Page</span>
+                                  <ExternalLink size={14} />
+                                </a>
+                              )}
+                              
+                              {order.pdf_url && (
+                                <a
+                                  href={order.pdf_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span>View PDF Document</span>
+                                  <ExternalLink size={14} />
+                                </a>
+                              )}
+                            </div>
+                            
+                            {/* Read Less Button */}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setExpandedOrders(prev => {
+                                  const newSet = new Set(prev);
+                                  if (newSet.has(orderId)) {
+                                    newSet.delete(orderId);
+                                  } else {
+                                    newSet.add(orderId);
+                                  }
+                                  return newSet;
+                                });
+                              }}
+                              className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm flex items-center gap-1"
+                            >
+                              {isExpanded ? 'Read Less' : 'Read More'}
+                              <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                          </div>
 
                         </div>
                       )}
@@ -2305,20 +2461,18 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       {/* Filter Results Summary */}
       {!loading && !error && selectedFilters.length > 0 && (
         <div className="mt-4 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
             <span>
               {orders.length === 0 ? 'No results' : `${pagination.count} total results`} for: 
               <span className="font-medium ml-1">
                 {selectedFilters.map(f => {
-                  if (f === 'reviewed') return 'Reviewed';
-                  if (f === 'not_reviewed') return 'Not Reviewed';
                   if (f === 'all_practice_areas') return 'All Practice Areas';
                   return CATEGORY_FILTERS.find(cf => cf.key === f)?.label || f;
                 }).join(', ')}
               </span>
             </span>
             {pagination.count > 25 && (
-              <span className="text-xs bg-blue-100 px-2 py-1 rounded">
+              <span className="text-xs bg-blue-100 dark:bg-blue-800/50 text-blue-700 dark:text-blue-200 px-2 py-1 rounded">
                 {pagination.total_pages} pages
               </span>
             )}

@@ -59,22 +59,22 @@ const StatusFilter = ({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled || loading}
-        className={`flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white transition-all duration-300 w-full sm:w-48 min-h-[44px] ${
+        className={`flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-48 min-h-[44px] ${
           disabled || loading 
             ? 'opacity-50 cursor-not-allowed' 
-            : 'hover:bg-gray-50 cursor-pointer'
-        } ${selectedStatus ? 'ring-2 ring-blue-500 border-blue-500' : ''}`}
+            : 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
+        } ${selectedStatus ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''}`}
       >
         <div className="flex items-center gap-2">
           {(() => {
             const IconComponent = getButtonIcon();
-            return <IconComponent size={16} className="text-gray-500" />;
+            return <IconComponent size={16} className="text-gray-500 dark:text-gray-300" />;
           })()}
           <span className="truncate">{getButtonLabel()}</span>
         </div>
         <ChevronDown 
           size={16} 
-          className={`ml-2 text-gray-500 transition-transform duration-200 ${
+          className={`ml-2 text-gray-500 dark:text-gray-300 transition-transform duration-200 ${
             isOpen ? 'rotate-180' : ''
           }`} 
         />
@@ -82,10 +82,10 @@ const StatusFilter = ({
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
-        <div className="absolute top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[280px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
-          <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b border-gray-200">
+        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[280px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
+          <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-700">
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 Filter by Bill Status
               </span>
               {selectedStatus && (
@@ -94,7 +94,7 @@ const StatusFilter = ({
                     onStatusChange(null);
                     setIsOpen(false);
                   }}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
                 >
                   Clear
                 </button>
@@ -113,24 +113,24 @@ const StatusFilter = ({
                   <button
                     key={status.key}
                     onClick={() => handleStatusToggle(status.key)}
-                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors duration-150 flex items-center justify-between group ${
-                      isSelected ? 'bg-blue-50' : ''
+                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group ${
+                      isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                     }`}
                     title={status.description}
                   >
                     <div className="flex items-center gap-3">
-                      <StatusIcon size={16} className={isSelected ? 'text-blue-600' : 'text-gray-500'} />
-                      <span className={`text-sm ${isSelected ? 'text-blue-700 font-medium' : 'text-gray-900'}`}>
+                      <StatusIcon size={16} className={isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-300'} />
+                      <span className={`text-sm ${isSelected ? 'text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-900 dark:text-white'}`}>
                         {status.label}
                       </span>
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">({count})</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">({count})</span>
                       <div className={`flex-shrink-0 ${
                         isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'
                       }`}>
-                        <Check size={16} className="text-blue-600" />
+                        <Check size={16} className="text-blue-600 dark:text-blue-400" />
                       </div>
                     </div>
                   </button>

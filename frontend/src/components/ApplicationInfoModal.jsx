@@ -40,7 +40,8 @@ import {
   HardDrive,    // Technical/system
   Clock,        // Time/clock icon
   UserCheck,    // User/governor icon
-  Users as UsersIcon // Population icon
+  Users as UsersIcon, // Population icon
+  Filter        // Filter icon
 } from 'lucide-react';
 import StateOutlineBackground from './StateOutlineBackground';
 
@@ -63,8 +64,8 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
         onClick={() => onClick(tab.id)}
         className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all duration-300 text-sm ${
           isActive
-            ? 'bg-blue-600 text-white shadow-lg'
-            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+            ? 'bg-blue-600 dark:bg-blue-500 text-white shadow-lg'
+            : 'text-gray-600 dark:text-dark-text-secondary dark:text-dark-text-secondary hover:text-gray-800 dark:hover:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg'
         }`}
       >
         <Icon className="w-4 h-4" />
@@ -76,17 +77,17 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
   const OverviewTab = () => (
     <div className="space-y-8">
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-8 border border-blue-200 shadow-lg">
+      <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-900/20 dark:via-indigo-900/20 dark:to-purple-900/20 rounded-xl p-8 border border-blue-200 dark:border-blue-700 shadow-lg">
         <div className="flex items-center gap-6 mb-6">
           <div className="w-20 h-20 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
             <img src="/logo.png" alt="LegislationVUE" className="w-12 h-12" />
           </div>
           <div>
             <h3 className="text-3xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">LegislationVUE</h3>
-            <p className="text-lg text-indigo-700 font-medium">AI-Powered Legislative Intelligence Platform</p>
+            <p className="text-lg text-indigo-700 dark:text-indigo-300 font-medium">AI-Powered Legislative Intelligence Platform</p>
           </div>
         </div>
-        <p className="text-gray-700 text-xl leading-relaxed">
+        <p className="text-gray-700 dark:text-dark-text-secondary dark:text-dark-text-secondary text-xl leading-relaxed">
           Your comprehensive solution for tracking, analyzing, and understanding federal executive orders 
           and state legislation with advanced AI insights and business impact analysis.
         </p>
@@ -94,84 +95,84 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
 
       {/* Key Features */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 shadow-sm border border-blue-200 hover:shadow-md transition-shadow duration-300">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 shadow-sm border border-blue-200 dark:border-blue-700 hover:shadow-md transition-shadow duration-300">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-md">
               <ScrollText className="w-6 h-6 text-white" />
             </div>
-            <h4 className="text-lg font-bold text-blue-800">Federal Executive Orders</h4>
+            <h4 className="text-lg font-bold text-blue-800 dark:text-blue-300 dark:text-blue-300">Federal Executive Orders</h4>
           </div>
-          <p className="text-gray-600 leading-relaxed">
+          <p className="text-gray-600 dark:text-dark-text-secondary dark:text-dark-text-secondary leading-relaxed">
             Real-time tracking of presidential executive orders with comprehensive AI analysis and business impact assessments.
           </p>
         </div>
 
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 shadow-sm border border-green-200 hover:shadow-md transition-shadow duration-300">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-6 shadow-sm border border-green-200 dark:border-green-700 hover:shadow-md transition-shadow duration-300">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-md">
               <FileText className="w-6 h-6 text-white" />
             </div>
-            <h4 className="text-lg font-bold text-green-800">State Legislation</h4>
+            <h4 className="text-lg font-bold text-green-800 dark:text-green-300">State Legislation</h4>
           </div>
-          <p className="text-gray-600 leading-relaxed">
+          <p className="text-gray-600 dark:text-dark-text-secondary leading-relaxed">
             Multi-state bill tracking across 6 key states with topic-based search and latest bill monitoring.
           </p>
         </div>
 
-        <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 shadow-sm border border-purple-200 hover:shadow-md transition-shadow duration-300">
+        <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl p-6 shadow-sm border border-purple-200 dark:border-purple-700 hover:shadow-md transition-shadow duration-300">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-md">
               <span className="text-white text-sm font-bold">AI</span>
             </div>
-            <h4 className="text-lg font-bold text-purple-800">AI-Powered Analysis</h4>
+            <h4 className="text-lg font-bold text-purple-800 dark:text-purple-300">AI-Powered Analysis</h4>
           </div>
-          <p className="text-gray-600 leading-relaxed">
+          <p className="text-gray-600 dark:text-dark-text-secondary leading-relaxed">
             GPT-4 powered summaries, key talking points, and detailed business impact analysis for every item.
           </p>
         </div>
 
-        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 shadow-sm border border-yellow-200 hover:shadow-md transition-shadow duration-300">
+        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-xl p-6 shadow-sm border border-yellow-200 dark:border-yellow-700 hover:shadow-md transition-shadow duration-300">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-md">
               <Star className="w-6 h-6 text-white" />
             </div>
-            <h4 className="text-lg font-bold text-yellow-800">Smart Highlights</h4>
+            <h4 className="text-lg font-bold text-yellow-800 dark:text-yellow-300">Smart Highlights</h4>
           </div>
-          <p className="text-gray-600 leading-relaxed">
+          <p className="text-gray-600 dark:text-dark-text-secondary leading-relaxed">
             Save and organize important legislation with filtering, categorization, and export capabilities.
           </p>
         </div>
       </div>
 
       {/* Value Proposition */}
-      <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl shadow-sm border border-red-200 p-8">
+      <div className="bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 rounded-xl shadow-sm border border-red-200 dark:border-red-700 p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl flex items-center justify-center shadow-md">
             <Target className="w-6 h-6 text-white" />
           </div>
-          <h3 className="text-2xl font-bold text-red-800">Why LegislationVUE?</h3>
+          <h3 className="text-2xl font-bold text-red-800 dark:text-red-300">Why LegislationVUE?</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
               <Shield className="w-8 h-8 text-white" />
             </div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">Stay Compliant</h4>
-            <p className="text-gray-600">Never miss critical legislative changes that affect your business</p>
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-2">Stay Compliant</h4>
+            <p className="text-gray-600 dark:text-dark-text-secondary">Never miss critical legislative changes that affect your business</p>
           </div>
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
               <BarChart3 className="w-8 h-8 text-white" />
             </div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">Make Informed Decisions</h4>
-            <p className="text-gray-600">AI-powered insights help you understand business implications</p>
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-2">Make Informed Decisions</h4>
+            <p className="text-gray-600 dark:text-dark-text-secondary">AI-powered insights help you understand business implications</p>
           </div>
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-to-r from-green-400 to-emerald-400 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
               <Rocket className="w-8 h-8 text-white" />
             </div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">Save Time</h4>
-            <p className="text-gray-600">Automated tracking and analysis reduces research time by 90%</p>
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-2">Save Time</h4>
+            <p className="text-gray-600 dark:text-dark-text-secondary">Automated tracking and analysis reduces research time by 90%</p>
           </div>
         </div>
       </div>
@@ -181,20 +182,20 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
   const TechnologyTab = () => (
     <div className="space-y-8">
       {/* Tech Stack Overview */}
-      <div className="bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 rounded-xl p-8 border border-cyan-200 shadow-lg">
+      <div className="bg-gradient-to-r from-cyan-50 via-blue-50 to-indigo-50 dark:from-cyan-900/20 dark:via-blue-900/20 dark:to-indigo-900/20 rounded-xl p-8 border border-cyan-200 dark:border-cyan-700 shadow-lg">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center shadow-md">
             <Wrench className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-2xl font-bold bg-gradient-to-r from-cyan-700 to-blue-700 bg-clip-text text-transparent">Technology Stack</h3>
         </div>
-        <p className="text-gray-700 text-lg leading-relaxed">
+        <p className="text-gray-700 dark:text-dark-text-secondary text-lg leading-relaxed">
           LegislationVUE is built on cutting-edge technology to deliver reliable, fast, and intelligent legislative tracking.
         </p>
       </div>
 
       {/* Data Sources */}
-      <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200 rounded-xl p-8 shadow-lg">
+      <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 dark:from-purple-900/20 dark:via-indigo-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-700 rounded-xl p-8 shadow-lg">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-md">
             <Database className="w-6 h-6 text-white" />
@@ -202,41 +203,41 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
           <h3 className="text-2xl font-bold bg-gradient-to-r from-purple-700 to-indigo-700 bg-clip-text text-transparent">Official Data Sources</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
+          <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-md">
                 <Globe className="w-6 h-6 text-white" />
               </div>
-              <h4 className="text-lg font-bold text-blue-800">Federal Register</h4>
+              <h4 className="text-lg font-bold text-blue-800 dark:text-blue-300 dark:text-blue-300">Federal Register</h4>
             </div>
-            <p className="text-gray-600 mb-4 leading-relaxed">
+            <p className="text-gray-600 dark:text-dark-text-secondary mb-4 leading-relaxed">
               The official daily publication for rules, proposed rules, and notices of Federal agencies and organizations.
             </p>
             <a 
               href="https://www.federalregister.gov" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
+              className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-300 font-medium transition-colors duration-200"
             >
               Visit Federal Register <ExternalLink className="w-4 h-4" />
             </a>
           </div>
 
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-700 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-md">
                 <FileText className="w-6 h-6 text-white" />
               </div>
-              <h4 className="text-lg font-bold text-green-800">LegiScan API</h4>
+              <h4 className="text-lg font-bold text-green-800 dark:text-green-300">LegiScan API</h4>
             </div>
-            <p className="text-gray-600 mb-4 leading-relaxed">
+            <p className="text-gray-600 dark:text-dark-text-secondary mb-4 leading-relaxed">
               Comprehensive state legislation tracking service providing real-time updates on bills across all 50 states.
             </p>
             <a 
               href="https://legiscan.com" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-green-600 hover:text-green-800 font-medium transition-colors duration-200"
+              className="inline-flex items-center gap-2 text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 font-medium transition-colors duration-200"
             >
               Visit LegiScan <ExternalLink className="w-4 h-4" />
             </a>
@@ -245,7 +246,7 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       </div>
 
       {/* AI Technology */}
-      <div className="bg-gradient-to-r from-purple-50 via-pink-50 to-rose-50 border border-purple-200 rounded-xl p-8 shadow-lg">
+      <div className="bg-gradient-to-r from-purple-50 via-pink-50 to-rose-50 dark:from-purple-900/20 dark:via-pink-900/20 dark:to-rose-900/20 border border-purple-200 dark:border-purple-700 rounded-xl p-8 shadow-lg">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-md">
             <span className="text-white text-sm font-bold">AI</span>
@@ -254,8 +255,8 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-3">Azure OpenAI Service</h4>
-            <ul className="space-y-2 text-gray-600">
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-3">Azure OpenAI Service</h4>
+            <ul className="space-y-2 text-gray-600 dark:text-dark-text-secondary">
               <li className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                 GPT-4 powered text analysis
@@ -271,8 +272,8 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
             </ul>
           </div>
           <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-3">Analysis Capabilities</h4>
-            <ul className="space-y-2 text-gray-600">
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-3">Analysis Capabilities</h4>
+            <ul className="space-y-2 text-gray-600 dark:text-dark-text-secondary">
               <li className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                 Automated executive summaries
@@ -291,54 +292,124 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       </div>
 
       {/* Supported States */}
-      <div className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 border border-emerald-200 rounded-xl p-8 shadow-lg">
+      <div className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-8 shadow-lg">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-green-500 rounded-xl flex items-center justify-center shadow-md">
             <MapPin className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-2xl font-bold bg-gradient-to-r from-emerald-700 to-green-700 bg-clip-text text-transparent">Supported States & Jurisdictions</h3>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+        <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-xl p-6 shadow-sm">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { name: 'California', code: 'CA', population: '39.5M', governor: 'Gavin Newsom' },
-              { name: 'Colorado', code: 'CO', population: '5.8M', governor: 'Jared Polis' },
-              { name: 'Kentucky', code: 'KY', population: '4.5M', governor: 'Andy Beshear' },
-              { name: 'Nevada', code: 'NV', population: '3.2M', governor: 'Joe Lombardo' },
-              { name: 'South Carolina', code: 'SC', population: '5.2M', governor: 'Henry McMaster' },
-              { name: 'Texas', code: 'TX', population: '30.0M', governor: 'Greg Abbott' }
-            ].map((state) => (
-              <div key={state.code} className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 hover:shadow-md transition-shadow duration-300 cursor-pointer group relative" onClick={() => window.open(`/state/${state.name.toLowerCase().replace(' ', '-')}`, '_blank')}>
+              { name: 'California', code: 'CA', population: '39.5M', governor: 'Gavin Newsom', color: 'blue' },
+              { name: 'Colorado', code: 'CO', population: '5.8M', governor: 'Jared Polis', color: 'green' },
+              { name: 'Kentucky', code: 'KY', population: '4.5M', governor: 'Andy Beshear', color: 'purple' },
+              { name: 'Nevada', code: 'NV', population: '3.2M', governor: 'Joe Lombardo', color: 'orange' },
+              { name: 'South Carolina', code: 'SC', population: '5.2M', governor: 'Henry McMaster', color: 'red' },
+              { name: 'Texas', code: 'TX', population: '30.0M', governor: 'Greg Abbott', color: 'indigo' }
+            ].map((state) => {
+              const getStateColors = (color) => {
+                switch (color) {
+                  case 'blue':
+                    return {
+                      bg: 'bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20',
+                      border: 'border-blue-200 dark:border-blue-700',
+                      icon: 'bg-gradient-to-r from-blue-500 to-indigo-500',
+                      text: 'text-blue-800 dark:text-blue-300 dark:text-blue-300',
+                      code: 'text-blue-600 dark:text-blue-400',
+                      iconSmall: 'text-blue-500 dark:text-blue-400'
+                    };
+                  case 'green':
+                    return {
+                      bg: 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20',
+                      border: 'border-green-200 dark:border-green-700',
+                      icon: 'bg-gradient-to-r from-green-500 to-emerald-500',
+                      text: 'text-green-800 dark:text-green-300',
+                      code: 'text-green-600 dark:text-green-400',
+                      iconSmall: 'text-green-500 dark:text-green-400'
+                    };
+                  case 'purple':
+                    return {
+                      bg: 'bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20',
+                      border: 'border-purple-200 dark:border-purple-700',
+                      icon: 'bg-gradient-to-r from-purple-500 to-violet-500',
+                      text: 'text-purple-800 dark:text-purple-300',
+                      code: 'text-purple-600 dark:text-purple-400',
+                      iconSmall: 'text-purple-500 dark:text-purple-400'
+                    };
+                  case 'orange':
+                    return {
+                      bg: 'bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20',
+                      border: 'border-orange-200 dark:border-orange-700',
+                      icon: 'bg-gradient-to-r from-orange-500 to-amber-500',
+                      text: 'text-orange-800 dark:text-orange-300',
+                      code: 'text-orange-600 dark:text-orange-400',
+                      iconSmall: 'text-orange-500 dark:text-orange-400'
+                    };
+                  case 'red':
+                    return {
+                      bg: 'bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-900/20 dark:to-rose-900/20',
+                      border: 'border-red-200 dark:border-red-700',
+                      icon: 'bg-gradient-to-r from-red-500 to-rose-500',
+                      text: 'text-red-800 dark:text-red-300',
+                      code: 'text-red-600 dark:text-red-400',
+                      iconSmall: 'text-red-500 dark:text-red-400'
+                    };
+                  case 'indigo':
+                    return {
+                      bg: 'bg-gradient-to-br from-indigo-50 to-slate-50 dark:from-indigo-900/20 dark:to-slate-900/20',
+                      border: 'border-indigo-200 dark:border-indigo-700',
+                      icon: 'bg-gradient-to-r from-indigo-500 to-slate-500',
+                      text: 'text-indigo-800 dark:text-indigo-300',
+                      code: 'text-indigo-600 dark:text-indigo-400',
+                      iconSmall: 'text-indigo-500 dark:text-indigo-400'
+                    };
+                  default:
+                    return {
+                      bg: 'bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-900/20 dark:to-slate-900/20',
+                      border: 'border-gray-200 dark:border-gray-700',
+                      icon: 'bg-gradient-to-r from-gray-500 to-slate-500',
+                      text: 'text-gray-800 dark:text-gray-300',
+                      code: 'text-gray-600 dark:text-gray-400',
+                      iconSmall: 'text-gray-500 dark:text-gray-400'
+                    };
+                }
+              };
+              const colors = getStateColors(state.color);
+              return (
+              <div key={state.code} className={`${colors.bg} border ${colors.border} rounded-xl p-4 hover:shadow-md transition-shadow duration-300 cursor-pointer group relative`} onClick={() => window.open(`/state/${state.name.toLowerCase().replace(' ', '-')}`, '_blank')}>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-md">
+                  <div className={`w-12 h-12 ${colors.icon} rounded-xl flex items-center justify-center shadow-md flex-shrink-0`}>
                     <StateOutlineBackground 
                       stateName={state.name} 
                       className="w-8 h-8 text-white"
                       isIcon={true}
                     />
                   </div>
-                  <div className="flex-1">
-                    <h4 className="font-bold text-lg text-green-800">{state.name}</h4>
-                    <p className="text-sm text-green-600">{state.code}</p>
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`font-bold text-base ${colors.text} whitespace-nowrap`}>{state.name}</h4>
+                    <p className={`text-sm ${colors.code}`}>{state.code}</p>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <ExternalLink size={16} className="text-green-500" />
+                    <ExternalLink size={16} className={colors.iconSmall} />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
-                    <UserCheck size={14} className="text-green-500" />
+                  <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-dark-text-secondary">
+                    <UserCheck size={14} className={colors.iconSmall} />
                     <span>{state.governor}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
-                    <UsersIcon size={14} className="text-green-500" />
+                  <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-dark-text-secondary">
+                    <UsersIcon size={14} className={colors.iconSmall} />
                     <span>{state.population} population</span>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
-          <p className="text-gray-600 text-center mt-6 font-medium">
+          <p className="text-gray-600 dark:text-dark-text-secondary text-center mt-6 font-medium">
             More states coming soon!
           </p>
         </div>
@@ -349,14 +420,14 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
   const HowToTab = () => (
     <div className="space-y-8">
       {/* Quick Start Guide */}
-      <div className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 border border-emerald-200 rounded-xl p-8 shadow-lg">
+      <div className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 dark:from-emerald-900/20 dark:via-green-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-8 shadow-lg">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-green-500 rounded-xl flex items-center justify-center shadow-md">
             <Play className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-2xl font-bold bg-gradient-to-r from-emerald-700 to-green-700 bg-clip-text text-transparent">Quick Start Guide</h3>
         </div>
-        <p className="text-gray-700 text-lg leading-relaxed">
+        <p className="text-gray-700 dark:text-dark-text-secondary text-lg leading-relaxed">
           Get up and running with LegislationVUE in just a few steps. Follow this guide to start tracking legislation effectively.
         </p>
       </div>
@@ -364,12 +435,12 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       {/* Step-by-step Instructions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Executive Orders */}
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 shadow-sm border border-blue-200">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-8 shadow-sm border border-blue-200 dark:border-blue-700">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">1</div>
             <div>
-              <h4 className="text-xl font-bold text-blue-800">Executive Orders</h4>
-              <p className="text-blue-600">Track federal executive orders</p>
+              <h4 className="text-xl font-bold text-blue-800 dark:text-blue-300 dark:text-blue-300">Executive Orders</h4>
+              <p className="text-blue-600 dark:text-blue-400">Track federal executive orders</p>
             </div>
           </div>
           <div className="space-y-4">
@@ -377,36 +448,36 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
               <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <ScrollText className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Click "Executive Orders" in the main navigation menu</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Click "Executive Orders" in the main navigation menu</span>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Calendar className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Expand "Fetch Fresh Data" section and choose your date range</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">View all executive orders - they auto-load on page visit</span>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Zap className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Click "Fetch Executive Orders" and wait for AI analysis</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Click "Check for Updates" to fetch new orders with AI analysis</span>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Star className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Save important orders using the star icon</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Star important orders to prioritize them in your view</span>
             </div>
           </div>
         </div>
 
         {/* State Legislation */}
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-8 shadow-sm border border-green-200">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-8 shadow-sm border border-green-200 dark:border-green-700">
           <div className="flex items-center gap-4 mb-6">
             <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">2</div>
             <div>
-              <h4 className="text-xl font-bold text-green-800">State Legislation</h4>
-              <p className="text-green-600">Monitor state bills and laws</p>
+              <h4 className="text-xl font-bold text-green-800 dark:text-green-300">State Legislation</h4>
+              <p className="text-green-600 dark:text-green-400">Monitor state bills and laws</p>
             </div>
           </div>
           <div className="space-y-4">
@@ -414,73 +485,43 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
               <div className="w-6 h-6 bg-gradient-to-r from-green-400 to-emerald-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <MapPin className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Select a state from the navigation menu (CA, TX, CO, etc.)</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Select a state from the navigation menu (CA, TX, CO, etc.)</span>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-gradient-to-r from-green-400 to-emerald-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <FileText className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Choose "Search by Topic" or "Latest Bills" in fetch section</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">View current legislative session bills automatically loaded</span>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-gradient-to-r from-green-400 to-emerald-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Lightbulb className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Enter search terms or fetch latest bills automatically</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Use filters to narrow by category (Civic, Education, etc.)</span>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-gradient-to-r from-green-400 to-emerald-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <BarChart3 className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700">Review AI analysis and business impact assessments</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Review AI analysis and business impact assessments</span>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 bg-gradient-to-r from-green-400 to-emerald-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Star className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Star important bills to prioritize them in your view</span>
             </div>
           </div>
         </div>
 
-        {/* Highlights Management */}
-        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-8 shadow-sm border border-yellow-200">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">3</div>
-            <div>
-              <h4 className="text-xl font-bold text-yellow-800">Manage Highlights</h4>
-              <p className="text-yellow-600">Organize important items</p>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Star className="w-4 h-4 text-yellow-600" />
-              </div>
-              <span className="text-gray-700">Click star icons to save important bills and orders</span>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Users className="w-4 h-4 text-yellow-600" />
-              </div>
-              <span className="text-gray-700">Access all highlights from the "Highlights" menu</span>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Database className="w-4 h-4 text-yellow-600" />
-              </div>
-              <span className="text-gray-700">Filter by category, source, or date range</span>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                <ExternalLink className="w-4 h-4 text-yellow-600" />
-              </div>
-              <span className="text-gray-700">Export highlights or share with your team</span>
-            </div>
-          </div>
-        </div>
 
         {/* AI Analysis */}
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+        <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-8 shadow-sm border border-gray-200 dark:border-dark-border">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">4</div>
+            <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">3</div>
             <div>
-              <h4 className="text-xl font-bold text-gray-900">AI Analysis Features</h4>
-              <p className="text-gray-600">Understand the impact</p>
+              <h4 className="text-xl font-bold text-gray-900 dark:text-dark-text">AI Analysis Features</h4>
+              <p className="text-gray-600 dark:text-dark-text-secondary">Understand the impact</p>
             </div>
           </div>
           <div className="space-y-4">
@@ -488,72 +529,62 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
               <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <span className="text-white text-xs font-bold">AI</span>
               </div>
-              <span className="text-gray-700">Every item automatically gets AI-powered summaries</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">AI analysis included with every executive order and bill</span>
             </div>
             <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="w-6 h-6 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Lightbulb className="w-4 h-4 text-purple-600" />
               </div>
-              <span className="text-gray-700">Expand items to view key talking points</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Click on any item to view full AI-generated insights</span>
             </div>
             <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="w-6 h-6 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <BarChart3 className="w-4 h-4 text-purple-600" />
               </div>
-              <span className="text-gray-700">Review detailed business and industry impact analysis</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Review detailed business and industry impact analysis</span>
             </div>
             <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="w-6 h-6 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <FileText className="w-4 h-4 text-purple-600" />
               </div>
-              <span className="text-gray-700">Copy analysis or download comprehensive reports</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">AI summaries appear inline - expand for full details</span>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Best Practices */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center">
-            <Award className="w-6 h-6 text-indigo-600" />
+        {/* Best Practices */}
+        <div className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 rounded-xl p-8 shadow-sm border border-orange-200 dark:border-orange-700">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">4</div>
+            <div>
+              <h4 className="text-xl font-bold text-orange-800 dark:text-orange-300">Best Practices</h4>
+              <p className="text-orange-600 dark:text-orange-400">Optimize your workflow</p>
+            </div>
           </div>
-          <h3 className="text-xl font-bold text-gray-900">Best Practices</h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Getting Started</h4>
-            <ul className="space-y-3 text-gray-700">
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Start with a small date range to test the system
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Be patient - AI analysis takes 1-3 minutes per batch
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Use specific search terms for better state bill results
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Ongoing Usage</h4>
-            <ul className="space-y-3 text-gray-700">
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Fetch fresh data weekly for latest updates
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Regularly review and organize your highlights
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Set up a routine for checking key states and topics
-              </li>
-            </ul>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 bg-gradient-to-r from-orange-400 to-amber-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Clock className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Check for updates weekly to stay current on new legislation</span>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 bg-gradient-to-r from-orange-400 to-amber-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Star className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Use the star feature to track legislation relevant to your projects</span>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 bg-gradient-to-r from-orange-400 to-amber-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Filter className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Apply category filters to focus on your areas of expertise</span>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 bg-gradient-to-r from-orange-400 to-amber-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Users className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Share insights with your team to keep everyone informed</span>
+            </div>
           </div>
         </div>
       </div>
@@ -563,54 +594,54 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
   const FAQTab = () => (
     <div className="space-y-8">
       {/* Common Issues */}
-      <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-8">
+      <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 border border-red-200 dark:border-red-700 rounded-xl p-8">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center">
             <AlertTriangle className="w-6 h-6 text-red-600" />
           </div>
-          <h3 className="text-2xl font-bold text-gray-900">Troubleshooting</h3>
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-dark-text">Troubleshooting</h3>
         </div>
-        <p className="text-gray-700 text-lg leading-relaxed">
+        <p className="text-gray-700 dark:text-dark-text-secondary text-lg leading-relaxed">
           Having issues? Check these common solutions before contacting support.
         </p>
       </div>
 
       {/* FAQ Items */}
       <div className="space-y-6">
-        <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
+        <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-xl p-8 shadow-sm">
           <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
               <HelpCircle className="w-5 h-5 text-blue-600" />
             </div>
             <div className="flex-1">
-              <h4 className="text-lg font-semibold text-gray-900 mb-4">App not loading or responding?</h4>
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-4">App not loading or responding?</h4>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
-                  <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">1</span>
+                  <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">1</span>
                   <div>
-                    <strong className="text-gray-900">Check internet connection</strong>
-                    <p className="text-gray-600">Ensure stable internet access</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Check internet connection</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Ensure stable internet access</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">2</span>
+                  <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">2</span>
                   <div>
-                    <strong className="text-gray-900">Refresh the page</strong>
-                    <p className="text-gray-600">Press Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Refresh the page</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Press Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">3</span>
+                  <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">3</span>
                   <div>
-                    <strong className="text-gray-900">Clear browser cache</strong>
-                    <p className="text-gray-600">Go to browser settings and clear cache/cookies</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Clear browser cache</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Go to browser settings and clear cache/cookies</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">4</span>
+                  <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 mt-0.5">4</span>
                   <div>
-                    <strong className="text-gray-900">Try different browser</strong>
-                    <p className="text-gray-600">Chrome, Firefox, or Edge work best</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Try different browser</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Chrome, Firefox, or Edge work best</p>
                   </div>
                 </div>
               </div>
@@ -618,40 +649,40 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
+        <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-xl p-8 shadow-sm">
           <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
               <Database className="w-5 h-5 text-green-600" />
             </div>
             <div className="flex-1">
-              <h4 className="text-lg font-semibold text-gray-900 mb-4">No data showing up?</h4>
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-4">No data showing up?</h4>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Use "Fetch Fresh Data" sections</strong>
-                    <p className="text-gray-600">Data must be actively fetched</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Executive Orders auto-load, State Legislation requires manual fetch</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Executive Orders load automatically, but state bills need "Fetch Fresh Bills" button</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Check date ranges</strong>
-                    <p className="text-gray-600">Ensure your date range includes relevant periods</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Use "Check for Updates" for Executive Orders</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Click "Check for Updates" to see if new Executive Orders are available</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Verify state selection</strong>
-                    <p className="text-gray-600">Make sure you've selected the correct state</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Verify state selection</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Make sure you've selected the correct state</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Try broader search terms</strong>
-                    <p className="text-gray-600">Start with general topics, then narrow down</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Select time range for state bills</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Use 7 days, 30 days, 90 days, or "all" when fetching fresh state data</p>
                   </div>
                 </div>
               </div>
@@ -659,40 +690,40 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
+        <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-xl p-8 shadow-sm">
           <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
               <Zap className="w-5 h-5 text-purple-600" />
             </div>
             <div className="flex-1">
-              <h4 className="text-lg font-semibold text-gray-900 mb-4">AI analysis taking too long?</h4>
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-4">AI analysis taking too long?</h4>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <Clock className="w-4 h-4 text-purple-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Normal processing time</strong>
-                    <p className="text-gray-600">AI analysis typically takes 1-3 minutes</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Normal processing time</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">AI analysis typically takes 1-3 minutes</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Clock className="w-4 h-4 text-purple-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Large batches take longer</strong>
-                    <p className="text-gray-600">Processing 20+ items may take 5-10 minutes</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Large batches take longer</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Processing 20+ items may take 5-10 minutes</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="w-4 h-4 text-orange-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Don't refresh during analysis</strong>
-                    <p className="text-gray-600">Let the process complete naturally</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Don't refresh during analysis</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Let the process complete naturally</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <Lightbulb className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Try smaller batches</strong>
-                    <p className="text-gray-600">Fetch fewer items at once for faster results</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Try smaller batches</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Fetch fewer items at once for faster results</p>
                   </div>
                 </div>
               </div>
@@ -700,40 +731,40 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
+        <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-xl p-8 shadow-sm">
           <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
               <Star className="w-5 h-5 text-yellow-600" />
             </div>
             <div className="flex-1">
-              <h4 className="text-lg font-semibold text-gray-900 mb-4">Highlights not saving or missing?</h4>
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-4">Highlights not saving or missing?</h4>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Check browser storage</strong>
-                    <p className="text-gray-600">Ensure cookies/local storage is enabled</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Highlights sync across all pages</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Stars are saved globally and appear on all pages including the Highlights page</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Clear filters</strong>
-                    <p className="text-gray-600">Remove any active filters in highlights view</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Wait for API response</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Highlights are saved to database - allow a moment for the API call to complete</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Verify save action</strong>
-                    <p className="text-gray-600">Look for confirmation when clicking star icons</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Verify save action</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Look for confirmation when clicking star icons</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900">Try incognito mode</strong>
-                    <p className="text-gray-600">Test if browser extensions are causing issues</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Try incognito mode</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Test if browser extensions are causing issues</p>
                   </div>
                 </div>
               </div>
@@ -743,53 +774,53 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       </div>
 
       {/* Performance Tips */}
-      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-8">
+      <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-700 rounded-xl p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
             <Rocket className="w-6 h-6 text-green-600" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900">Performance Tips</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text">Performance Tips</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Optimize Loading</h4>
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-4">Optimize Loading</h4>
             <ul className="space-y-3">
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Use shorter date ranges (1-2 weeks max)
+                Use shorter date ranges for state bills (7-30 days recommended)
               </li>
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Fetch data in smaller batches
+                Executive Orders load automatically, no manual fetching needed
               </li>
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                 Close unused browser tabs
               </li>
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                 Ensure stable internet connection
               </li>
             </ul>
           </div>
           <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Better Results</h4>
+            <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-4">Better Results</h4>
             <ul className="space-y-3">
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Use specific, targeted search terms
+                Use category filters (Engineering, Healthcare, Education, Civic)
               </li>
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                 Review AI analysis for key insights
               </li>
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Organize highlights by category
+                Star important items to track them globally
               </li>
-              <li className="flex items-center gap-2 text-gray-700">
+              <li className="flex items-center gap-2 text-gray-700 dark:text-dark-text-secondary">
                 <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                Regularly update your saved searches
+                Check the Highlights page to see all starred items
               </li>
             </ul>
           </div>
@@ -797,47 +828,47 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       </div>
 
       {/* Contact Support */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-8">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
             <Mail className="w-6 h-6 text-blue-600" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900">Still Need Help?</h3>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text">Still Need Help?</h3>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-6 shadow-sm border border-gray-200 dark:border-dark-border flex flex-col h-full">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
                 <Wrench className="w-4 h-4 text-blue-600" />
               </div>
-              <h4 className="text-lg font-semibold text-gray-900">Technical Support</h4>
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text">Technical Support</h4>
             </div>
-            <p className="text-gray-600 mb-4">
+            <p className="text-gray-600 dark:text-dark-text-secondary mb-4 flex-grow">
               For bugs, technical issues, or system problems
             </p>
             <a 
               href="mailto:legal@moregroup-inc.com" 
-              className="inline-flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors duration-200 font-medium shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors duration-200 font-medium shadow-sm"
             >
               <Mail className="w-4 h-4" />
               Contact Support
             </a>
           </div>
           
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-6 shadow-sm border border-gray-200 dark:border-dark-border flex flex-col h-full">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
                 <Lightbulb className="w-4 h-4 text-purple-600" />
               </div>
-              <h4 className="text-lg font-semibold text-gray-900">Feature Requests</h4>
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-dark-text">Feature Requests</h4>
             </div>
-            <p className="text-gray-600 mb-4">
+            <p className="text-gray-600 dark:text-dark-text-secondary mb-4 flex-grow">
               Ideas for new features or improvements
             </p>
             <a 
               href="mailto:legal@moregroup-inc.com" 
-              className="inline-flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors duration-200 font-medium shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-3 bg-purple-600 dark:bg-purple-500 text-white rounded-xl hover:bg-purple-700 dark:hover:bg-purple-400 transition-colors duration-200 font-medium shadow-sm"
             >
               <Star className="w-4 h-4" />
               Submit Feedback
@@ -845,8 +876,8 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
           </div>
         </div>
         
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-          <p className="text-gray-700">
+        <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-6 shadow-sm border border-gray-200 dark:border-dark-border">
+          <p className="text-gray-700 dark:text-dark-text-secondary">
             <strong>Response Time:</strong> We typically respond within 24 hours during business days.
             Please include your browser type and any error messages for faster assistance.
           </p>
@@ -864,11 +895,11 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
             <Terminal className="w-12 h-12 text-white" />
           </div>
           <div>
-            <h3 className="text-3xl font-bold text-gray-900">MOREgroup Development</h3>
-            <p className="text-lg text-gray-600">Changing our Business, One App at a Time.</p>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-dark-text">MOREgroup Development</h3>
+            <p className="text-lg text-gray-600 dark:text-dark-text-secondary">Changing our Business, One App at a Time.</p>
           </div>
         </div>
-        <p className="text-gray-700 text-xl leading-relaxed">
+        <p className="text-gray-700 dark:text-dark-text-secondary text-xl leading-relaxed">
           MOREgroup Development is a team of visionary developers and experts dedicated to transforming how our organization interacts with data and each other. 
           We leverage the latest technologies to build intelligent applications that empower our teams and clients to make informed decisions quickly and efficiently.       
         </p>
@@ -876,27 +907,27 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
 
       {/* Mission & Vision */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+        <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-8 shadow-sm border border-gray-200 dark:border-dark-border">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
               <Target className="w-6 h-6 text-blue-600" />
             </div>
-            <h4 className="text-xl font-bold text-gray-900">Our Mission</h4>
+            <h4 className="text-xl font-bold text-gray-900 dark:text-dark-text">Our Mission</h4>
           </div>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-gray-700 dark:text-dark-text-secondary leading-relaxed">
             Our mission is to revolutionize the way our organization consumes and understands data. Gaining insights from our users we aim to create intelligent applications, enabling proactive decision-making 
             and strategic planning. This allows our teams to focus on what matters most: delivering exceptional value to our clients and driving innovation in our industry.
           </p>
         </div>
 
-        <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+        <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-8 shadow-sm border border-gray-200 dark:border-dark-border">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center">
               <Lightbulb className="w-6 h-6 text-purple-600" />
             </div>
-            <h4 className="text-xl font-bold text-gray-900">Our VUE</h4>
+            <h4 className="text-xl font-bold text-gray-900 dark:text-dark-text">Our VUE</h4>
           </div>
-          <p className="text-gray-700 leading-relaxed">
+          <p className="text-gray-700 dark:text-dark-text-secondary leading-relaxed">
             Through a comprehensive suite of AI-powered 'VUE' platforms we not only accelerates our operational efficiency and scalability but position MOREgroup as the innovation leader in solutions and forward-thinking insights. 
             In an industry where manual processes limit profitability and growth, our VUE ecosystem ensures we can scale intelligently, deliver faster, and maintain our competitive edge while building a brand synonymous with technological excellence and strategic foresight.
           </p>
@@ -906,21 +937,21 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
       {/* Product Portfolio */}
       <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
             <Rocket className="w-6 h-6 text-green-600" />
           </div>
-          <h3 className="text-2xl font-bold text-gray-900">Product Portfolio</h3>
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-dark-text">Product Portfolio</h3>
         </div>
         <div className="space-y-6">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-6 shadow-sm border border-gray-200 dark:border-dark-border">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
                 <BarChart3 className="w-5 h-5 text-green-600" />
               </div>
-              <h4 className="text-xl font-semibold text-gray-900">PlanVUE</h4>
-              <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full font-medium">Available Now!</span>
+              <h4 className="text-xl font-semibold text-gray-900 dark:text-dark-text">PlanVUE</h4>
+              <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 text-sm rounded-full font-medium">Available Now!</span>
             </div>
-            <p className="text-gray-700 mb-4 leading-relaxed">
+            <p className="text-gray-700 dark:text-dark-text-secondary mb-4 leading-relaxed">
               AI-powered planning tools and insights for our planners and architects.
               PlanVUE provides real-time data analysis and visualization, enabling our team to make informed decisions quickly.
               This tool streamlines our data capture of client preferences, allowing us to deliver better outcomes and client driven decisions.
@@ -935,30 +966,30 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
             </a>
           </div>
           
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-6 shadow-sm border border-gray-200 dark:border-dark-border">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
                 <Zap className="w-5 h-5 text-purple-600" />
               </div>
-              <h4 className="text-xl font-semibold text-gray-900">LegislationVUE</h4>
-              <span className="px-3 py-1 bg-purple-100 text-purple-800 text-sm rounded-full font-medium">Current</span>
+              <h4 className="text-xl font-semibold text-gray-900 dark:text-dark-text">LegislationVUE</h4>
+              <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 text-sm rounded-full font-medium">Current</span>
             </div>
-            <p className="text-gray-700 leading-relaxed">
+            <p className="text-gray-700 dark:text-dark-text-secondary leading-relaxed">
               AI-powered legislative tracking and analysis platform for federal executive orders and state legislation. Giving MOREgroup a competitive edge in understanding legal and regulatory 
               changes that impact our projects and clients. Harnessing the power of AI to provide actionable insights and summaries, allowing our team to focus on strategic decision-making rather 
               than manual data processing.
             </p>
           </div>
 
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+          <div className="bg-white dark:bg-dark-bg-secondary rounded-xl p-6 shadow-sm border border-gray-200 dark:border-dark-border">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
                 <FileText className="w-5 h-5 text-blue-600" />
               </div>
-              <h4 className="text-xl font-semibold text-gray-900">RFQVUE</h4>
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full font-medium">In Development</span>
+              <h4 className="text-xl font-semibold text-gray-900 dark:text-dark-text">RFQVUE</h4>
+              <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-sm rounded-full font-medium">In Development</span>
             </div>
-            <p className="text-gray-700 leading-relaxed">
+            <p className="text-gray-700 dark:text-dark-text-secondary leading-relaxed">
               AI-powered responses to Request for Quote (RFQ) / Request for Proposal (RFP) for architectural and engineering projects. Using historical 
               data and AI analysis, RFQVUE generates tailored responses that meet client needs and regulatory requirements, allowing for our team to focus on winning projects 
               rather than writing proposals.
@@ -969,7 +1000,7 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
 
       {/* Contact Block */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-8 text-center">
-        <p className="text-lg text-gray-700 mb-6">
+        <p className="text-lg text-gray-700 dark:text-dark-text-secondary mb-6">
           Do you need a VUE or have an idea for MORE VUE's? Please reach out!
         </p>
         <a 
@@ -999,10 +1030,10 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-[9999] p-4 pt-8 pb-8 overflow-y-auto">
-      <div className="bg-white rounded-md shadow-2xl max-w-4xl w-full min-h-0 flex flex-col my-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-start justify-center z-[9999] p-4 pt-8 pb-8 overflow-y-auto">
+      <div className="bg-white dark:bg-dark-bg-secondary rounded-md shadow-2xl max-w-4xl w-full min-h-0 flex flex-col my-auto">
         {/* Tab Navigation with Close Button */}
-        <div className="border-b border-gray-200 bg-gray-50 p-4 flex-shrink-0 rounded-t-md">
+        <div className="border-b border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg-tertiary p-4 flex-shrink-0 rounded-t-md">
           <div className="flex justify-between items-center">
             <div className="flex justify-center gap-2 flex-wrap flex-1">
               {tabs.map((tab) => (
@@ -1016,9 +1047,8 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-xl transition-colors duration-200 ml-4"
-            >
-              <X className="w-5 h-5 text-gray-500" />
+              className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-xl transition-colors duration-200 ml-4">
+              <X className="w-5 h-5 text-gray-500 dark:text-dark-text-secondary" />
             </button>
           </div>
         </div>

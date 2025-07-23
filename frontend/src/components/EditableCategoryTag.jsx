@@ -25,12 +25,12 @@ const EditableCategoryTag = ({
 
   // Available categories - you can customize this list
   const availableCategories = [
-    { key: 'all_practice_areas', label: 'All Practice Areas', color: 'bg-teal-50 text-teal-700 border border-teal-200', icon: LayoutGrid },
-    { key: 'civic', label: 'Civic', color: 'bg-blue-50 text-blue-700 border border-blue-200', icon: Building },
-    { key: 'education', label: 'Education', color: 'bg-orange-50 text-orange-700 border border-orange-200', icon: GraduationCap },
-    { key: 'engineering', label: 'Engineering', color: 'bg-green-50 text-green-700 border border-green-200', icon: Wrench },
-    { key: 'healthcare', label: 'Healthcare', color: 'bg-red-50 text-red-700 border border-red-200', icon: HeartPulse },
-    { key: 'not_applicable', label: 'Not Applicable', color: 'bg-gray-50 text-gray-700 border border-gray-200', icon: Ban }
+    { key: 'all_practice_areas', label: 'All Practice Areas', color: 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-700', icon: LayoutGrid },
+    { key: 'civic', label: 'Civic', color: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700', icon: Building },
+    { key: 'education', label: 'Education', color: 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-700', icon: GraduationCap },
+    { key: 'engineering', label: 'Engineering', color: 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700', icon: Wrench },
+    { key: 'healthcare', label: 'Healthcare', color: 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700', icon: HeartPulse },
+    { key: 'not_applicable', label: 'Not Applicable', color: 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600', icon: Ban }
   ];
 
   const getCurrentCategory = () => {
@@ -110,7 +110,7 @@ const EditableCategoryTag = ({
 
       {/* Dropdown Menu */}
       {isEditing && !disabled && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-[120] min-w-[140px]">
+        <div className="absolute top-full left-0 mt-1 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-md shadow-lg z-[120] min-w-[140px]">
           <div className="py-1">
             {availableCategories.map((cat) => {
               const CatIcon = cat.icon;
@@ -121,8 +121,8 @@ const EditableCategoryTag = ({
                   key={cat.key}
                   onClick={() => handleCategorySelect(cat.key)}
                   disabled={isSelected || isLoading}
-                  className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 transition-colors duration-150 flex items-center gap-2 ${
-                    isSelected ? 'bg-gray-100 cursor-not-allowed opacity-75' : 'cursor-pointer'
+                  className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center gap-2 ${
+                    isSelected ? 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed opacity-75' : 'cursor-pointer'
                   }`}
                 >
                   <CatIcon size={12} className="flex-shrink-0" />

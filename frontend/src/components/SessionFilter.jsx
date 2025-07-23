@@ -63,11 +63,11 @@ const SessionFilter = ({
     if (selectedSessions.length === 1) {
       const session = uniqueSessions.find(s => s.session_id === selectedSessions[0]);
       if (session && session.session_name.toLowerCase().includes('special')) {
-        return 'text-purple-600';
+        return 'text-purple-600 dark:text-purple-400';
       }
-      return 'text-blue-600';
+      return 'text-blue-600 dark:text-blue-400';
     }
-    return 'text-gray-500';
+    return 'text-gray-500 dark:text-gray-300';
   };
 
   return (
@@ -76,11 +76,11 @@ const SessionFilter = ({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled || loading}
-        className={`flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white transition-all duration-300 w-full sm:w-80 min-h-[44px] ${
+        className={`flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-80 min-h-[44px] ${
           disabled || loading 
             ? 'opacity-50 cursor-not-allowed' 
-            : 'hover:bg-gray-50 cursor-pointer'
-        } ${selectedSessions.length > 0 ? 'ring-2 ring-blue-500 border-blue-500' : ''}`}
+            : 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
+        } ${selectedSessions.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''}`}
       >
         <div className="flex items-center gap-2">
           <CalendarDays size={16} className={getButtonIconColor()} />
@@ -88,7 +88,7 @@ const SessionFilter = ({
         </div>
         <ChevronDown 
           size={16} 
-          className={`ml-2 text-gray-500 transition-transform duration-200 ${
+          className={`ml-2 text-gray-500 dark:text-gray-300 transition-transform duration-200 ${
             isOpen ? 'rotate-180' : ''
           }`} 
         />
@@ -96,16 +96,16 @@ const SessionFilter = ({
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
-        <div className="absolute top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] w-full sm:w-max sm:min-w-[480px] sm:max-w-[600px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
-          <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b border-gray-200">
+        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-max sm:min-w-[480px] sm:max-w-[600px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
+          <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-700">
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 Filter by Legislative Session
               </span>
               {selectedSessions.length > 0 && (
                 <button
                   onClick={() => onSessionChange([])}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
                 >
                   Clear
                 </button>
@@ -115,7 +115,7 @@ const SessionFilter = ({
           
           <div className="overflow-y-auto max-h-[320px]">
             {uniqueSessions.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-gray-500">
+              <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                 No sessions available
               </div>
             ) : (
@@ -129,30 +129,30 @@ const SessionFilter = ({
                     <button
                       key={session.session_id}
                       onClick={() => handleSessionToggle(session.session_id)}
-                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors duration-150 flex items-center justify-between group ${
-                        isSelected ? 'bg-blue-50' : ''
+                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group ${
+                        isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                       }`}
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className={`text-sm font-medium whitespace-nowrap ${
-                            isSelected ? 'text-blue-700' : 'text-gray-900'
+                            isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-white'
                           }`}>
                             {session.session_name}
                           </span>
                           {isSpecial && (
-                            <span className="px-1.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded">
+                            <span className="px-1.5 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded">
                               Special
                             </span>
                           )}
                           {isActive && (
-                            <span className="px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
+                            <span className="px-1.5 py-0.5 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
                               Active
                             </span>
                           )}
                         </div>
                         {session.year_start && (
-                          <div className="text-xs text-gray-500 mt-0.5">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                             {session.year_start}
                             {session.year_end && session.year_end !== session.year_start && 
                               ` - ${session.year_end}`
@@ -164,7 +164,7 @@ const SessionFilter = ({
                       <div className={`flex-shrink-0 ml-2 ${
                         isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'
                       }`}>
-                        <Check size={16} className="text-blue-600" />
+                        <Check size={16} className="text-blue-600 dark:text-blue-400" />
                       </div>
                     </button>
                   );

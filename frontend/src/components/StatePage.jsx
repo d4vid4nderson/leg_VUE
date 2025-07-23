@@ -43,6 +43,7 @@ import HighlightsFilter from '../components/HighlightsFilter';
 import StatusFilter from '../components/StatusFilter';
 import ManualRefresh from '../components/ManualRefresh';
 import API_URL from '../config/api';
+import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 import { 
     getCurrentStatus, 
     mapLegiScanStatus, 
@@ -192,12 +193,12 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
     
     const getCategoryStyle = (cat) => {
         switch (cat) {
-            case 'civic': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'education': return 'bg-orange-100 text-orange-800 border-orange-200';
-            case 'engineering': return 'bg-green-100 text-green-800 border-green-200';
-            case 'healthcare': return 'bg-red-100 text-red-800 border-red-200';
-            case 'all_practice_areas': return 'bg-teal-100 text-teal-800 border-teal-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+            case 'civic': return 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700';
+            case 'education': return 'bg-orange-100 dark:bg-orange-900/20 text-orange-800 dark:text-orange-200 border-orange-200 dark:border-orange-700';
+            case 'engineering': return 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700';
+            case 'healthcare': return 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-200 border-red-200 dark:border-red-700';
+            case 'all_practice_areas': return 'bg-teal-100 dark:bg-teal-900/20 text-teal-800 dark:text-teal-200 border-teal-200 dark:border-teal-700';
+            default: return 'bg-gray-100 dark:bg-gray-800/50 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-600';
         }
     };
     
@@ -228,7 +229,7 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
             </button>
             
             {isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-[120] min-w-[160px] w-max">
+                <div className="absolute top-full left-0 mt-1 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] min-w-[160px] w-max">
                     <div className="py-1">
                         {FILTERS.map((filter) => {
                             const isSelected = filter.key === cleanedCategory;
@@ -236,8 +237,8 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
                                 <button
                                     key={filter.key}
                                     onClick={() => handleCategorySelect(filter.key)}
-                                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 ${
-                                        isSelected ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 ${
+                                        isSelected ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-200'
                                     }`}
                                 >
                                     <filter.icon size={12} />
@@ -469,7 +470,7 @@ const FetchButtonGroup = ({ onFetch, isLoading }) => {
                     ? 'opacity-100 translate-y-0 visible' 
                     : 'opacity-0 -translate-y-2 invisible'
             }`}>
-                <div className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
+                <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
                     <div className="py-2">
                         {[
                             { key: '7days', label: 'Last 7 Days' },
@@ -547,8 +548,8 @@ const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage,
     };
     
     return (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="text-sm text-gray-700">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 dark:bg-dark-bg-tertiary border-t border-gray-200 dark:border-dark-border">
+            <div className="text-sm text-gray-700 dark:text-dark-text">
                 Showing <span className="font-medium">{startItem}</span> to{' '}
                 <span className="font-medium">{endItem}</span> of{' '}
                 <span className="font-medium">{totalItems}</span> {itemType}
@@ -559,7 +560,7 @@ const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage,
                         onClick={() => onPageChange(currentPage - 1)}
                         disabled={currentPage === 1}
                         className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                            currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+                            currentPage === 1 ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
                         }`}
                     >
                         <ChevronLeft size={16} />
@@ -573,10 +574,10 @@ const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage,
                                 disabled={page === '...'}
                                 className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
                                     page === currentPage
-                                        ? 'bg-blue-600 text-white'
+                                        ? 'bg-blue-600 dark:bg-blue-700 text-white'
                                         : page === '...'
-                                            ? 'text-gray-400 cursor-default'
-                                            : 'text-gray-700 hover:bg-gray-100'
+                                            ? 'text-gray-400 dark:text-gray-500 cursor-default'
+                                            : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
                                 }`}
                             >
                                 {page}
@@ -588,7 +589,7 @@ const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage,
                         onClick={() => onPageChange(currentPage + 1)}
                         disabled={currentPage === totalPages}
                         className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                            currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'
+                            currentPage === totalPages ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
                         }`}
                     >
                         <ChevronRight size={16} />
@@ -704,27 +705,27 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
 
     return (
         <div 
-            className="status-tooltip fixed sm:absolute bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64 z-[120]"
+            className="status-tooltip fixed sm:absolute bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 w-64 z-[120]"
             style={calculatedPosition}
         >
             <div className="absolute bottom-full transform -translate-y-0" style={arrowPosition}>
-                <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-200"></div>
-                <div className="w-0 h-0 border-l-3 border-r-3 border-b-3 border-transparent border-b-white absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-px"></div>
+                <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-200 dark:border-b-gray-700"></div>
+                <div className="w-0 h-0 border-l-3 border-r-3 border-b-3 border-transparent border-b-white dark:border-b-dark-bg-secondary absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-px"></div>
             </div>
             
             <div className="flex justify-between items-start mb-2">
-                <h4 className="text-sm font-semibold text-gray-800 flex-1">
+                <h4 className={`text-sm font-semibold flex-1 ${getTextClasses('primary')}`}>
                     {statusText}
                 </h4>
                 <button
                     onClick={onClose}
-                    className="text-gray-400 hover:text-gray-600 ml-2 flex-shrink-0"
+                    className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 ml-2 flex-shrink-0"
                 >
                     <X size={12} />
                 </button>
             </div>
             
-            <p className="text-xs text-gray-600 leading-relaxed">
+            <p className={`text-xs leading-relaxed ${getTextClasses('secondary')}`}>
                 {statusDescription}
             </p>
         </div>
@@ -1522,34 +1523,21 @@ const StatePage = ({ stateName, stableHandlers }) => {
     }, [statusTooltipOpen]);
     
     return (
-        <div className="pt-6 min-h-screen bg-gradient-to-b from-green-50 to-white">
+        <div className={getPageContainerClasses()}>
             <ScrollToTopButton />
             
             {/* Page Header */}
-            <section id="page-header" className="relative overflow-hidden px-6 pt-12 pb-8">
+            <section id="page-header" className="relative overflow-hidden px-6 pt-12 pb-12">
                 <div className="max-w-7xl mx-auto relative z-10">
-                    {/* Centered Badge */}
-                    <div className="text-center mb-8">
-                        <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-                            <StateOutlineBackground 
-                                stateName={stateName} 
-                                className="w-4 h-4"
-                                isIcon={true}
-                            />
-                            {stateName} State Legislation
-                        </div>
-                    </div>
-                    
-                    {/* Clean Header Layout */}
                     <div className="text-center mb-8">
                         {/* Main Title */}
-                        <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+                        <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-6 leading-tight')}>
                             <span className="block">{stateName}</span>
                             <span className="block bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent py-2">Legislation</span>
                         </h1>
                         
                         {/* Description */}
-                        <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+                        <p className={getTextClasses('secondary', 'text-xl mb-8 max-w-3xl mx-auto leading-relaxed')}>
                             Access the latest legislation and bills from {stateName} with simple, clear overviews. Stay informed about new legislation and track the status of important bills affecting your state.
                         </p>
                         
@@ -1569,7 +1557,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                             </div>
                             
                             {/* Status Info */}
-                            <div className="flex flex-col items-center gap-2 text-sm text-gray-600">
+                            <div className="flex flex-col items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                 <span className="font-medium">{stateOrders.length} bills loaded</span>
                                 {lastUpdateTime && (
                                     <span className="flex items-center gap-1">
@@ -1587,22 +1575,22 @@ const StatePage = ({ stateName, stableHandlers }) => {
             <div className="max-w-7xl mx-auto px-6 mb-4">
                 {/* Success Message */}
                 {fetchSuccess && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start space-x-3 mb-4">
-                        <Check size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4 flex items-start space-x-3 mb-4">
+                        <Check size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
                         <div>
-                            <p className="text-green-800 font-medium">Update Successful</p>
-                            <p className="text-green-700 text-sm mt-1">{fetchSuccess}</p>
+                            <p className="text-green-800 dark:text-green-200 font-medium">Update Successful</p>
+                            <p className="text-green-700 dark:text-green-300 text-sm mt-1">{fetchSuccess}</p>
                         </div>
                     </div>
                 )}
                 
                 {/* Error Message */}
                 {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3 mb-4">
-                        <AlertTriangle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4 flex items-start space-x-3 mb-4">
+                        <AlertTriangle size={20} className="text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
                         <div>
-                            <p className="text-red-800 font-medium">Update Failed</p>
-                            <p className="text-red-700 text-sm mt-1">{error}</p>
+                            <p className="text-red-800 dark:text-red-200 font-medium">Update Failed</p>
+                            <p className="text-red-700 dark:text-red-300 text-sm mt-1">{error}</p>
                         </div>
                         <button
                             onClick={() => setError(null)}
@@ -1615,11 +1603,11 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 
                 {/* Refreshing Progress */}
                 {isRefreshing && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center space-x-3 mb-4">
-                        <RefreshIcon size={20} className="text-blue-600 animate-spin flex-shrink-0" />
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 flex items-center space-x-3 mb-4">
+                        <RefreshIcon size={20} className="text-blue-600 dark:text-blue-400 animate-spin flex-shrink-0" />
                         <div>
-                            <p className="text-blue-800 font-medium">Refreshing Bills...</p>
-                            <p className="text-blue-700 text-sm">Fetching the latest data from LegiScan</p>
+                            <p className="text-blue-800 dark:text-blue-200 font-medium">Refreshing Bills...</p>
+                            <p className="text-blue-700 dark:text-blue-300 text-sm">Fetching the latest data from LegiScan</p>
                         </div>
                     </div>
                 )}
@@ -1635,15 +1623,16 @@ const StatePage = ({ stateName, stableHandlers }) => {
             </div>
             
             {/* Results Section */}
-            <div className="mb-8">
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                    <div className="p-6">
+            <section className="py-8 px-6">
+                <div className="max-w-7xl mx-auto">
+                    <div className={getCardClasses('rounded-lg shadow-sm')}>
+                        <div className="p-6">
                         {/* Controls Bar - Sort/filter controls */}
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 w-full">
                             {/* Sort Button - Mobile Optimized */}
                             <button
                                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                                className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px]"
+                                className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[44px]"
                             >
                                 {sortOrder === 'latest' ? (
                                     <>
@@ -1727,8 +1716,8 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                     <button
                                         type="button"
                                         onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                                        className={`flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-full sm:w-56 min-h-[44px] ${
-                                            selectedFilters.length > 0 ? 'ring-2 ring-blue-500 border-blue-500' : ''
+                                        className={`flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 w-full sm:w-56 min-h-[44px] ${
+                                            selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
                                         }`}
                                     >
                                         <div className="flex items-center gap-2">
@@ -1737,10 +1726,10 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                     const selectedFilter = FILTERS.find(f => f.key === selectedFilters[0]);
                                                     if (selectedFilter) {
                                                         const IconComponent = selectedFilter.icon;
-                                                        return <IconComponent size={16} className="text-gray-500" />;
+                                                        return <IconComponent size={16} className="text-gray-500 dark:text-gray-300" />;
                                                     }
                                                 }
-                                                return <LayoutGrid size={16} className="text-gray-500" />;
+                                                return <LayoutGrid size={16} className="text-gray-500 dark:text-gray-300" />;
                                             })()}
                                             <span className="truncate">
                                                 {selectedFilters.length > 0 ? (
@@ -1753,17 +1742,17 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                         </div>
                                         <ChevronDown 
                                             size={16} 
-                                            className={`transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
+                                            className={`text-gray-500 dark:text-gray-300 transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
                                         />
                                     </button>
 
                                     {/* Dropdown content - Match HighlightsPage structure exactly */}
                                     {showFilterDropdown && (
-                                        <div className="absolute top-full mt-2 w-full sm:w-64 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-[120] left-0 sm:left-auto sm:right-0">
+                                        <div className={`absolute top-full mt-2 w-full sm:w-64 ${getCardClasses('')} rounded-lg shadow-lg overflow-hidden z-[120] left-0 sm:left-auto sm:right-0`}>
                                             {/* Header */}
-                                            <div className="sticky top-0 bg-gray-50 px-4 py-2 border-b border-gray-200">
+                                            <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-dark-border">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-medium text-gray-700">
+                                                    <span className={getTextClasses('secondary', 'text-xs font-medium')}>
                                                         Filter by Practice Area
                                                     </span>
                                                     {selectedFilters.length > 0 && (
@@ -1772,7 +1761,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                                 clearPracticeAreaFilters();
                                                                 setShowFilterDropdown(false);
                                                             }}
-                                                            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                            className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
                                                         >
                                                             Clear
                                                         </button>
@@ -1782,7 +1771,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                             
                                             <div>
                                                 {/* Practice Areas Section */}
-                                                <div className="border-b border-gray-200 pb-2">
+                                                <div className="border-b border-gray-200 dark:border-dark-border pb-2">
                                                 
                                                 {/* All filter options from FILTERS array */}
                                                 {FILTERS.map((filter) => {
@@ -1796,21 +1785,21 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                             onClick={() => toggleFilter(filter.key)}
                                                             className={`w-full text-left px-4 py-2 text-sm transition-all duration-300 flex items-center justify-between ${
                                                                 isActive
-                                                                    ? filter.key === 'all_practice_areas' ? 'bg-teal-100 text-teal-700 font-medium' :
-                                                                      filter.key === 'civic' ? 'bg-blue-100 text-blue-700 font-medium' :
-                                                                      filter.key === 'education' ? 'bg-orange-100 text-orange-700 font-medium' :
-                                                                      filter.key === 'engineering' ? 'bg-green-100 text-green-700 font-medium' :
-                                                                      filter.key === 'healthcare' ? 'bg-red-100 text-red-700 font-medium' :
-                                                                      filter.key === 'not-applicable' ? 'bg-gray-100 text-gray-700 font-medium' :
-                                                                      'bg-gray-100 text-gray-700 font-medium'
-                                                                    : 'text-gray-900 hover:bg-gray-50'
+                                                                    ? filter.key === 'all_practice_areas' ? 'bg-teal-100 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 font-medium' :
+                                                                      filter.key === 'civic' ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-medium' :
+                                                                      filter.key === 'education' ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 font-medium' :
+                                                                      filter.key === 'engineering' ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 font-medium' :
+                                                                      filter.key === 'healthcare' ? 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 font-medium' :
+                                                                      filter.key === 'not-applicable' ? 'bg-gray-100 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 font-medium' :
+                                                                      'bg-gray-100 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 font-medium'
+                                                                    : 'text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
                                                             }`}
                                                         >
                                                             <div className="flex items-center gap-3">
                                                                 <IconComponent size={16} />
                                                                 <span>{filter.label}</span>
                                                             </div>
-                                                            <span className="text-xs text-gray-500">({count})</span>
+                                                            <span className="text-xs text-gray-500 dark:text-gray-400">({count})</span>
                                                         </button>
                                                     );
                                                 })}
@@ -1845,7 +1834,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                             <div className="space-y-6">
                                 {currentPageItems.map((bill, index) => {
                                     return (
-                                        <div key={bill.id || index} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 relative">
+                                        <div key={bill.id || index} className={`${getCardClasses('border rounded-xl shadow-sm hover:shadow-md transition-all duration-300')} relative`}>
                                             {/* Mobile Menu Button - Top Right Corner */}
                                             {/* Mobile Highlight Button */}
                                             <div className="absolute top-4 right-4 lg:hidden">
@@ -1872,7 +1861,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                                 ? "text-gray-400 animate-pulse" 
                                                                 : isStateBillHighlighted(bill) 
                                                                     ? "text-yellow-500 fill-current" 
-                                                                    : "text-gray-600"
+                                                                    : "text-gray-600 dark:text-gray-400"
                                                         } 
                                                     />
                                                 </button>
@@ -1882,7 +1871,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                 {/* Card Header - Mobile Responsive */}
                                                 <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-4 gap-4">
                                                     <div className="flex-1 min-w-0 pr-10 lg:pr-4">
-                                                        <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 leading-tight pr-2">
+                                                        <h3 className={`text-lg sm:text-xl font-bold mb-3 leading-tight pr-2 ${getTextClasses('primary')}`}>
                                                             {cleanBillTitle(bill.title)}
                                                         </h3>
                                                         
@@ -1890,13 +1879,13 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                         <div className="space-y-3 mb-0">
                                                             {/* Top Row - Bill Number, Date, and Category */}
                                                             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 text-sm">
-                                                                <div className="flex items-center gap-1.5 text-gray-700">
-                                                                    <Hash size={16} className="text-blue-600" />
+                                                                <div className={`flex items-center gap-1.5 ${getTextClasses('secondary')}`}>
+                                                                    <Hash size={16} className="text-blue-600 dark:text-blue-400" />
                                                                     <span className="font-medium">{bill.bill_number || 'Unknown'}</span>
                                                                 </div>
                                                                 {bill.introduced_date && (
-                                                                    <div className="flex items-center gap-1.5 text-gray-700">
-                                                                        <Calendar size={16} className="text-green-600" />
+                                                                    <div className={`flex items-center gap-1.5 ${getTextClasses('secondary')}`}>
+                                                                        <Calendar size={16} className="text-green-600 dark:text-green-400" />
                                                                         <span>
                                                                             {new Date(bill.introduced_date).toLocaleDateString('en-US', {
                                                                                 month: 'numeric',
@@ -1916,16 +1905,16 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                                 
                                                                 {/* Session Tag */}
                                                                 {(bill.session_name || bill.session) && (
-                                                                    <div className="flex items-center gap-1.5 text-gray-700">
+                                                                    <div className={`flex items-center gap-1.5 ${getTextClasses('secondary')}`}>
                                                                         <CalendarDays size={16} className={
                                                                             (bill.session_name || bill.session || '').toLowerCase().includes('special') 
-                                                                                ? 'text-purple-600' 
-                                                                                : 'text-blue-600'
+                                                                                ? 'text-purple-600 dark:text-purple-400' 
+                                                                                : 'text-blue-600 dark:text-blue-400'
                                                                         } />
                                                                         <span className={`font-medium ${
                                                                             (bill.session_name || bill.session || '').toLowerCase().includes('special') 
-                                                                                ? 'text-purple-700' 
-                                                                                : 'text-blue-700'
+                                                                                ? 'text-purple-700 dark:text-purple-300' 
+                                                                                : 'text-blue-700 dark:text-blue-300'
                                                                         }`}>
                                                                             {bill.session_name || bill.session}
                                                                         </span>
@@ -1987,23 +1976,23 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                 {/* Simplified Summary */}
                                                 {bill.summary && bill.summary !== 'No summary available' && (
                                                     <div className="mb-6">
-                                                        <div className="bg-gradient-to-r from-slate-50 to-gray-50 border border-gray-200 rounded-lg p-5">
+                                                        <div className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-gray-800 dark:to-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-5">
                                                             <div className="flex items-center gap-3 mb-3">
-                                                                <div className="p-2 bg-purple-600 rounded-full">
+                                                                <div className="p-2 bg-purple-600 dark:bg-purple-500 rounded-full">
                                                                     <Sparkles size={16} className="text-white" />
                                                                 </div>
-                                                                <h3 className="text-lg font-semibold text-gray-900">{bill.bill_number} AI Generated Summary</h3>
+                                                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{bill.bill_number} AI Generated Summary</h3>
                                                             </div>
-                                                            <div className="text-sm text-gray-700 leading-relaxed">
+                                                            <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                                                                 {bill.summary}
                                                             </div>
                                                             {bill.legiscan_url && (
-                                                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                                                                     <a 
                                                                         href={bill.legiscan_url} 
                                                                         target="_blank" 
                                                                         rel="noopener noreferrer"
-                                                                        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                                                        className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200"
                                                                     >
                                                                         <ExternalLink size={14} />
                                                                         <span>View Original Bill Information</span>
@@ -2022,8 +2011,8 @@ const StatePage = ({ stateName, stableHandlers }) => {
                         ) : (
                             <div className="text-center py-12">
                                 <FileText size={48} className="mx-auto mb-4 text-gray-300" />
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">No Legislation Found</h3>
-                                <p className="text-gray-600 mb-4">
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">No Legislation Found</h3>
+                                <p className="text-gray-600 dark:text-gray-400 mb-4">
                                     No legislation data is currently available for {stateName}.
                                 </p>
                             </div>
@@ -2038,9 +2027,10 @@ const StatePage = ({ stateName, stableHandlers }) => {
                             onPageChange={handlePageChange}
                             itemType="bills"
                         />
+                        </div>
                     </div>
                 </div>
-            </div>
+            </section>
             
             {/* Status Helper Tooltip */}
             <StatusHelperTooltip

@@ -153,62 +153,86 @@ def convert_status_to_text(bill_data: Dict[str, Any]) -> str:
 client = AsyncAzureOpenAI(
     azure_endpoint=AZURE_ENDPOINT,
     api_key=AZURE_KEY,
-    api_version="2024-12-01-preview"
+    api_version="2024-02-15-preview"
 )
 
 # ENHANCED prompt templates for distinct content generation
 PROMPTS = {
     PromptType.EXECUTIVE_SUMMARY: """
-    Write a concise executive summary of this legislative content in 2-4 sentences. 
-    Focus on:
-    - What the legislation does (main purpose)
-    - Who it affects (target audience/stakeholders)
-    - Key changes or requirements it establishes
+    As a senior policy analyst, write a comprehensive executive summary of this executive order. Your analysis should be strategic and actionable for C-level executives and senior decision-makers.
+
+    CRITICAL: Write naturally and vary your approach. DO NOT use formulaic openings. Instead of template phrases, analyze the specific executive order and craft a unique opening that directly addresses its content. Avoid these overused phrases:
+    - Do NOT use "A landmark decision"
+    - Do NOT use "establishes the [Commission/Office/Agency]" 
+    - Do NOT use "signaling a renewed federal commitment"
+    - Do NOT use formulaic language
     
-    Use clear, professional language suitable for executives and decision-makers.
-    Do NOT use bullet points or lists - write in paragraph form.
+    Instead, lead with the specific policy change, its target, or its immediate effect on specific sectors. Make each summary distinct based on the order's actual content.
+
+    Structure your response in 3-4 sentences covering these critical elements:
+    1. **Strategic Intent**: What is the core policy objective and strategic rationale behind this directive?
+    2. **Operational Impact**: How will this change current operations, processes, or regulatory frameworks?
+    3. **Stakeholder Effects**: Which sectors, industries, or groups face the most significant impacts?
+    4. **Implementation Scope**: What is the expected timeline, scale, and enforcement mechanisms?
+
+    Focus on actionable intelligence that enables strategic decision-making. Consider second and third-order effects, not just immediate impacts. Use precise, executive-level language that demonstrates deep policy understanding.
+
+    Context: This is an executive order from the current administration that requires strategic assessment for organizational planning and risk management.
     
-    Legislative Content: {text}
+    Executive Order Content: {text}
     """,
         
     PromptType.KEY_TALKING_POINTS: """
-    Create exactly 5 distinct talking points for stakeholder discussions about this legislation.
-    Each point should be ONE complete sentence and focus on different aspects:
+    As a strategic communications expert, develop exactly 5 sophisticated talking points for high-level stakeholder discussions about this executive order. Each point should be a complete, compelling sentence that demonstrates deep policy insight.
 
-    1. [Main purpose/goal of the legislation]
-    2. [Key stakeholders or groups affected]  
-    3. [Most significant change or requirement]
-    4. [Implementation timeline or process]
-    5. [Expected outcomes or benefits]
+    CRITICAL: Create talking points that are specific to this executive order's actual content. Avoid generic phrases and template language. Each point should address unique aspects of this particular order, not generic policy concepts.
 
-    Format as numbered list exactly as shown above.
-    Make each point actionable for conversations with colleagues, clients, or stakeholders.
-    Use bold formatting for important terms: **term**
+    Your talking points must address these strategic dimensions:
+
+    1. **Policy Objective & Rationale**: Articulate the underlying policy problem this order solves and why this approach was chosen over alternatives.
+
+    2. **Multi-Stakeholder Impact Analysis**: Identify the primary and secondary stakeholder groups affected, including their specific concerns, opportunities, and adaptation requirements.
+
+    3. **Regulatory & Compliance Implications**: Explain the most significant regulatory changes, new compliance requirements, or enforcement mechanisms that organizations must navigate.
+
+    4. **Implementation Strategy & Timeline**: Describe the phased rollout approach, critical milestones, and coordination mechanisms between federal agencies and other entities.
+
+    5. **Strategic Risks & Opportunities**: Highlight both potential challenges (legal, operational, political) and strategic opportunities that stakeholders should monitor and leverage.
+
+    Each point should be substantive enough for board-level discussions while remaining concise and actionable. Use **bold formatting** for critical terms and concepts that stakeholders need to remember.
     
-    Legislative Content: {text}
+    Executive Order Content: {text}
     """,
     
 PromptType.BUSINESS_IMPACT: """
-Analyze the business impact of this legislation using clear, professional language:
+As a senior business strategy consultant specializing in regulatory impact analysis, provide a comprehensive assessment of how this executive order will affect business operations, strategy, and competitive positioning.
 
-Risk Assessment:
-Regulatory and Market Uncertainty
-• [Describe the main regulatory risk in one clear sentence]
-• [Describe the market uncertainty risk in one clear sentence]
+CRITICAL: Write naturally based on the specific executive order content. Avoid template phrases and formulaic language. Focus on the unique business implications of this particular order rather than generic regulatory language.
 
-Market Opportunity:
-Increased Investment and Demand
-• [Describe the main business opportunity in one clear sentence]  
-• [Describe specific benefits available in one clear sentence]
+**Strategic Impact Assessment:**
 
-Summary:
-[Provide a balanced 1-2 sentence summary of the overall business impact]
+**Immediate Regulatory Effects:**
+• Identify specific compliance obligations, reporting requirements, or operational changes that businesses must implement
+• Analyze potential enforcement mechanisms, penalties, or regulatory oversight that could affect business operations
 
-Use simple bullet points with • character only. 
-Avoid asterisks (**) and dashes (---) in your response.
-Focus on concrete business implications.
+**Market and Competitive Implications:**
+• Evaluate how this order might shift market dynamics, create competitive advantages/disadvantages, or alter industry structures  
+• Assess impacts on supply chains, customer relationships, or business model viability
 
-Legislative Content: {text}
+**Financial and Operational Considerations:**
+• Estimate potential costs (compliance, operational changes, legal review) and revenue impacts (market access, demand changes)
+• Identify required investments in systems, processes, or personnel to achieve compliance
+
+**Strategic Opportunities and Risk Mitigation:**
+• Highlight emerging business opportunities, new market segments, or competitive advantages that forward-thinking companies can capture
+• Recommend proactive strategies for risk management and regulatory compliance that can provide competitive differentiation
+
+**Executive Recommendation:**
+Provide a balanced assessment of whether businesses should view this as primarily a challenge to manage or an opportunity to leverage, with specific next steps for strategic planning.
+
+Focus on actionable insights that inform board-level decision making and strategic planning processes.
+
+Executive Order Content: {text}
 """,
 
     # State Bill specific prompts
@@ -268,9 +292,11 @@ State Bill Content: {text}
 
 # Enhanced system messages for each type
 SYSTEM_MESSAGES = {
-    PromptType.EXECUTIVE_SUMMARY: "You are a senior policy analyst who writes clear, concise executive summaries for C-level executives. Focus on the big picture and strategic implications.",
-    PromptType.KEY_TALKING_POINTS: "You are a communications strategist helping leaders discuss policy changes. Create talking points that are memorable, accurate, and useful for stakeholder conversations.",
-    PromptType.BUSINESS_IMPACT: "You are a business strategy consultant analyzing regulatory impact. Focus on concrete business implications, compliance requirements, and strategic opportunities.",
+    PromptType.EXECUTIVE_SUMMARY: "You are a distinguished senior policy analyst with 15+ years of experience advising Fortune 500 CEOs and government leaders. You possess deep expertise in regulatory analysis, strategic policy assessment, and executive communication. Your role is to distill complex policy initiatives into strategic intelligence that enables high-level decision-making. You understand both immediate operational impacts and long-term strategic implications across multiple sectors and stakeholder groups.",
+    
+    PromptType.KEY_TALKING_POINTS: "You are an elite strategic communications consultant who has advised presidents, CEOs, and world leaders on complex policy communications. You excel at creating sophisticated talking points that demonstrate policy expertise while remaining accessible to diverse stakeholder audiences. Your talking points are used in congressional hearings, board meetings, and high-stakes negotiations. You understand the nuanced interests of different stakeholder groups and can articulate complex policy positions with precision and authority.",
+    
+    PromptType.BUSINESS_IMPACT: "You are a premier management consultant specializing in regulatory strategy and business impact analysis, with extensive experience at McKinsey, BCG, and Bain. You advise Fortune 100 companies on navigating complex regulatory environments and capitalizing on policy changes. Your analysis combines deep regulatory knowledge with practical business acumen, helping companies transform regulatory challenges into competitive advantages. You understand market dynamics, competitive positioning, operational implications, and strategic opportunities that emerge from policy changes.",
     PromptType.STATE_BILL_SUMMARY: "You are a legislative analyst who creates simple, clear overviews of state bills for the general public. Focus on the basic purpose and impact in plain language that anyone can understand quickly.",
     PromptType.STATE_BILL_TALKING_POINTS: "You are a community engagement specialist helping elected officials communicate with constituents. Create talking points that are accessible, relevant, and useful for public discussions.",
     PromptType.STATE_BILL_IMPACT: "You are a civic policy analyst who evaluates how state legislation affects communities and residents. Focus on practical, real-world implications for everyday citizens.",
@@ -685,19 +711,19 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
 
         print(f"🤖 Calling AI for: {prompt_type.value} (with context: {context})")
         
-        # Adjust parameters based on content type for more distinct outputs
+        # Enhanced parameters for sophisticated analysis with higher token limits
         if prompt_type == PromptType.EXECUTIVE_SUMMARY:
-            max_tokens = 300
-            temperature = 0.1
+            max_tokens = 600  # Increased for comprehensive executive analysis
+            temperature = 0.2  # Slightly higher for more sophisticated language
         elif prompt_type == PromptType.STATE_BILL_SUMMARY:
-            max_tokens = 150  # Shorter for simple overview
+            max_tokens = 150  # Keep shorter for simple overview
             temperature = 0.1
         elif prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS]:
-            max_tokens = 400
-            temperature = 0.2
+            max_tokens = 800  # Significantly increased for detailed talking points
+            temperature = 0.3  # Higher for more nuanced communications
         elif prompt_type in [PromptType.BUSINESS_IMPACT, PromptType.STATE_BILL_IMPACT]:
-            max_tokens = 500
-            temperature = 0.15
+            max_tokens = 1000  # Doubled for comprehensive business analysis
+            temperature = 0.25  # Balanced for analytical depth
         
         response = await client.chat.completions.create(
             model=MODEL_NAME,

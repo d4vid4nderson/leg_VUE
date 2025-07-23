@@ -33,6 +33,7 @@ import { FILTERS } from '../utils/constants';
 import API_URL from '../config/api';
 import ShimmerLoader from '../components/ShimmerLoader';
 import HighlightCardSkeleton from '../components/HighlightCardSkeleton';
+import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 
 // =====================================
 // DEBUG FUNCTION FOR STATE LEGISLATION
@@ -2103,17 +2104,13 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       <section className="relative overflow-hidden px-6 pt-12 pb-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center gap-2 bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-              <Star size={16} />
-              All Highlighted Items
-            </div>
             
-            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+            <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-6 leading-tight')}>
               <span className="block">Highlighted</span>
               <span className="block bg-gradient-to-r from-yellow-700 to-yellow-600 bg-clip-text text-transparent py-2">Items</span>
             </h1>
             
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+            <p className={getTextClasses('secondary', 'text-xl mb-8 max-w-3xl mx-auto leading-relaxed')}>
               Manage a collection of important legislation and executive orders. View, organize, and analyze your highlighted items with comprehensive AI insights including executive summaries, key talking points, and business impact assessments.
             </p>
           </div>

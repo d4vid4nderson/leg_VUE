@@ -5,80 +5,185 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import json
 
-# Import our direct database connection
-from database_connection import get_db_connection, get_db_cursor, execute_query, execute_many
+# Import our direct database connection - NOT USED, keeping for reference
+# from database_connection import execute_query, execute_many
+# from database_connection import get_db_connection as get_old_db_connection
+
+# Import new multi-database support
+from database_config import get_db_connection, get_database_config
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_cursor():
+    """Context manager for database cursors using new multi-database connection"""
+    with get_db_connection() as conn:
+        cursor = None
+        try:
+            cursor = conn.cursor()
+            yield cursor
+            conn.commit()
+        except Exception as e:
+            logger.error(f"❌ Database error: {e}")
+            conn.rollback()
+            raise
+        finally:
+            if cursor:
+                cursor.close()
 
 logger = logging.getLogger(__name__)
 
-def check_executive_orders_table():
-    """Check if the executive_orders table exists and create it if needed"""
-    try:
-        # Check if table exists
-        with get_db_cursor() as cursor:
-            cursor.execute("""
+def get_parameter_placeholder():
+    """Get the correct parameter placeholder for the database"""
+    config = get_database_config()
+    if config['type'] == 'postgresql':
+        return '%s'
+    else:
+        return '?'
+
+def get_database_specific_queries():
+    """Get database-specific SQL queries based on current configuration"""
+    config = get_database_config()
+    db_type = config['type']
+    
+    if db_type == 'postgresql':
+        return {
+            'check_table': """
+                SELECT COUNT(*) 
+                FROM information_schema.tables 
+                WHERE table_name = 'executive_orders' AND table_schema = 'public'
+            """,
+            'create_table': """
+                CREATE TABLE IF NOT EXISTS executive_orders (
+                    id SERIAL PRIMARY KEY,
+                    document_number VARCHAR(100) NOT NULL,
+                    eo_number VARCHAR(50),
+                    title TEXT NOT NULL,
+                    summary TEXT,
+                    signing_date DATE,
+                    publication_date DATE,
+                    citation VARCHAR(255),
+                    presidential_document_type VARCHAR(100),
+                    category VARCHAR(100),
+                    html_url TEXT,
+                    pdf_url TEXT,
+                    trump_2025_url TEXT,
+                    ai_summary TEXT,
+                    ai_executive_summary TEXT,
+                    ai_key_points TEXT,
+                    ai_talking_points TEXT,
+                    ai_business_impact TEXT,
+                    ai_potential_impact TEXT,
+                    ai_version VARCHAR(50),
+                    source VARCHAR(255),
+                    raw_data_available BOOLEAN DEFAULT true,
+                    processing_status VARCHAR(50) DEFAULT 'completed',
+                    error_message TEXT,
+                    content TEXT,
+                    tags TEXT,
+                    ai_analysis TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_document_number UNIQUE (document_number)
+                )
+            """,
+            'get_columns': """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'executive_orders' AND table_schema = 'public'
+                ORDER BY ordinal_position
+            """,
+            'create_indexes': [
+                "CREATE INDEX IF NOT EXISTS idx_eo_number ON executive_orders (eo_number)",
+                "CREATE INDEX IF NOT EXISTS idx_category ON executive_orders (category)",
+                "CREATE INDEX IF NOT EXISTS idx_signing_date ON executive_orders (signing_date)"
+            ]
+        }
+    else:  # azure_sql
+        return {
+            'check_table': """
                 SELECT COUNT(*) 
                 FROM INFORMATION_SCHEMA.TABLES 
                 WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
-            """)
-            
-            table_exists = cursor.fetchone()[0] > 0
-            
-            if not table_exists:
-                logger.warning("⚠️ executive_orders table doesn't exist, creating...")
-                # Create the table
-                cursor.execute("""
-                    CREATE TABLE dbo.executive_orders (
-                        id INT IDENTITY(1,1) PRIMARY KEY,
-                        document_number NVARCHAR(100) NOT NULL,
-                        eo_number NVARCHAR(50),
-                        title NVARCHAR(MAX) NOT NULL,
-                        summary NVARCHAR(MAX),
-                        signing_date DATE,
-                        publication_date DATE,
-                        citation NVARCHAR(255),
-                        presidential_document_type NVARCHAR(100),
-                        category NVARCHAR(100),
-                        html_url NVARCHAR(MAX),
-                        pdf_url NVARCHAR(MAX),
-                        trump_2025_url NVARCHAR(MAX),
-                        ai_summary NVARCHAR(MAX),
-                        ai_executive_summary NVARCHAR(MAX),
-                        ai_key_points NVARCHAR(MAX),
-                        ai_talking_points NVARCHAR(MAX),
-                        ai_business_impact NVARCHAR(MAX),
-                        ai_potential_impact NVARCHAR(MAX),
-                        ai_version NVARCHAR(50),
-                        source NVARCHAR(255),
-                        raw_data_available BIT DEFAULT 1,
-                        processing_status NVARCHAR(50) DEFAULT 'completed',
-                        error_message NVARCHAR(MAX),
-                        content NVARCHAR(MAX),
-                        tags NVARCHAR(MAX),
-                        ai_analysis NVARCHAR(MAX),
-                        created_at DATETIME DEFAULT GETUTCDATE(),
-                        last_updated DATETIME DEFAULT GETUTCDATE(),
-                        last_scraped_at DATETIME DEFAULT GETUTCDATE(),
-                        CONSTRAINT UQ_document_number UNIQUE (document_number)
-                    )
-                """)
-                logger.info("✅ executive_orders table created successfully")
-                
-                # Create indexes for better performance
-                cursor.execute("CREATE INDEX idx_eo_number ON dbo.executive_orders (eo_number)")
-                cursor.execute("CREATE INDEX idx_category ON dbo.executive_orders (category)")
-                cursor.execute("CREATE INDEX idx_signing_date ON dbo.executive_orders (signing_date)")
-                logger.info("✅ Indexes created for executive_orders table")
-                
-                return True, []
-                
-            # Get column information
-            cursor.execute("""
+            """,
+            'create_table': """
+                CREATE TABLE dbo.executive_orders (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    document_number NVARCHAR(100) NOT NULL,
+                    eo_number NVARCHAR(50),
+                    title NVARCHAR(MAX) NOT NULL,
+                    summary NVARCHAR(MAX),
+                    signing_date DATE,
+                    publication_date DATE,
+                    citation NVARCHAR(255),
+                    presidential_document_type NVARCHAR(100),
+                    category NVARCHAR(100),
+                    html_url NVARCHAR(MAX),
+                    pdf_url NVARCHAR(MAX),
+                    trump_2025_url NVARCHAR(MAX),
+                    ai_summary NVARCHAR(MAX),
+                    ai_executive_summary NVARCHAR(MAX),
+                    ai_key_points NVARCHAR(MAX),
+                    ai_talking_points NVARCHAR(MAX),
+                    ai_business_impact NVARCHAR(MAX),
+                    ai_potential_impact NVARCHAR(MAX),
+                    ai_version NVARCHAR(50),
+                    source NVARCHAR(255),
+                    raw_data_available BIT DEFAULT 1,
+                    processing_status NVARCHAR(50) DEFAULT 'completed',
+                    error_message NVARCHAR(MAX),
+                    content NVARCHAR(MAX),
+                    tags NVARCHAR(MAX),
+                    ai_analysis NVARCHAR(MAX),
+                    created_at DATETIME DEFAULT GETUTCDATE(),
+                    last_updated DATETIME DEFAULT GETUTCDATE(),
+                    last_scraped_at DATETIME DEFAULT GETUTCDATE(),
+                    CONSTRAINT UQ_document_number UNIQUE (document_number)
+                )
+            """,
+            'get_columns': """
                 SELECT COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_NAME = 'executive_orders' AND TABLE_SCHEMA = 'dbo'
                 ORDER BY ORDINAL_POSITION
-            """)
+            """,
+            'create_indexes': [
+                "CREATE INDEX idx_eo_number ON dbo.executive_orders (eo_number)",
+                "CREATE INDEX idx_category ON dbo.executive_orders (category)",
+                "CREATE INDEX idx_signing_date ON dbo.executive_orders (signing_date)"
+            ]
+        }
+
+def check_executive_orders_table():
+    """Check if the executive_orders table exists and create it if needed - database agnostic"""
+    try:
+        config = get_database_config()
+        queries = get_database_specific_queries()
+        print(f"🗄️ Using database: {config['description']}")
+        
+        # Check if table exists using new database connection
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(queries['check_table'])
+            table_exists = cursor.fetchone()[0] > 0
             
+            if not table_exists:
+                logger.warning("⚠️ executive_orders table doesn't exist, creating...")
+                
+                # Create the table
+                cursor.execute(queries['create_table'])
+                logger.info("✅ executive_orders table created successfully")
+                
+                # Create indexes for better performance
+                for index_query in queries['create_indexes']:
+                    cursor.execute(index_query)
+                logger.info("✅ Indexes created for executive_orders table")
+                
+                conn.commit()
+                return True, []
+                
+            # Get column information
+            cursor.execute(queries['get_columns'])
             columns = [row[0] for row in cursor.fetchall()]
             logger.info(f"✅ executive_orders table exists with {len(columns)} columns")
             return True, columns
@@ -92,8 +197,15 @@ def get_executive_orders_from_db(limit=100, offset=0, filters=None):
     try:
         logger.info(f"🔍 Getting executive orders: limit={limit}, offset={offset}, filters={filters}")
         
+        # Get database-specific table name
+        config = get_database_config()
+        if config['type'] == 'postgresql':
+            table_name = "executive_orders"
+        else:
+            table_name = "dbo.executive_orders"
+        
         # Build query
-        base_query = """
+        base_query = f"""
         SELECT 
             id, document_number, eo_number, title, summary, 
             signing_date, publication_date, citation, presidential_document_type, category,
@@ -102,21 +214,22 @@ def get_executive_orders_from_db(limit=100, offset=0, filters=None):
             ai_business_impact, ai_potential_impact, ai_version,
             source, raw_data_available, processing_status, error_message,
             created_at, last_updated, last_scraped_at, tags
-        FROM dbo.executive_orders
+        FROM {table_name}
         """
         
         # Add WHERE clause for filters
         where_conditions = []
         params = []
+        placeholder = get_parameter_placeholder()
         
         if filters:
             if filters.get('category'):
-                where_conditions.append("category = ?")
+                where_conditions.append(f"category = {placeholder}")
                 params.append(filters['category'])
                 
             if filters.get('search'):
                 search_term = f"%{filters['search']}%"
-                where_conditions.append("(title LIKE ? OR summary LIKE ? OR ai_summary LIKE ?)")
+                where_conditions.append(f"(title LIKE {placeholder} OR summary LIKE {placeholder} OR ai_summary LIKE {placeholder})")
                 params.extend([search_term, search_term, search_term])
         
         if where_conditions:
@@ -125,18 +238,37 @@ def get_executive_orders_from_db(limit=100, offset=0, filters=None):
         # Add ORDER BY
         base_query += " ORDER BY signing_date DESC, eo_number DESC"
         
+        # Get database-specific queries
+        queries = get_database_specific_queries()
+        config = get_database_config()
+        
         # Count total matching records
-        count_query = f"SELECT COUNT(*) FROM dbo.executive_orders"
+        if config['type'] == 'postgresql':
+            table_name = "executive_orders"
+            count_query = f"SELECT COUNT(*) FROM {table_name}"
+        else:
+            table_name = "dbo.executive_orders"
+            count_query = f"SELECT COUNT(*) FROM {table_name}"
+            
         if where_conditions:
             count_query += " WHERE " + " AND ".join(where_conditions)
             
-        total_count = execute_query(count_query, params, fetch_one=True)[0]
+        with get_db_cursor() as cursor:
+            if params:
+                cursor.execute(count_query, params)
+            else:
+                cursor.execute(count_query)
+            total_count = cursor.fetchone()[0]
         
-        # Add pagination
-        base_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+        # Add pagination - database specific
+        if config['type'] == 'postgresql':
+            base_query += f" LIMIT {limit} OFFSET {offset}"
+        else:
+            base_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
         
         # Execute the query
-        with get_db_cursor() as cursor:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
             if params:
                 cursor.execute(base_query, params)
             else:
@@ -219,9 +351,13 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                         document_number = f"EO-{eo_number}-{int(datetime.now().timestamp())}"
                         logger.info(f"Generated document number: {document_number}")
                     
-                    # Check if order exists
+                    # Check if order exists - database agnostic
+                    config = get_database_config()
+                    table_name = "executive_orders" if config['type'] == 'postgresql' else "dbo.executive_orders"
+                    placeholder = get_parameter_placeholder()
+                    
                     cursor.execute(
-                        "SELECT id FROM dbo.executive_orders WHERE document_number = ? OR eo_number = ?", 
+                        f"SELECT id FROM {table_name} WHERE document_number = {placeholder} OR eo_number = {placeholder}", 
                         (document_number, eo_number)
                     )
                     existing = cursor.fetchone()
@@ -239,18 +375,18 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                                 
                             # Add to update if in our schema
                             if key in columns:
-                                update_fields.append(f"{key} = ?")
+                                update_fields.append(f"{key} = {placeholder}")
                                 params.append(value)
                         
                         # Add timestamp
-                        update_fields.append("last_updated = ?")
+                        update_fields.append(f"last_updated = {placeholder}")
                         params.append(datetime.now())
                         
                         # Add WHERE clause parameter
                         params.append(document_number)
                         
-                        # Execute update
-                        update_sql = f"UPDATE dbo.executive_orders SET {', '.join(update_fields)} WHERE document_number = ?"
+                        # Execute update - database agnostic
+                        update_sql = f"UPDATE {table_name} SET {', '.join(update_fields)} WHERE document_number = {placeholder}"
                         cursor.execute(update_sql, params)
                         
                         results["updated"] += 1
@@ -279,9 +415,9 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                             insert_fields.append('last_updated')
                             params.append(datetime.now())
                         
-                        # Execute insert
-                        placeholders = ', '.join(['?'] * len(insert_fields))
-                        insert_sql = f"INSERT INTO dbo.executive_orders ({', '.join(insert_fields)}) VALUES ({placeholders})"
+                        # Execute insert - database agnostic
+                        placeholders = ', '.join([placeholder] * len(insert_fields))
+                        insert_sql = f"INSERT INTO {table_name} ({', '.join(insert_fields)}) VALUES ({placeholders})"
                         cursor.execute(insert_sql, params)
                         
                         results["inserted"] += 1
@@ -308,10 +444,14 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
 def get_executive_order_by_number(eo_number: str) -> Optional[Dict]:
     """Get a specific executive order by its number"""
     try:
+        config = get_database_config()
+        table_name = "executive_orders" if config['type'] == 'postgresql' else "dbo.executive_orders"
+        placeholder = get_parameter_placeholder()
+        
         with get_db_cursor() as cursor:
             # Try different variations of the number
             cursor.execute(
-                "SELECT * FROM dbo.executive_orders WHERE eo_number = ? OR document_number = ?",
+                f"SELECT * FROM {table_name} WHERE eo_number = {placeholder} OR document_number = {placeholder}",
                 (eo_number, eo_number)
             )
             
@@ -319,7 +459,7 @@ def get_executive_order_by_number(eo_number: str) -> Optional[Dict]:
             if not row:
                 # Try with wildcard
                 cursor.execute(
-                    "SELECT * FROM dbo.executive_orders WHERE eo_number LIKE ?",
+                    f"SELECT * FROM {table_name} WHERE eo_number LIKE {placeholder}",
                     (f"%{eo_number}%",)
                 )
                 row = cursor.fetchone()
@@ -343,49 +483,96 @@ def get_executive_order_by_number(eo_number: str) -> Optional[Dict]:
         return None
 
 def create_highlights_table():
-    """Create the user highlights table if it doesn't exist"""
+    """Create the user highlights table if it doesn't exist - database agnostic"""
     try:
+        config = get_database_config()
+        
         with get_db_cursor() as cursor:
-            # Check if table exists
-            cursor.execute("""
-                SELECT COUNT(*) 
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_NAME = 'user_highlights' AND TABLE_SCHEMA = 'dbo'
-            """)
+            # Check if table exists - database agnostic
+            if config['type'] == 'postgresql':
+                check_query = """
+                    SELECT COUNT(*) 
+                    FROM information_schema.tables 
+                    WHERE table_name = 'user_highlights' AND table_schema = 'public'
+                """
+                table_name = "user_highlights"
+            else:
+                check_query = """
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_NAME = 'user_highlights' AND TABLE_SCHEMA = 'dbo'
+                """
+                table_name = "dbo.user_highlights"
             
+            cursor.execute(check_query)
             table_exists = cursor.fetchone()[0] > 0
             
             if not table_exists:
                 logger.info("📊 Creating user_highlights table...")
                 
-                # Create the table
-                cursor.execute("""
-                    CREATE TABLE dbo.user_highlights (
-                        id INT IDENTITY(1,1) PRIMARY KEY,
-                        user_id NVARCHAR(50) NOT NULL,
-                        order_id NVARCHAR(100) NOT NULL,
-                        order_type NVARCHAR(50) NOT NULL,
-                        title NVARCHAR(MAX),
-                        description NVARCHAR(MAX),
-                        ai_summary NVARCHAR(MAX),
-                        category NVARCHAR(50),
-                        state NVARCHAR(50),
-                        signing_date NVARCHAR(50),
-                        html_url NVARCHAR(500),
-                        pdf_url NVARCHAR(500),
-                        legiscan_url NVARCHAR(500),
-                        highlighted_at DATETIME2 DEFAULT GETUTCDATE(),
-                        notes NVARCHAR(MAX),
-                        priority_level INT DEFAULT 1,
-                        tags NVARCHAR(MAX),
-                        is_archived BIT DEFAULT 0,
-                        CONSTRAINT UQ_user_highlight UNIQUE (user_id, order_id, order_type)
-                    )
-                """)
+                # Create the table - database specific
+                if config['type'] == 'postgresql':
+                    create_query = f"""
+                        CREATE TABLE {table_name} (
+                            id SERIAL PRIMARY KEY,
+                            user_id VARCHAR(50) NOT NULL,
+                            order_id VARCHAR(100) NOT NULL,
+                            order_type VARCHAR(50) NOT NULL,
+                            title TEXT,
+                            description TEXT,
+                            ai_summary TEXT,
+                            category VARCHAR(50),
+                            state VARCHAR(50),
+                            signing_date VARCHAR(50),
+                            html_url VARCHAR(500),
+                            pdf_url VARCHAR(500),
+                            legiscan_url VARCHAR(500),
+                            highlighted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            notes TEXT,
+                            priority_level INT DEFAULT 1,
+                            tags TEXT,
+                            is_archived BOOLEAN DEFAULT false,
+                            CONSTRAINT uq_user_highlight UNIQUE (user_id, order_id, order_type)
+                        )
+                    """
+                    index_queries = [
+                        f"CREATE INDEX idx_user_highlights_user_id ON {table_name} (user_id)",
+                        f"CREATE INDEX idx_user_highlights_order_id ON {table_name} (order_id)"
+                    ]
+                else:
+                    create_query = f"""
+                        CREATE TABLE {table_name} (
+                            id INT IDENTITY(1,1) PRIMARY KEY,
+                            user_id NVARCHAR(50) NOT NULL,
+                            order_id NVARCHAR(100) NOT NULL,
+                            order_type NVARCHAR(50) NOT NULL,
+                            title NVARCHAR(MAX),
+                            description NVARCHAR(MAX),
+                            ai_summary NVARCHAR(MAX),
+                            category NVARCHAR(50),
+                            state NVARCHAR(50),
+                            signing_date NVARCHAR(50),
+                            html_url NVARCHAR(500),
+                            pdf_url NVARCHAR(500),
+                            legiscan_url NVARCHAR(500),
+                            highlighted_at DATETIME2 DEFAULT GETUTCDATE(),
+                            notes NVARCHAR(MAX),
+                            priority_level INT DEFAULT 1,
+                            tags NVARCHAR(MAX),
+                            is_archived BIT DEFAULT 0,
+                            CONSTRAINT UQ_user_highlight UNIQUE (user_id, order_id, order_type)
+                        )
+                    """
+                    index_queries = [
+                        f"CREATE INDEX idx_user_highlights_user_id ON {table_name} (user_id)",
+                        f"CREATE INDEX idx_user_highlights_order_id ON {table_name} (order_id)"
+                    ]
+                
+                cursor.execute(create_query)
                 
                 # Create indexes
-                cursor.execute("CREATE INDEX idx_user_highlights_user_id ON dbo.user_highlights (user_id)")
-                cursor.execute("CREATE INDEX idx_user_highlights_order_id ON dbo.user_highlights (order_id)")
+                for index_query in index_queries:
+                    cursor.execute(index_query)
                 
                 logger.info("✅ user_highlights table created successfully")
             else:
@@ -398,17 +585,23 @@ def create_highlights_table():
         return False
 
 def add_highlight_direct(user_id: str, order_id: str, order_type: str, item_data: Dict = None) -> bool:
-    """Add a highlight with full item data"""
+    """Add a highlight with full item data - database agnostic"""
     try:
         # Create table if needed
         create_highlights_table()
         
+        config = get_database_config()
+        table_name = "user_highlights" if config['type'] == 'postgresql' else "dbo.user_highlights"
+        placeholder = get_parameter_placeholder()
+        
         with get_db_cursor() as cursor:
             # Check if highlight already exists
-            cursor.execute("""
-                SELECT id FROM dbo.user_highlights 
-                WHERE user_id = ? AND order_id = ? AND order_type = ? AND is_archived = 0
-            """, (user_id, order_id, order_type))
+            check_query = f"""
+                SELECT id FROM {table_name} 
+                WHERE user_id = {placeholder} AND order_id = {placeholder} AND order_type = {placeholder} AND is_archived = {placeholder}
+            """
+            is_archived_value = False if config['type'] == 'postgresql' else 0
+            cursor.execute(check_query, (user_id, order_id, order_type, is_archived_value))
             
             existing = cursor.fetchone()
             
@@ -417,15 +610,17 @@ def add_highlight_direct(user_id: str, order_id: str, order_type: str, item_data
                 return True
             
             # Insert new highlight with item data
-            insert_query = """
-            INSERT INTO dbo.user_highlights (
+            placeholders = ', '.join([placeholder] * 16)
+            insert_query = f"""
+            INSERT INTO {table_name} (
                 user_id, order_id, order_type, title, description, ai_summary, 
                 category, state, signing_date, html_url, pdf_url, legiscan_url,
                 notes, priority_level, tags, is_archived
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES ({placeholders})
             """
             
             # Prepare values with proper defaults
+            is_archived_value = False if config['type'] == 'postgresql' else 0
             values = (
                 user_id, 
                 order_id, 
@@ -442,7 +637,7 @@ def add_highlight_direct(user_id: str, order_id: str, order_type: str, item_data
                 None,  # notes
                 1,     # priority_level
                 None,  # tags
-                0      # is_archived
+                is_archived_value
             )
             
             cursor.execute(insert_query, values)
@@ -457,19 +652,23 @@ def add_highlight_direct(user_id: str, order_id: str, order_type: str, item_data
         return False
 
 def remove_highlight_direct(user_id: str, order_id: str, order_type: str = None) -> bool:
-    """Remove a highlight"""
+    """Remove a highlight - database agnostic"""
     try:
+        config = get_database_config()
+        table_name = "user_highlights" if config['type'] == 'postgresql' else "dbo.user_highlights"
+        placeholder = get_parameter_placeholder()
+        
         with get_db_cursor() as cursor:
             if order_type:
-                delete_query = """
-                DELETE FROM dbo.user_highlights 
-                WHERE user_id = ? AND order_id = ? AND order_type = ?
+                delete_query = f"""
+                DELETE FROM {table_name} 
+                WHERE user_id = {placeholder} AND order_id = {placeholder} AND order_type = {placeholder}
                 """
                 cursor.execute(delete_query, (user_id, order_id, order_type))
             else:
-                delete_query = """
-                DELETE FROM dbo.user_highlights 
-                WHERE user_id = ? AND order_id = ?
+                delete_query = f"""
+                DELETE FROM {table_name} 
+                WHERE user_id = {placeholder} AND order_id = {placeholder}
                 """
                 cursor.execute(delete_query, (user_id, order_id))
             
@@ -484,22 +683,26 @@ def remove_highlight_direct(user_id: str, order_id: str, order_type: str = None)
         return False
 
 def get_user_highlights_direct(user_id: str) -> List[Dict]:
-    """Get all highlights for a user"""
+    """Get all highlights for a user - database agnostic"""
     try:
         # Create table if needed
         create_highlights_table()
         
+        config = get_database_config()
+        table_name = "user_highlights" if config['type'] == 'postgresql' else "dbo.user_highlights"
+        placeholder = get_parameter_placeholder()
+        
         with get_db_cursor() as cursor:
-            query = """
+            query = f"""
             SELECT order_id, order_type, title, description, ai_summary, category, 
                    state, signing_date, html_url, pdf_url, legiscan_url, 
                    highlighted_at, notes, priority_level, tags
-            FROM dbo.user_highlights 
-            WHERE user_id = ? AND is_archived = 0
+            FROM {table_name} 
+            WHERE user_id = {placeholder} AND is_archived = {placeholder}
             ORDER BY highlighted_at DESC
             """
             
-            cursor.execute(query, (user_id,))
+            cursor.execute(query, (user_id, False if config['type'] == 'postgresql' else 0))
             
             # Get column names
             columns = [column[0] for column in cursor.description]

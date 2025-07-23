@@ -3,6 +3,10 @@ import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from
 
 // Context
 import { useAuth } from './context/AuthContext';
+import { DarkModeProvider } from './context/DarkModeContext';
+
+// Dark mode utilities
+import { getPageContainerClasses, getCardClasses, getTextClasses } from './utils/darkModeClasses';
 
 // Components - with error handling for missing components
 import Header from './components/Header';
@@ -54,7 +58,7 @@ const APP_VERSION = packageJson.version;
 
 // Temporary fallback component for missing components
 const FallbackComponent = ({ componentName, ...props }) => (
-  <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-lg">
+  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-300 rounded-lg">
     <h3 className="font-semibold">Component Error</h3>
     <p>The component "{componentName}" could not be loaded.</p>
     <p className="text-sm mt-2">Check that the file exists and is properly exported.</p>
@@ -354,7 +358,7 @@ const AppContent = () => {
       )}
 
       {/* Main App Layout */}
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className={getPageContainerClasses('flex flex-col')}>
         {/* Header - Match the container structure */}
         <SafeComponent 
           component={Header}
@@ -376,7 +380,7 @@ const AppContent = () => {
 
         {/* Main Content - Match Header's container width exactly */}
         <main className="flex-1 min-h-screen">
-          <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-4 sm:py-6">
+          <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12">
             <Suspense fallback={
               <div className="flex items-center justify-center min-h-[400px]">
                 <LoadingAnimation />
@@ -512,14 +516,14 @@ const AppContent = () => {
                 path="*" 
                 element={
                   <div className="pt-6">
-                    <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-6 rounded-lg text-center">
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-300 p-6 rounded-lg text-center">
                       <h3 className="font-semibold mb-2">Page Not Found</h3>
                       <p className="mb-4">The page you're looking for doesn't exist.</p>
                       <button
                         onClick={() => navigate('/')}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300"
+                        className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-all duration-300"
                       >
-                        Go to Highlights
+                        Go to Homepage
                       </button>
                     </div>
                   </div>
@@ -531,9 +535,9 @@ const AppContent = () => {
         </main>
 
         {/* Footer - Match Header's container width exactly */}
-        <footer className="bg-gray-50 border-t border-gray-200 py-8 mt-auto">
+        <footer className="bg-gray-50 dark:bg-dark-bg border-t border-gray-200 dark:border-dark-border py-8 mt-auto">
           <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12">
-            <div className="text-center text-sm text-gray-600">
+            <div className={getTextClasses('secondary', 'text-center text-sm')}>
               © 2025 Built with ❤️ by MOREgroup Development. All rights reserved. 
               <span className="ml-2">LegislationVUE v{appVersion}</span>
             </div>
@@ -549,9 +553,11 @@ const AppContent = () => {
 // ------------------------
 const App = () => {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <DarkModeProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </DarkModeProvider>
   );
 };
 

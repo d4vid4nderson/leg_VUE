@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 
 import API_URL from '../config/api';
+import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 
 // Password required for database clearing (change this to whatever you want)
 const REQUIRED_PASSWORD = "DELETE_DATABASE_2024";
@@ -159,38 +160,38 @@ const SettingsPage = ({
             case 'connected':
             case 'operational':
                 return {
-                    icon: <CheckCircle size={16} className="text-green-600" />,
+                    icon: <CheckCircle size={16} className="text-green-600 dark:text-green-400" />,
                     text: 'Online ✓',
-                    textColor: 'text-green-600',
-                    bgColor: 'bg-green-50',
-                    borderColor: 'border-green-200'
+                    textColor: 'text-green-600 dark:text-green-400',
+                    bgColor: 'bg-green-50 dark:bg-green-900/20',
+                    borderColor: 'border-green-200 dark:border-green-700'
                 };
             case 'unhealthy':
             case 'error':
             case 'failed':
                 return {
-                    icon: <X size={16} className="text-red-600" />,
+                    icon: <X size={16} className="text-red-600 dark:text-red-400" />,
                     text: 'Offline ✗',
-                    textColor: 'text-red-600',
-                    bgColor: 'bg-red-50',
-                    borderColor: 'border-red-200'
+                    textColor: 'text-red-600 dark:text-red-400',
+                    bgColor: 'bg-red-50 dark:bg-red-900/20',
+                    borderColor: 'border-red-200 dark:border-red-700'
                 };
             case 'checking':
             case 'loading':
                 return {
-                    icon: <RotateCw size={16} className="text-yellow-600 animate-spin" />,
+                    icon: <RotateCw size={16} className="text-yellow-600 dark:text-yellow-400 animate-spin" />,
                     text: 'Checking...',
-                    textColor: 'text-yellow-600',
-                    bgColor: 'bg-yellow-50',
-                    borderColor: 'border-yellow-200'
+                    textColor: 'text-yellow-600 dark:text-yellow-400',
+                    bgColor: 'bg-yellow-50 dark:bg-yellow-900/20',
+                    borderColor: 'border-yellow-200 dark:border-yellow-700'
                 };
             default:
                 return {
-                    icon: <Info size={16} className="text-gray-600" />,
+                    icon: <Info size={16} className="text-gray-600 dark:text-gray-400" />,
                     text: 'Unknown',
-                    textColor: 'text-gray-600',
-                    bgColor: 'bg-gray-50',
-                    borderColor: 'border-gray-200'
+                    textColor: 'text-gray-600 dark:text-gray-400',
+                    bgColor: 'bg-gray-50 dark:bg-gray-800',
+                    borderColor: 'border-gray-200 dark:border-gray-600'
                 };
         }
     };
@@ -397,33 +398,33 @@ const SettingsPage = ({
         if (!showDatabaseModal) return null;
 
         return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="fixed inset-0 bg-black dark:bg-gray-900 bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
+                <div className="bg-white dark:bg-dark-bg rounded-lg shadow-xl max-w-md w-full">
                     {/* Modal Header */}
-                    <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                    <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-border">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                                <AlertTriangle size={20} className="text-red-600" />
+                            <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+                                <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
                             </div>
-                            <h3 className="text-lg font-semibold text-gray-900">Clear Database</h3>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Clear Database</h3>
                         </div>
                         <button
                             onClick={closeDatabaseModal}
-                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                         >
                             <X size={20} />
                         </button>
                     </div>
 
                     {/* Modal Body */}
-                    <div className="p-6">
+                    <div className="p-6 bg-white dark:bg-dark-bg">
                         <div className="mb-4">
-                            <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
-                                <h4 className="font-semibold text-red-800 mb-2">⚠️ Warning: This action cannot be undone</h4>
-                                <p className="text-red-700 text-sm mb-2">
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-md p-4 mb-4">
+                                <h4 className="font-semibold text-red-800 dark:text-red-300 mb-2">⚠️ Warning: This action cannot be undone</h4>
+                                <p className="text-red-700 dark:text-red-300 text-sm mb-2">
                                     Deleting the database will permanently remove:
                                 </p>
-                                <ul className="text-red-700 text-sm space-y-1 ml-4">
+                                <ul className="text-red-700 dark:text-red-300 text-sm space-y-1 ml-4">
                                     <li>• All executive orders and state legislation</li>
                                     <li>• AI analysis and summaries</li>
                                     <li>• Your highlighted items and bookmarks</li>
@@ -431,13 +432,13 @@ const SettingsPage = ({
                                 </ul>
                             </div>
 
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4">
-                                <h4 className="font-semibold text-yellow-800 mb-2">📊 Data Recovery Notice</h4>
-                                <p className="text-yellow-700 text-sm">
+                            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-md p-4 mb-4">
+                                <h4 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-2">📊 Data Recovery Notice</h4>
+                                <p className="text-yellow-700 dark:text-yellow-300 text-sm">
                                     When data is re-fetched from external APIs, the information you get back
                                     might not be exactly the same as before due to:
                                 </p>
-                                <ul className="text-yellow-700 text-sm space-y-1 ml-4 mt-2">
+                                <ul className="text-yellow-700 dark:text-yellow-300 text-sm space-y-1 ml-4 mt-2">
                                     <li>• Updates to federal regulations</li>
                                     <li>• Changes in state legislation</li>
                                     <li>• API modifications or data source updates</li>
@@ -448,7 +449,7 @@ const SettingsPage = ({
 
                         {/* Password Input */}
                         <div className="mb-4">
-                            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                            <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Enter password to confirm deletion:
                             </label>
                             <div className="relative">
@@ -465,7 +466,7 @@ const SettingsPage = ({
                                             handleClearDatabase();
                                         }
                                     }}
-                                    className={`w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 ${passwordError ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                                    className={`w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 ${passwordError ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-bg-secondary'
                                         }`}
                                     placeholder="Enter required password..."
                                     autoComplete="off"
@@ -473,13 +474,13 @@ const SettingsPage = ({
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
                                 >
                                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
                             </div>
                             {passwordError && (
-                                <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                                <p className="mt-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                                     <X size={14} />
                                     {passwordError}
                                 </p>
@@ -491,7 +492,7 @@ const SettingsPage = ({
                             <button
                                 onClick={closeDatabaseModal}
                                 disabled={clearingDatabase}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors disabled:opacity-50"
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
                             >
                                 Cancel
                             </button>
@@ -499,8 +500,8 @@ const SettingsPage = ({
                                 onClick={handleClearDatabase}
                                 disabled={clearingDatabase || !passwordInput.trim()}
                                 className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${clearingDatabase || !passwordInput.trim()
-                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                        : 'bg-red-600 text-white hover:bg-red-700'
+                                        ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                        : 'bg-red-600 dark:bg-red-500 text-white hover:bg-red-700 dark:hover:bg-red-400'
                                     }`}
                             >
                                 <Trash2 size={14} />
@@ -514,21 +515,17 @@ const SettingsPage = ({
     };
 
     return (
-        <div className="pt-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
+        <div className="bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-dark-bg dark:via-dark-bg-secondary dark:to-dark-bg-tertiary min-h-screen">
             {/* Header Section */}
             <section className="relative overflow-hidden px-6 pt-12 pb-8">
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center gap-2 bg-gray-100 text-gray-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-                            <Settings size={16} />
-                            System Configuration & Information
-                        </div>
                         
-                        <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-                            <span className="block bg-gradient-to-r from-gray-500 to-black bg-clip-text text-transparent py-2">Settings</span>
+                        <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-6 leading-tight')}>
+                            <span className="block bg-gradient-to-r from-gray-500 to-black dark:from-gray-300 dark:to-white bg-clip-text text-transparent py-2">Settings</span>
                         </h1>
                         
-                        <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+                        <p className={getTextClasses('secondary', 'text-xl mb-8 max-w-3xl mx-auto leading-relaxed')}>
                             Monitor your system status and manage your database. Configure application settings and view system information.
                         </p>
                     </div>
@@ -537,45 +534,45 @@ const SettingsPage = ({
 
             {/* Clear Status */}
             {clearStatus && (
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-                    <p className="text-blue-800 text-sm font-medium">{clearStatus}</p>
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md">
+                    <p className="text-blue-800 dark:text-blue-300 text-sm font-medium">{clearStatus}</p>
                 </div>
             )}
 
             {/* Version Update Status */}
             {versionUpdateStatus && (
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-                    <p className="text-blue-800 text-sm font-medium">{versionUpdateStatus}</p>
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md">
+                    <p className="text-blue-800 dark:text-blue-300 text-sm font-medium">{versionUpdateStatus}</p>
                 </div>
             )}
 
             <div className="space-y-6">
                 {/* System Management Section */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-sm p-6">
                     <button
                         onClick={() => setShowSystemSection(!showSystemSection)}
-                        className="w-full flex items-center justify-between text-left focus:outline-none"
+                        className="w-full flex items-center justify-between text-left focus:outline-none hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-2 transition-colors"
                     >
-                        <h3 className="text-xl font-semibold text-gray-800">
+                        <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 dark:text-gray-200">
                             System Management
                         </h3>
                         <div className="flex items-center gap-2">
                             <ChevronDown
                                 size={20}
-                                className={`text-gray-500 transition-transform duration-200 ${showSystemSection ? 'rotate-180' : ''}`}
+                                className={`text-gray-500 dark:text-gray-400 transition-transform duration-200 ${showSystemSection ? 'rotate-180' : ''}`}
                             />
                         </div>
                     </button>
 
                     {showSystemSection && (
-                        <div className="mt-4 pt-4 border-gray-200 space-y-6">
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600 space-y-6">
 
                             {/* Integration Status */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+                            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
                                 <div className="flex items-center justify-between mb-3">
-                                    <h4 className="font-semibold text-gray-800">Integration Status</h4>
+                                    <h4 className="font-semibold text-gray-800 dark:text-gray-200">Integration Status</h4>
                                     {lastHealthCheck && (
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
                                             Last checked: {lastHealthCheck.toLocaleTimeString()}
                                         </p>
                                     )}
@@ -604,7 +601,7 @@ const SettingsPage = ({
                                                         {display.text}
                                                     </span>
                                                     {status.responseTime && (
-                                                        <p className="text-xs text-gray-500">
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400">
                                                             {status.responseTime}ms
                                                         </p>
                                                     )}
@@ -616,9 +613,9 @@ const SettingsPage = ({
 
                                 {/* Show any error messages */}
                                 {Object.values(integrationStatus).some(s => s.status === 'error') && (
-                                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
-                                        <h5 className="font-medium text-red-800 mb-1">Service Issues:</h5>
-                                        <ul className="text-xs text-red-700 space-y-1">
+                                    <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded">
+                                        <h5 className="font-medium text-red-800 dark:text-red-300 mb-1">Service Issues:</h5>
+                                        <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
                                             {Object.entries(integrationStatus)
                                                 .filter(([_, status]) => status.status === 'error')
                                                 .map(([service, status]) => (
@@ -633,13 +630,13 @@ const SettingsPage = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                                 {/* Application Version */}
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-700">
                                     <div className="flex items-center justify-between mb-2">
-                                        <h4 className="font-semibold text-blue-800">Application Version</h4>
+                                        <h4 className="font-semibold text-blue-800 dark:text-blue-300">Application Version</h4>
                                         {!isEditingVersion && (
                                             <button
                                                 onClick={() => setIsEditingVersion(true)}
-                                                className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                                className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors"
                                                 title="Edit version"
                                             >
                                                 <Edit3 size={14} />
@@ -653,7 +650,7 @@ const SettingsPage = ({
                                                 type="text"
                                                 value={tempVersion}
                                                 onChange={(e) => setTempVersion(e.target.value)}
-                                                className="w-full px-3 py-2 text-lg font-bold text-blue-600 bg-white border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                className="w-full px-3 py-2 text-lg font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-dark-bg-secondary border border-blue-300 dark:border-blue-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                                                 placeholder="e.g., 1.0.0"
                                                 onKeyPress={(e) => {
                                                     if (e.key === 'Enter') handleVersionUpdate();
@@ -663,14 +660,14 @@ const SettingsPage = ({
                                             <div className="flex gap-2">
                                                 <button
                                                     onClick={handleVersionUpdate}
-                                                    className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                                                    className="flex items-center gap-1 px-3 py-1 bg-blue-600 dark:bg-blue-500 text-white text-sm rounded hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors"
                                                 >
                                                     <Save size={12} />
                                                     Save
                                                 </button>
                                                 <button
                                                     onClick={handleCancelVersionEdit}
-                                                    className="px-3 py-1 bg-gray-300 text-gray-700 text-sm rounded hover:bg-gray-400 transition-colors"
+                                                    className="px-3 py-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
                                                 >
                                                     Cancel
                                                 </button>
@@ -678,11 +675,11 @@ const SettingsPage = ({
                                         </div>
                                     ) : (
                                         <>
-                                            <p className="text-2xl font-bold text-blue-600 mb-2">v{appVersion}</p>
-                                            <p className="text-sm text-blue-700">
+                                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mb-2">v{appVersion}</p>
+                                            <p className="text-sm text-blue-700 dark:text-blue-300">
                                                 Azure SQL Enhanced Edition
                                             </p>
-                                            <p className="text-xs text-blue-600 mt-1">
+                                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                                                 Click the edit icon to update version
                                             </p>
                                         </>
@@ -698,29 +695,29 @@ const SettingsPage = ({
                                     let statusConfig;
                                     if (hasErrors) {
                                         statusConfig = {
-                                            bgColor: 'bg-orange-50',
-                                            borderColor: 'border-orange-200',
-                                            titleColor: 'text-orange-800',
-                                            valueColor: 'text-orange-600',
-                                            messageColor: 'text-orange-700',
+                                            bgColor: 'bg-orange-50 dark:bg-orange-900/20',
+                                            borderColor: 'border-orange-200 dark:border-orange-700',
+                                            titleColor: 'text-orange-800 dark:text-orange-300',
+                                            valueColor: 'text-orange-600 dark:text-orange-400',
+                                            messageColor: 'text-orange-700 dark:text-orange-300',
                                             message: 'Service issues detected - some features may be unavailable'
                                         };
                                     } else if (isChecking) {
                                         statusConfig = {
-                                            bgColor: 'bg-yellow-50',
-                                            borderColor: 'border-yellow-200',
-                                            titleColor: 'text-yellow-800',
-                                            valueColor: 'text-yellow-600',
-                                            messageColor: 'text-yellow-700',
+                                            bgColor: 'bg-yellow-50 dark:bg-yellow-900/20',
+                                            borderColor: 'border-yellow-200 dark:border-yellow-700',
+                                            titleColor: 'text-yellow-800 dark:text-yellow-300',
+                                            valueColor: 'text-yellow-600 dark:text-yellow-400',
+                                            messageColor: 'text-yellow-700 dark:text-yellow-300',
                                             message: 'System status check in progress...'
                                         };
                                     } else {
                                         statusConfig = {
-                                            bgColor: 'bg-green-50',
-                                            borderColor: 'border-green-200',
-                                            titleColor: 'text-green-800',
-                                            valueColor: 'text-green-600',
-                                            messageColor: 'text-green-700',
+                                            bgColor: 'bg-green-50 dark:bg-green-900/20',
+                                            borderColor: 'border-green-200 dark:border-green-700',
+                                            titleColor: 'text-green-800 dark:text-green-300',
+                                            valueColor: 'text-green-600 dark:text-green-400',
+                                            messageColor: 'text-green-700 dark:text-green-300',
                                             message: 'All services operational'
                                         };
                                     }
@@ -742,7 +739,7 @@ const SettingsPage = ({
                                             </p>
 
                                             {hasErrors && (
-                                                <div className="mt-2 text-xs text-orange-600">
+                                                <div className="mt-2 text-xs text-orange-600 dark:text-orange-400">
                                                     Issues: {statuses
                                                         .filter(s => s.status === 'error' || s.status === 'unhealthy')
                                                         .map(s => s.message)
@@ -756,9 +753,9 @@ const SettingsPage = ({
                             </div>
 
                             {/* API Configuration */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                                <h4 className="font-semibold text-gray-800 mb-2">API Configuration</h4>
-                                <div className="text-sm text-gray-600 space-y-1">
+                            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
+                                <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">API Configuration</h4>
+                                <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                                     <p>• <strong>Backend API:</strong> {API_URL}</p>
                                     <p>• <strong>Environment:</strong> {window.location.hostname === 'localhost' ? 'Development' : 'Production'}</p>
                                     <p>• <strong>Database Type:</strong> Azure SQL with SQLite fallback</p>
@@ -766,9 +763,9 @@ const SettingsPage = ({
                             </div>
 
                             {/* Performance Settings */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                                <h4 className="font-semibold text-gray-800 mb-2">Performance Settings</h4>
-                                <div className="text-sm text-gray-600 space-y-1">
+                            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
+                                <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Performance Settings</h4>
+                                <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                                     <p>• <strong>AI Processing:</strong> Batch processing enabled for efficiency</p>
                                     <p>• <strong>Data Caching:</strong> Local storage for improved load times</p>
                                     <p>• <strong>Rate Limiting:</strong> API calls optimized to prevent throttling</p>
@@ -777,9 +774,9 @@ const SettingsPage = ({
                             </div>
 
                             {/* Technical Details */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                                <h4 className="font-semibold text-gray-800 mb-2">Technical Details</h4>
-                                <div className="text-sm text-gray-600 space-y-1">
+                            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
+                                <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Technical Details</h4>
+                                <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                                     <p>• <strong>Frontend:</strong> React 18 with Vite build system</p>
                                     <p>• <strong>Backend:</strong> FastAPI with Python async support</p>
                                     <p>• <strong>Database:</strong> Azure SQL Server with automatic failover</p>
@@ -792,31 +789,31 @@ const SettingsPage = ({
                 </div>
 
                 {/* MSI Database Debug Section */}
-                <div className="mt-4 bg-gray-50 border border-gray-200 rounded-md p-4">
+                <div className="mt-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
                     <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-semibold text-gray-800">MSI Database Connection Debug</h4>
+                        <h4 className="font-semibold text-gray-800 dark:text-gray-200">MSI Database Connection Debug</h4>
                         <button
                             onClick={debugDatabaseConnection}
                             disabled={databaseDebugInfo.loading}
-                            className={`px-3 py-1 text-sm rounded-md ${databaseDebugInfo.loading ? 'bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                            className={`px-3 py-1 text-sm rounded-md ${databaseDebugInfo.loading ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300' : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'}`}
                         >
                             {databaseDebugInfo.loading ? 'Testing...' : 'Test MSI Connection'}
                         </button>
                     </div>
 
                     {databaseDebugInfo.logs.length > 0 && (
-                        <div className={`mt-3 p-3 rounded border text-sm font-mono ${databaseDebugInfo.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                        <div className={`mt-3 p-3 rounded border text-sm font-mono ${databaseDebugInfo.success ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700'}`}>
                             <div className="mb-2 flex items-center justify-between">
-                                <span className={`font-medium ${databaseDebugInfo.success ? 'text-green-700' : 'text-red-700'}`}>
+                                <span className={`font-medium ${databaseDebugInfo.success ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
                                     {databaseDebugInfo.success ? '✅ Connection Successful' : '❌ Connection Failed'}
                                 </span>
                                 {databaseDebugInfo.timestamp && (
-                                    <span className="text-xs text-gray-500">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-400">
                                         {new Date(databaseDebugInfo.timestamp).toLocaleTimeString()}
                                     </span>
                                 )}
                             </div>
-                            <div className="bg-black bg-opacity-10 p-2 rounded max-h-64 overflow-y-auto">
+                            <div className="bg-black dark:bg-gray-900 bg-opacity-10 dark:bg-opacity-50 p-2 rounded max-h-64 overflow-y-auto">
                                 {databaseDebugInfo.logs.map((log, index) => (
                                     <div key={index} className="whitespace-pre-wrap mb-1">
                                         {log}
@@ -828,29 +825,29 @@ const SettingsPage = ({
                 </div>
 
                 {/* Database Management Section - SEPARATE CONTAINER */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-sm p-6">
                     <button
                         onClick={() => setShowDatabaseSection(!showDatabaseSection)}
-                        className="w-full flex items-center justify-between text-left focus:outline-none"
+                        className="w-full flex items-center justify-between text-left focus:outline-none hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-2 transition-colors"
                     >
-                        <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                        <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
                             <Settings size={20} />
                             <span>Database Management</span>
                         </h3>
                         <ChevronDown
                             size={20}
-                            className={`text-gray-500 transition-transform duration-200 ${showDatabaseSection ? 'rotate-180' : ''}`}
+                            className={`text-gray-500 dark:text-gray-400 transition-transform duration-200 ${showDatabaseSection ? 'rotate-180' : ''}`}
                         />
                     </button>
 
                     {showDatabaseSection && (
-                        <div className="mt-4 pt-4 border-gray-200">
-                            <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
-                                <h4 className="font-semibold text-red-800 mb-2 flex items-center gap-2">
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-md p-4 mb-4">
+                                <h4 className="font-semibold text-red-800 dark:text-red-300 mb-2 flex items-center gap-2">
                                     <Trash2 size={16} />
                                     <span>Clear Database</span>
                                 </h4>
-                                <p className="text-red-700 text-sm mb-3">
+                                <p className="text-red-700 dark:text-red-300 text-sm mb-3">
                                     This will permanently delete all executive orders and legislation from the database.
                                     This action cannot be undone and requires password confirmation.
                                 </p>
@@ -859,8 +856,8 @@ const SettingsPage = ({
                                     onClick={openDatabaseModal}
                                     disabled={clearingDatabase}
                                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ${clearingDatabase
-                                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                            : 'bg-red-600 text-white hover:bg-red-700'
+                                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                            : 'bg-red-600 dark:bg-red-500 text-white hover:bg-red-700 dark:hover:bg-red-400'
                                         }`}
                                 >
                                     Clear Database
@@ -868,9 +865,9 @@ const SettingsPage = ({
                             </div>
 
                             {/* Database Info */}
-                            <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                                <h4 className="font-semibold text-gray-800 mb-2">Database Information</h4>
-                                <div className="text-sm text-gray-600 space-y-1">
+                            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
+                                <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">Database Information</h4>
+                                <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                                     <p>• Executive orders and state legislation are stored locally</p>
                                     <p>• Data includes AI analysis and summaries</p>
                                     <p>• Clearing will require re-fetching all data</p>
@@ -883,26 +880,26 @@ const SettingsPage = ({
                 </div>
 
                 {/* Help and Support */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-sm p-6">
+                    <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
                         <HelpCircle size={20} />
                         <span>Help & Support</span>
                     </h3>
 
                     <div className="grid grid-cols-1 gap-4">
-                        <div className="border border-blue-100 rounded-lg p-4 bg-blue-50">
+                        <div className="border border-blue-100 dark:border-blue-700 rounded-lg p-4 bg-blue-50 dark:bg-blue-900/20">
                             <div className="flex items-center gap-3 mb-3">
-                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                    <Mail size={20} className="text-blue-600" />
+                                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                                    <Mail size={20} className="text-blue-600 dark:text-blue-400" />
                                 </div>
                                 <div>
-                                    <h5 className="font-medium text-blue-800">Email Support</h5>
-                                    <p className="text-sm text-blue-600">For technical issues and questions</p>
+                                    <h5 className="font-medium text-blue-800 dark:text-blue-300">Email Support</h5>
+                                    <p className="text-sm text-blue-600 dark:text-blue-400">For technical issues and questions</p>
                                 </div>
                             </div>
                             <a
                                 href="mailto:legal@moregroup-inc.com"
-                                className="text-blue-700 hover:text-blue-900 font-medium text-sm flex items-center gap-1"
+                                className="text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 font-medium text-sm flex items-center gap-1"
                             >
                                 legal@moregroup-inc.com <ExternalLink size={12} />
                             </a>

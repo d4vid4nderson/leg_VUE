@@ -1,4 +1,53 @@
-@tailwind base;@tailwind components;@tailwind utilities;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark Mode Base Styles */
+.dark {
+  color-scheme: dark;
+}
+
+/* Ensure smooth transitions for dark mode */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+/* Dark mode specific overrides */
+.dark body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+/* Dark mode shimmer animations */
+.dark .animate-shimmer {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+}
+
+.dark .shimmer-enhanced {
+  background: linear-gradient(
+    90deg,
+    #1e293b 0%,
+    #1e293b 40%,
+    #334155 50%,
+    #1e293b 60%,
+    #1e293b 100%
+  );
+}
+
+/* Optimized dark mode transitions */
+.dark-mode-transition {
+  transition: 
+    background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .dark-mode-transition {
+    transition: none;
+  }
+}
 
 @keyframes sparkle {
   0% {

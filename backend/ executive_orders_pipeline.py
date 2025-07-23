@@ -95,7 +95,7 @@ class ExecutiveOrderProcessor:
                 'category': category,
                 'introduced_date': signing_date,
                 'last_action_date': publication_date or signing_date,
-                'session_id': '2025-trump-administration',
+                'session_id': '2025',
                 'session_name': 'Trump 2025 Administration',
                 'bill_type': 'executive_order',
                 'body': 'executive',
