@@ -131,43 +131,43 @@ def save_legislation_to_azure_sql(bills: List[Dict]) -> int:
                 try:
                     insert_sql = """
                     MERGE legislation AS target
-                    USING (SELECT ? AS bill_id) AS source
+                    USING (SELECT %s AS bill_id) AS source
                     ON target.bill_id = source.bill_id
                     WHEN MATCHED THEN
                         UPDATE SET
-                            bill_number = ?,
-                            title = ?,
-                            description = ?,
-                            status = ?,
-                            last_action = ?,
-                            last_action_date = ?,
-                            state_id = ?,
-                            state_name = ?,
-                            session_id = ?,
-                            session_name = ?,
-                            url = ?,
-                            state_link = ?,
-                            completed = ?,
-                            status_date = ?,
-                            progress = ?,
-                            subjects = ?,
-                            sponsors = ?,
-                            committee = ?,
-                            pending_committee_id = ?,
-                            history = ?,
-                            calendar = ?,
-                            texts = ?,
-                            votes = ?,
-                            amendments = ?,
-                            supplements = ?,
-                            change_hash = ?,
+                            bill_number = %s,
+                            title = %s,
+                            description = %s,
+                            status = %s,
+                            last_action = %s,
+                            last_action_date = %s,
+                            state_id = %s,
+                            state_name = %s,
+                            session_id = %s,
+                            session_name = %s,
+                            url = %s,
+                            state_link = %s,
+                            completed = %s,
+                            status_date = %s,
+                            progress = %s,
+                            subjects = %s,
+                            sponsors = %s,
+                            committee = %s,
+                            pending_committee_id = %s,
+                            history = %s,
+                            calendar = %s,
+                            texts = %s,
+                            votes = %s,
+                            amendments = %s,
+                            supplements = %s,
+                            change_hash = %s,
                             updated_at = GETDATE()
                     WHEN NOT MATCHED THEN
                         INSERT (bill_id, bill_number, title, description, status, last_action, last_action_date,
                                state_id, state_name, session_id, session_name, url, state_link, completed,
                                status_date, progress, subjects, sponsors, committee, pending_committee_id,
                                history, calendar, texts, votes, amendments, supplements, change_hash)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """
                     
                     params = [
@@ -1223,7 +1223,7 @@ class StateLegislationDatabaseManager:
             cursor = self.connection.cursor()
             
             # Check if bill already exists
-            check_query = "SELECT id FROM dbo.state_legislation WHERE bill_id = ?"
+            check_query = "SELECT id FROM dbo.state_legislation WHERE bill_id = %s"
             cursor.execute(check_query, bill_data.get('bill_id'))
             existing = cursor.fetchone()
             
@@ -1231,13 +1231,13 @@ class StateLegislationDatabaseManager:
                 # Update existing bill
                 update_query = """
                 UPDATE dbo.state_legislation SET
-                    bill_number = ?, title = ?, description = ?, summary = ?, state = ?, state_abbr = ?,
-                    status = ?, category = ?, introduced_date = ?, last_action_date = ?,
-                    session_id = ?, session_name = ?, bill_type = ?, body = ?,
-                    legiscan_url = ?, pdf_url = ?, ai_summary = ?, ai_executive_summary = ?,
-                    ai_talking_points = ?, ai_key_points = ?, ai_business_impact = ?,
-                    ai_potential_impact = ?, ai_version = ?, last_updated = ?, reviewed = ?
-                WHERE bill_id = ?
+                    bill_number = %s, title = %s, description = %s, summary = %s, state = %s, state_abbr = %s,
+                    status = %s, category = %s, introduced_date = %s, last_action_date = %s,
+                    session_id = %s, session_name = %s, bill_type = %s, body = %s,
+                    legiscan_url = %s, pdf_url = %s, ai_summary = %s, ai_executive_summary = %s,
+                    ai_talking_points = %s, ai_key_points = %s, ai_business_impact = %s,
+                    ai_potential_impact = %s, ai_version = %s, last_updated = %s, reviewed = %s
+                WHERE bill_id = %s
                 """
                 
                 # Around line 285, add reviewed to the values tuple:
@@ -1283,7 +1283,7 @@ class StateLegislationDatabaseManager:
                     legiscan_url, pdf_url, ai_summary, ai_executive_summary,
                     ai_talking_points, ai_key_points, ai_business_impact,
                     ai_potential_impact, ai_version, created_at, last_updated, reviewed
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 
                 values = (
@@ -1660,13 +1660,13 @@ except ImportError as e:
 #        
 #        if filters:
 #            if filters.get('search'):
-#                where_conditions.append("(title LIKE ? OR summary LIKE ? OR ai_summary LIKE ?)")
+#                where_conditions.append("(title LIKE %s OR summary LIKE %s OR ai_summary LIKE %s)")
 #                search_term = f"%{filters['search']}%"
 #                params.extend([search_term, search_term, search_term])
 #                print(f"🔍 DEBUG: Added search filter: {search_term}")
 #            
 #            if filters.get('category'):
-#                where_conditions.append("category = ?")
+#                where_conditions.append("category = %s")
 #                params.append(filters['category'])
 #                print(f"🔍 DEBUG: Added category filter: {filters['category']}")
 #        
@@ -2344,10 +2344,10 @@ async def update_state_legislation_review_status(
         
         # Try to find the record multiple ways
         search_attempts = [
-            ("Direct ID match", "SELECT id FROM dbo.state_legislation WHERE id = ?", id),
-            ("Direct bill_id match", "SELECT id FROM dbo.state_legislation WHERE bill_id = ?", id),
-            ("String ID match", "SELECT id FROM dbo.state_legislation WHERE CAST(id AS VARCHAR) = ?", str(id)),
-            ("String bill_id match", "SELECT id FROM dbo.state_legislation WHERE CAST(bill_id AS VARCHAR) = ?", str(id))
+            ("Direct ID match", "SELECT id FROM dbo.state_legislation WHERE id = %s", id),
+            ("Direct bill_id match", "SELECT id FROM dbo.state_legislation WHERE bill_id = %s", id),
+            ("String ID match", "SELECT id FROM dbo.state_legislation WHERE CAST(id AS VARCHAR) = %s", str(id)),
+            ("String bill_id match", "SELECT id FROM dbo.state_legislation WHERE CAST(bill_id AS VARCHAR) = %s", str(id))
         ]
         
         found_record_id = None
@@ -2371,7 +2371,7 @@ async def update_state_legislation_review_status(
             raise HTTPException(status_code=404, detail=f"State legislation not found for ID: {id}")
         
         # Update the record
-        update_query = "UPDATE dbo.state_legislation SET reviewed = ? WHERE id = ?"
+        update_query = "UPDATE dbo.state_legislation SET reviewed = %s WHERE id = %s"
         cursor.execute(update_query, (reviewed, found_record_id))
         rows_affected = cursor.rowcount
         
@@ -2426,10 +2426,10 @@ async def update_state_legislation_category(
         
         # Try to find the record multiple ways (similar to review status endpoint)
         search_attempts = [
-            ("Direct ID match", "SELECT id FROM dbo.state_legislation WHERE id = ?", id),
-            ("Direct bill_id match", "SELECT id FROM dbo.state_legislation WHERE bill_id = ?", id),
-            ("String ID match", "SELECT id FROM dbo.state_legislation WHERE CAST(id AS VARCHAR) = ?", str(id)),
-            ("String bill_id match", "SELECT id FROM dbo.state_legislation WHERE CAST(bill_id AS VARCHAR) = ?", str(id))
+            ("Direct ID match", "SELECT id FROM dbo.state_legislation WHERE id = %s", id),
+            ("Direct bill_id match", "SELECT id FROM dbo.state_legislation WHERE bill_id = %s", id),
+            ("String ID match", "SELECT id FROM dbo.state_legislation WHERE CAST(id AS VARCHAR) = %s", str(id)),
+            ("String bill_id match", "SELECT id FROM dbo.state_legislation WHERE CAST(bill_id AS VARCHAR) = %s", str(id))
         ]
         
         found_record_id = None
@@ -2453,7 +2453,7 @@ async def update_state_legislation_category(
             raise HTTPException(status_code=404, detail=f"State legislation not found for ID: {id}")
         
         # Update the record
-        update_query = "UPDATE dbo.state_legislation SET category = ? WHERE id = ?"
+        update_query = "UPDATE dbo.state_legislation SET category = %s WHERE id = %s"
         cursor.execute(update_query, (category, found_record_id))
         rows_affected = cursor.rowcount
         
@@ -3074,7 +3074,7 @@ def remove_highlight_direct(user_id: str, order_id: str, order_type: str = None)
 #               state, signing_date, html_url, pdf_url, legiscan_url, 
 #               highlighted_at, notes, priority_level
 #        FROM user_highlights 
-#        WHERE user_id = ? AND is_archived = 0
+#        WHERE user_id = %s AND is_archived = 0
 #        ORDER BY highlighted_at DESC
 #        """
 #        
@@ -3172,17 +3172,17 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
             if filters.get('state'):
                 # Handle both state abbreviations and full names
                 state_value = filters['state']
-                where_conditions.append("(state = ? OR state_abbr = ? OR state LIKE ?)")
+                where_conditions.append("(state = %s OR state_abbr = %s OR state LIKE %s)")
                 params.extend([state_value, state_value, f"%{state_value}%"])
                 print(f"🔍 DEBUG: Added state filter: {state_value}")
             
             if filters.get('category'):
-                where_conditions.append("category = ?")
+                where_conditions.append("category = %s")
                 params.append(filters['category'])
                 print(f"🔍 DEBUG: Added category filter: {filters['category']}")
             
             if filters.get('search'):
-                where_conditions.append("(title LIKE ? OR description LIKE ? OR ai_summary LIKE ?)")
+                where_conditions.append("(title LIKE %s OR description LIKE %s OR ai_summary LIKE %s)")
                 search_term = f"%{filters['search']}%"
                 params.extend([search_term, search_term, search_term])
                 print(f"🔍 DEBUG: Added search filter: {search_term}")
@@ -6418,9 +6418,9 @@ async def debug_state_legislation(
         
         # Try different state queries
         queries = [
-            ("exact_state", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state = ?"),
-            ("exact_abbr", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state_abbr = ?"),
-            ("ilike_state", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state LIKE ?"),
+            ("exact_state", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state = %s"),
+            ("exact_abbr", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state_abbr = %s"),
+            ("ilike_state", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state LIKE %s"),
         ]
         
         results = {}
