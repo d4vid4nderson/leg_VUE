@@ -2795,15 +2795,43 @@ def get_azure_sql_connection():
     """Get database connection using new multi-database support"""
     # This returns the actual connection object for backward compatibility
     # TODO: Update all calling code to use context managers properly
-    from database_config import get_db_connection
+    from database_config import get_database_config
+    import pyodbc
+    import os
     
-    # Create a connection using the context manager and return it
-    # Note: This is not ideal as it bypasses the context manager's cleanup
-    # but maintains backward compatibility
-    conn_context = get_db_connection()
-    conn = conn_context.__enter__()
-    # Store the context manager so we can properly close it later if needed
-    conn._context_manager = conn_context
+    config = get_database_config()
+    
+    # Azure SQL connection using pyodbc
+    is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
+    
+    if is_container:
+        # Use MSI authentication in production
+        connection_string = (
+            "Driver={ODBC Driver 18 for SQL Server};"
+            f"Server=tcp:{config['server']},1433;"
+            f"Database={config['database']};"
+            "Authentication=ActiveDirectoryMSI;"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+            "Connection Timeout=30;"
+        )
+    else:
+        # Use SQL authentication for local development
+        if not config.get('username') or not config.get('password'):
+            raise ValueError("SQL credentials required for local development")
+        connection_string = (
+            "Driver={ODBC Driver 18 for SQL Server};"
+            f"Server=tcp:{config['server']},1433;"
+            f"Database={config['database']};"
+            f"UID={config['username']};"
+            f"PWD={config['password']};"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+            "Connection Timeout=30;"
+        )
+    
+    conn = pyodbc.connect(connection_string, timeout=30)
+    conn.autocommit = False
     return conn
 
 def create_highlights_table():
