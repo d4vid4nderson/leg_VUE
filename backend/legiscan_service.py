@@ -274,6 +274,7 @@ class EnhancedLegiScanClient:
     async def check_active_sessions(self, states: List[str]) -> Dict:
         """Check for active sessions across multiple states"""
         try:
+            print(f"🔥 DEBUG: check_active_sessions called with states: {states}")
             active_sessions = {}
             session_details = {}
             
@@ -306,6 +307,10 @@ class EnhancedLegiScanClient:
                         year = session_info.get('year_start', 0)
                         current_year = datetime.now().year
                         
+                        # Debug logging for Texas sessions
+                        if state == 'TX':
+                            print(f"🤠 Texas session found: {session_name} (year: {year})")
+                        
                         # Consider a session active if:
                         # 1. It's from current year or recent years
                         # 2. It doesn't have an explicit end marker
@@ -326,6 +331,11 @@ class EnhancedLegiScanClient:
                                 (is_special and str(current_year) in session_name)
                             )
                         )
+                        
+                        # Special handling for Texas 89th Legislature sessions
+                        if state == 'TX' and '89th' in session_name:
+                            is_likely_active = True
+                            print(f"🤠 Including Texas 89th Legislature session: {session_name}")
                         
                         session_entry = {
                             'session_id': session_key,
@@ -352,6 +362,50 @@ class EnhancedLegiScanClient:
                     print(f"✅ Found {len(state_active_sessions)} likely active sessions in {state}")
                 else:
                     print(f"📭 No active sessions detected in {state}")
+                
+                print(f"🚨 About to check manual override for state: {state}")
+                # Manual override for Texas 89th Legislature 1st Special Session
+                if state == 'TX':
+                    print(f"🤠 Processing Texas manual override - current active sessions: {len(state_active_sessions)}")
+                    # Check if 89th Legislature 1st Special Session is already included
+                    has_89th_special = any(
+                        '89th' in s.get('session_name', '') and 
+                        'special' in s.get('session_name', '').lower() 
+                        for s in state_active_sessions
+                    )
+                    
+                    print(f"🤠 Has 89th special session already: {has_89th_special}")
+                    
+                    if not has_89th_special:
+                        print("🤠 Manually adding Texas 89th Legislature 1st Special Session")
+                        special_session = {
+                            'session_id': 'tx_89th_special_1',
+                            'session_name': '89th Legislature - 1st Special Session',
+                            'year_start': 2025,
+                            'year_end': 2025,
+                            'session_start_date': '2025-01-01',
+                            'session_end_date': '',
+                            'sine_die': '',
+                            'is_likely_active': True,
+                            'is_active': True,
+                            'state': 'TX',
+                            'session_info': {
+                                'session_name': '89th Legislature - 1st Special Session',
+                                'year_start': 2025,
+                                'special': 1
+                            }
+                        }
+                        
+                        if state not in active_sessions:
+                            active_sessions[state] = []
+                        active_sessions[state].append(special_session)
+                        state_active_sessions.append(special_session)  # Also add to local list for count
+                        
+                        if state not in session_details:
+                            session_details[state] = []
+                        session_details[state].append(special_session)
+                        
+                        print(f"🤠 Added special session - new total: {len(active_sessions[state])}")
             
             return {
                 'success': True,
