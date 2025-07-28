@@ -545,13 +545,17 @@ class StateLegislationDatabaseManager:
         try:
             cursor = self.connection.cursor()
             
+            # Detect database type from connection
+            is_postgresql = hasattr(self.connection, 'info')  # PostgreSQL connections have an 'info' attribute
+            param_placeholder = '%s' if is_postgresql else '?'
+            
             # Base query
-            query = "SELECT bill_id, last_action_date FROM state_legislation WHERE (state = %s OR state_abbr = %s)"
+            query = f"SELECT bill_id, last_action_date FROM state_legislation WHERE (state = {param_placeholder} OR state_abbr = {param_placeholder})"
             params = [state, state]
             
             # Add session filter if provided
             if session_id:
-                query += " AND session_id = %s"
+                query += f" AND session_id = {param_placeholder}"
                 params.append(session_id)
             
             # Add year filter if provided
@@ -582,15 +586,19 @@ class StateLegislationDatabaseManager:
         try:
             cursor = self.connection.cursor()
             
-            query = """
+            # Detect database type from connection
+            is_postgresql = hasattr(self.connection, 'info')  # PostgreSQL connections have an 'info' attribute
+            param_placeholder = '%s' if is_postgresql else '?'
+            
+            query = f"""
             SELECT bill_id, last_action_date, status, last_updated 
             FROM state_legislation 
-            WHERE (state = %s OR state_abbr = %s)
+            WHERE (state = {param_placeholder} OR state_abbr = {param_placeholder})
             """
             params = [state, state]
             
             if session_id:
-                query += " AND session_id = %s"
+                query += f" AND session_id = {param_placeholder}"
                 params.append(session_id)
             
             cursor.execute(query, params)
@@ -619,22 +627,29 @@ class StateLegislationDatabaseManager:
         try:
             cursor = self.connection.cursor()
             
+            # Detect database type from connection
+            is_postgresql = hasattr(self.connection, 'info')  # PostgreSQL connections have an 'info' attribute
+            param_placeholder = '%s' if is_postgresql else '?'
+            
             # Check if bill already exists
-            check_query = "SELECT id FROM state_legislation WHERE bill_id = %s"
+            check_query = f"SELECT id FROM state_legislation WHERE bill_id = {param_placeholder}"
             cursor.execute(check_query, (bill_data.get('bill_id'),))
             existing = cursor.fetchone()
             
             if existing:
                 # Update existing bill
-                update_query = """
+                placeholders = ', '.join([f"{field} = {param_placeholder}" for field in [
+                    'bill_number', 'title', 'description', 'summary', 'state', 'state_abbr',
+                    'status', 'category', 'introduced_date', 'last_action_date',
+                    'session_id', 'session_name', 'bill_type', 'body',
+                    'legiscan_url', 'pdf_url', 'ai_summary', 'ai_executive_summary',
+                    'ai_talking_points', 'ai_key_points', 'ai_business_impact',
+                    'ai_potential_impact', 'ai_version', 'last_updated', 'reviewed'
+                ]])
+                update_query = f"""
                 UPDATE state_legislation SET
-                    bill_number = %s, title = %s, description = %s, summary = %s, state = %s, state_abbr = %s,
-                    status = %s, category = %s, introduced_date = %s, last_action_date = %s,
-                    session_id = %s, session_name = %s, bill_type = %s, body = %s,
-                    legiscan_url = %s, pdf_url = %s, ai_summary = %s, ai_executive_summary = %s,
-                    ai_talking_points = %s, ai_key_points = %s, ai_business_impact = %s,
-                    ai_potential_impact = %s, ai_version = %s, last_updated = %s, reviewed = %s
-                WHERE bill_id = %s
+                    {placeholders}
+                WHERE bill_id = {param_placeholder}
                 """
                 
                 values = (
@@ -671,15 +686,18 @@ class StateLegislationDatabaseManager:
                 
             else:
                 # Insert new bill
-                insert_query = """
-                INSERT INTO state_legislation (
-                    bill_id, bill_number, title, description, summary, state, state_abbr,
-                    status, category, introduced_date, last_action_date,
-                    session_id, session_name, bill_type, body,
-                    legiscan_url, pdf_url, ai_summary, ai_executive_summary,
-                    ai_talking_points, ai_key_points, ai_business_impact,
-                    ai_potential_impact, ai_version, created_at, last_updated, reviewed
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                fields = [
+                    'bill_id', 'bill_number', 'title', 'description', 'summary', 'state', 'state_abbr',
+                    'status', 'category', 'introduced_date', 'last_action_date',
+                    'session_id', 'session_name', 'bill_type', 'body',
+                    'legiscan_url', 'pdf_url', 'ai_summary', 'ai_executive_summary',
+                    'ai_talking_points', 'ai_key_points', 'ai_business_impact',
+                    'ai_potential_impact', 'ai_version', 'created_at', 'last_updated', 'reviewed'
+                ]
+                placeholders = ', '.join([param_placeholder] * len(fields))
+                insert_query = f"""
+                INSERT INTO state_legislation ({', '.join(fields)})
+                VALUES ({placeholders})
                 """
                 
                 values = (
