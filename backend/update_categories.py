@@ -43,7 +43,7 @@ def categorize_title(title):
     elif any(term in title_lower for term in engineering_terms):
         return 'engineering'
     else:
-        return 'civic'
+        return 'not-applicable'
 
 def update_categories():
     """Update categories for all executive orders"""
@@ -58,7 +58,7 @@ def update_categories():
             print(f"🔍 Found {len(orders)} executive orders to recategorize")
             
             updates = []
-            category_counts = {'healthcare': 0, 'education': 0, 'engineering': 0, 'civic': 0}
+            category_counts = {'healthcare': 0, 'education': 0, 'engineering': 0, 'not-applicable': 0}
             
             for order_id, title, old_category in orders:
                 new_category = categorize_title(title)

@@ -13,15 +13,22 @@ def get_database_config():
     is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
     
     if environment == 'development' and not is_container:
-        # Development - Use PostgreSQL
+        # Development - Also use Azure SQL
+        server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
+        database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
+        username = os.getenv('AZURE_SQL_USERNAME')
+        password = os.getenv('AZURE_SQL_PASSWORD')
+        
+        if not username or not password:
+            raise ValueError("❌ SQL credentials required for Azure SQL. Set AZURE_SQL_USERNAME and AZURE_SQL_PASSWORD")
+        
         return {
-            'type': 'postgresql',
-            'host': 'db',
-            'port': 5432,
-            'database': 'political_vue',
-            'user': 'postgres',
-            'password': 'secure_password',
-            'description': 'PostgreSQL (Development)'
+            'type': 'azure_sql',
+            'server': server,
+            'database': database,
+            'username': username,
+            'password': password,
+            'description': 'Azure SQL Server (Development)'
         }
     else:
         # Production - Use Azure SQL with ODBC

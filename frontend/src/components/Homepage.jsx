@@ -184,10 +184,11 @@ const Homepage = () => {
                         <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-8"></div>
                         <Calendar size={12} className="text-green-600 dark:text-green-400" />
                         <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-12"></div>
-                        <div className="h-3 bg-purple-400 dark:bg-purple-500 rounded w-4"></div>
+
                       </div>
                       
                       <div className="space-y-2">
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
                         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
                         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-3/4"></div>
                       </div>
@@ -212,16 +213,10 @@ const Homepage = () => {
                         <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-12"></div>
                       </div>
                       
-                      <div className="flex items-center w-full mb-3">
-                        <div className="w-3 h-3 bg-cyan-600 rounded-full"></div>
-                        <div className="flex-1 h-1 bg-gradient-to-r from-cyan-600 to-cyan-500 mx-1"></div>
-                        <div className="w-3 h-3 bg-cyan-500 rounded-full"></div>
-                        <div className="flex-1 h-1 bg-gradient-to-r from-cyan-500 to-cyan-400 mx-1"></div>
-                        <div className="w-3 h-3 bg-cyan-400 rounded-full"></div>
-                        <div className="flex-1 h-1 bg-gradient-to-r from-cyan-400 to-teal-400 mx-1"></div>
-                        <div className="w-3 h-3 bg-teal-400 rounded-full"></div>
-                        <div className="flex-1 h-1 bg-gradient-to-r from-teal-400 to-teal-500 mx-1"></div>
-                        <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                      <div className="w-full mb-3">
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div className="h-2 rounded-full bg-gradient-to-r from-cyan-600 to-teal-500" style={{ width: '75%' }}></div>
+                        </div>
                       </div>
                       
                       <div className="space-y-2">

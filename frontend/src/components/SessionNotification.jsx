@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, X, Calendar, MapPin, ExternalLink, RotateCw, Clock, ChevronUp, ChevronDown } from 'lucide-react';
+import { AlertCircle, X, Calendar, MapPin, ExternalLink, RotateCw, Clock, ChevronUp, ChevronDown, CalendarDays } from 'lucide-react';
 import API_URL from '../config/api';
 
 const SessionNotification = ({ 
@@ -7,7 +7,9 @@ const SessionNotification = ({
     stateAbbr, 
     visible = true, 
     onRefreshNeeded = null,
-    hasUpdates = false 
+    hasUpdates = false,
+    onSessionRefresh = null,
+    sessionRefreshing = false
 }) => {
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -54,6 +56,11 @@ const SessionNotification = ({
     const endDate = session.session_end_date ? new Date(session.session_end_date) : null;
     const sineDate = session.sine_die ? new Date(session.sine_die) : null;
     
+    // Check if session has is_active flag from backend
+    if (session.is_active !== undefined) {
+      return session.is_active;
+    }
+    
     // If we have specific dates, use them
     if (startDate && !isNaN(startDate.getTime())) {
       if (endDate && !isNaN(endDate.getTime())) {
@@ -64,6 +71,14 @@ const SessionNotification = ({
         // Only start date available, assume ongoing if started
         return now >= startDate;
       }
+    }
+    
+    // Special handling for Texas special sessions (often don't have dates)
+    if (session.state === 'TX' && session.session_name && session.session_name.toLowerCase().includes('special')) {
+      // Check if it's a recent special session (within current year)
+      const currentYear = now.getFullYear();
+      return session.year_start === currentYear || 
+             (session.year_start === currentYear - 1 && now.getMonth() < 6); // Allow previous year if in first half of current year
     }
     
     // Fallback: assume active if it's in the current year
@@ -89,7 +104,7 @@ const SessionNotification = ({
           },
           body: JSON.stringify({
             states: [stateAbbr],
-            include_all_sessions: false
+            include_all_sessions: true  // Changed to true to get all sessions including special
           })
         });
         
@@ -99,6 +114,28 @@ const SessionNotification = ({
         
         const data = await response.json();
         console.log('📊 Session check response:', data);
+        
+        // Debug: Log Texas sessions specifically
+        if (stateAbbr === 'TX') {
+          console.log('🤠 Full Texas data response:', data);
+          if (data.active_sessions && data.active_sessions.TX) {
+            console.log('Texas sessions found:', data.active_sessions.TX);
+            console.log('Number of TX sessions:', data.active_sessions.TX.length);
+            data.active_sessions.TX.forEach((session, idx) => {
+              console.log(`Session ${idx + 1}:`, {
+                name: session.session_name,
+                id: session.session_id,
+                year: session.year_start,
+                is_active: session.is_active
+              });
+            });
+          }
+          
+          // Check if there's other session data in the response
+          if (data.all_sessions && data.all_sessions.TX) {
+            console.log('🎯 All Texas sessions (not just active):', data.all_sessions.TX);
+          }
+        }
         
         if (data.success) {
           setSessionData(data);
@@ -168,6 +205,9 @@ const SessionNotification = ({
 
   const activeSessions = sessionData.active_sessions[stateAbbr] || [];
   
+  // Debug log to see what sessions we have
+  console.log(`📊 ${stateAbbr} active sessions in notification:`, activeSessions);
+  
   if (activeSessions.length === 0) {
     return null;
   }
@@ -193,7 +233,7 @@ const SessionNotification = ({
           </div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
-              Active Legislative Session
+              Active Legislative Session{activeSessions.length > 1 ? 's' : ''}
             </h3>
             <div className="flex items-center gap-1" title={hasActiveSession ? "Legislative session is currently in progress" : "Legislative session is scheduled/planned"}>
               <div className={`w-2 h-2 rounded-full ${hasActiveSession ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
@@ -201,14 +241,20 @@ const SessionNotification = ({
                 {hasActiveSession ? 'IN SESSION' : 'SCHEDULED'}
               </span>
             </div>
+            {activeSessions.length > 1 && (
+              <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                ({activeSessions.length} sessions)
+              </span>
+            )}
           </div>
         </div>
         
-        {/* Right expand button */}
-        <div className="flex items-center justify-center flex-shrink-0">
+        {/* Right buttons - Expand/Collapse */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Expand/Collapse Button */}
           <button
             onClick={handleToggleExpanded}
-            className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors"
+            className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors p-1"
             title={expanded ? "Collapse details" : "Expand details"}
           >
             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -250,29 +296,30 @@ const SessionNotification = ({
                           <span className="font-medium">Session Year:</span>
                           <span>
                             {session.year_start}
-                            {session.year_end && session.year_end !== session.year_start && 
-                              ` - ${session.year_end}`
+                            {session.year_end && session.year_end !== session.year_start && session.year_end > 0 
+                              ? ` - ${session.year_end}`
+                              : ''
                             }
                           </span>
                         </div>
                       )}
                       
                       {/* Specific Session Dates */}
-                      {(session.session_start_date || session.session_end_date) && (
+                      {(session.session_start_date || session.session_end_date) ? (
                         <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                           <Calendar size={10} />
                           <span className="font-medium">Session Period:</span>
                           <span>
                             {formatDate(session.session_start_date) || 'Start TBD'}
-                            {session.session_start_date && session.session_end_date && ' - '}
-                            {session.session_end_date && formatDate(session.session_end_date)}
-                            {session.session_start_date && !session.session_end_date && !session.sine_die && ' (ongoing)'}
+                            {session.session_start_date && session.session_end_date ? ' - ' : ''}
+                            {session.session_end_date ? formatDate(session.session_end_date) : ''}
+                            {session.session_start_date && !session.session_end_date && !session.sine_die ? ' (ongoing)' : ''}
                           </span>
                         </div>
-                      )}
+                      ) : null}
                       
                       {/* Sine Die Date (adjournment) */}
-                      {session.sine_die && formatDate(session.sine_die) && (
+                      {session.sine_die && formatDate(session.sine_die) ? (
                         <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                           <Calendar size={10} />
                           <span className="font-medium">Adjournment:</span>
@@ -286,11 +333,12 @@ const SessionNotification = ({
                             })()}
                           </span>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 ))}
                 
+                {/* End of session details - ensure no stray content below */}
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
                   <p>
                     📋 Legislative activity is currently ongoing. 

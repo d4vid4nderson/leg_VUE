@@ -53,7 +53,24 @@ const SessionFilter = ({
       return 'All Sessions';
     } else if (selectedSessions.length === 1) {
       const session = uniqueSessions.find(s => s.session_id === selectedSessions[0]);
-      return session ? session.session_name : 'Session Filter';
+      if (session) {
+        // Shorten long session names for button display
+        let shortName = session.session_name;
+        
+        // Extract year and session type for shorter display
+        const yearMatch = shortName.match(/(\d{2,4})/);
+        const year = yearMatch ? yearMatch[1] : '';
+        
+        if (shortName.toLowerCase().includes('special')) {
+          return year ? `${year} Special` : 'Special Session';
+        } else if (shortName.toLowerCase().includes('regular')) {
+          return year ? `${year} Regular` : 'Regular Session';
+        } else {
+          // Fallback: truncate if still too long
+          return shortName.length > 20 ? shortName.substring(0, 17) + '...' : shortName;
+        }
+      }
+      return 'Session Filter';
     } else {
       return `${selectedSessions.length} Sessions`;
     }
@@ -76,7 +93,7 @@ const SessionFilter = ({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled || loading}
-        className={`flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-80 min-h-[44px] ${
+        className={`flex items-center px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-auto h-[42px] ${
           disabled || loading 
             ? 'opacity-50 cursor-not-allowed' 
             : 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
@@ -84,11 +101,11 @@ const SessionFilter = ({
       >
         <div className="flex items-center gap-2">
           <CalendarDays size={16} className={getButtonIconColor()} />
-          <span className="truncate">{getButtonLabel()}</span>
+          <span className="whitespace-nowrap">{getButtonLabel()}</span>
         </div>
         <ChevronDown 
           size={16} 
-          className={`ml-2 text-gray-500 dark:text-gray-300 transition-transform duration-200 ${
+          className={`ml-4 text-gray-500 dark:text-gray-300 transition-transform duration-200 ${
             isOpen ? 'rotate-180' : ''
           }`} 
         />

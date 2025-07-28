@@ -1,14 +1,11 @@
 // StatePage.jsx - Updated with fetch button and sliding time period buttons
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     ChevronDown,
     FileText,
     Star,
     ExternalLink,
-    GraduationCap,
-    HeartPulse,
-    Wrench,
     Check,
     AlertTriangle,
     RotateCw as RefreshIcon,
@@ -21,37 +18,29 @@ import {
     CalendarDays,
     Hash,
     X,
-    Download, // Added for fetch button
-    MapPin,
-    Flag,
-    Bell,
     Clock,
     LayoutGrid,
-    Sparkles
+    Users,
+    Vote,
+    Trophy,
+    FileCheck
 } from 'lucide-react';
 
 import { FILTERS, SUPPORTED_STATES } from '../utils/constants';
 import { stripHtmlTags } from '../utils/helpers';
 import { calculateAllCounts } from '../utils/filterUtils';
 import useReviewStatus from '../hooks/useReviewStatus';
-import ShimmerLoader from '../components/ShimmerLoader';
 import BillCardSkeleton from '../components/BillCardSkeleton';
-import StateOutlineBackground from '../components/StateOutlineBackground';
+import BillProgressBar from '../components/BillProgressBar';
 import SessionNotification from '../components/SessionNotification';
 import SessionFilter from '../components/SessionFilter';
-import HighlightsFilter from '../components/HighlightsFilter';
 import StatusFilter from '../components/StatusFilter';
-import ManualRefresh from '../components/ManualRefresh';
 import API_URL from '../config/api';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 import { 
     getCurrentStatus, 
     mapLegiScanStatus, 
-    getStatusColorClasses, 
-    getStatusIcon, 
-    getStatusDescription,
-    debugBillStatus,
-    validateStatusFields 
+    getStatusDescription
 } from '../utils/statusUtils';
 
 // Pagination configuration
@@ -62,41 +51,87 @@ const STATUS_FILTERS = [
     {
         key: 'introduced',
         label: 'Introduced',
-        icon: Check,
+        icon: FileText,
         type: 'bill_status',
-        description: 'Bills that have been introduced'
+        description: 'Bills that have been introduced to the legislature'
     },
     {
-        key: 'engrossed',
-        label: 'Engrossed',
-        icon: Check,
+        key: 'committee',
+        label: 'Committee',
+        icon: Users,
         type: 'bill_status',
-        description: 'Bills that have passed one chamber'
+        description: 'Bills in committee review'
     },
     {
-        key: 'enrolled',
-        label: 'Enrolled',
-        icon: Check,
+        key: 'floor',
+        label: 'Floor Vote',
+        icon: Vote,
         type: 'bill_status',
-        description: 'Bills that have passed both chambers'
+        description: 'Bills in floor debate and voting'
     },
     {
         key: 'passed',
         label: 'Passed',
-        icon: Flag,
+        icon: Trophy,
         type: 'bill_status',
-        description: 'Bills that have been passed'
+        description: 'Bills that have passed one or both chambers'
     },
     {
-        key: 'final',
-        label: 'Final',
-        icon: Flag,
+        key: 'enacted',
+        label: 'Enacted',
+        icon: FileCheck,
         type: 'bill_status',
-        description: 'Bills at final stage (Passed/Enacted/Vetoed/Failed)'
+        description: 'Bills that have been signed into law'
     }
 ];
 
 // Helper Functions
+// Get status stage matching progress bar logic
+const getStatusStage = (billStatus) => {
+    if (!billStatus) return 'introduced';
+    
+    const statusLower = billStatus.toLowerCase();
+    
+    // Enacted/Signed into law
+    if (statusLower.includes('enacted') || 
+        statusLower.includes('signed') || 
+        statusLower.includes('law') ||
+        statusLower.includes('approved by governor') ||
+        statusLower.includes('chaptered')) {
+        return 'enacted';
+    }
+    
+    // Passed one chamber
+    if (statusLower.includes('passed') || 
+        statusLower.includes('enrolled') ||
+        statusLower.includes('concurred') ||
+        statusLower.includes('sent to governor')) {
+        return 'passed';
+    }
+    
+    // Floor action/voting
+    if (statusLower.includes('floor') || 
+        statusLower.includes('vote') || 
+        statusLower.includes('reading') ||
+        statusLower.includes('debate') ||
+        statusLower.includes('amended') ||
+        statusLower.includes('calendar')) {
+        return 'floor';
+    }
+    
+    // Committee review
+    if (statusLower.includes('committee') || 
+        statusLower.includes('referred') ||
+        statusLower.includes('hearing') ||
+        statusLower.includes('markup') ||
+        statusLower.includes('reported')) {
+        return 'committee';
+    }
+    
+    // Default to introduced
+    return 'introduced';
+};
+
 const cleanCategory = (category) => {
     if (!category || typeof category !== 'string') return 'not-applicable';
     const trimmedCategory = category.trim().toLowerCase();
@@ -156,7 +191,7 @@ const cleanBillTitle = (title) => {
 };
 
 // Custom Category Tag Component - Editable version
-const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, disabled }) => {
+const EditableCategoryTag = ({ category, itemId, onCategoryChange, disabled }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState(cleanCategory(category));
     const dropdownRef = useRef(null);
@@ -254,260 +289,7 @@ const EditableCategoryTag = ({ category, itemId, itemType, onCategoryChange, dis
 };
 
 
-// Horizontal Progress Indicator Component for Bill Status
-const StatusProgressBar = ({ status, onStageClick }) => {
-    const mappedStatus = mapLegiScanStatus(status);
-    
-    // Define the legislative process stages in order - dynamic last stage
-    const getStatusStages = (currentStatus) => {
-        const baseStages = [
-            { key: 'introduced', label: 'Introduced', shortLabel: 'Intro' },
-            { key: 'engrossed', label: 'Engrossed', shortLabel: 'Eng' },
-            { key: 'enrolled', label: 'Enrolled', shortLabel: 'Enr' },
-            { key: 'passed', label: 'Passed', shortLabel: 'Pass' }
-        ];
-        
-        // Dynamic final stage based on actual LegiScan status
-        if (currentStatus === 'Signed by Governor' || currentStatus === 'Effective') {
-            baseStages.push({ key: 'enacted', label: 'Enacted', shortLabel: 'Law' });
-        } else if (currentStatus === 'Vetoed') {
-            baseStages.push({ key: 'vetoed', label: 'Vetoed', shortLabel: 'Veto' });
-        } else if (currentStatus === 'Failed/Dead' || currentStatus === 'Indefinitely Postponed') {
-            baseStages.push({ key: 'failed', label: 'Failed', shortLabel: 'Failed' });
-        } else {
-            // Default final stage
-            baseStages.push({ key: 'final', label: 'Final', shortLabel: 'Final' });
-        }
-        
-        return baseStages;
-    };
-    
-    const statusStages = getStatusStages(mappedStatus);
-    
-    // Map current status to stage - based on actual LegiScan statuses
-    const getStageIndex = (currentStatus) => {
-        const mappedStatus = mapLegiScanStatus(currentStatus);
-        
-        // Map LegiScan statuses to progress bar stages
-        if (mappedStatus === 'Introduced') return 0;
-        if (mappedStatus === 'Engrossed') return 1; // Passed one chamber
-        if (mappedStatus === 'Enrolled') return 2; // Passed both chambers
-        if (mappedStatus === 'Passed') return 3; // Final passage
-        if (mappedStatus === 'Signed by Governor' || mappedStatus === 'Effective') return 4; // Enacted into law
-        if (mappedStatus === 'Vetoed') return 4; // Vetoed at final stage
-        if (mappedStatus === 'Failed/Dead' || mappedStatus === 'Indefinitely Postponed') return 4; // Failed - show at end
-        
-        // Default to introduced for unknown statuses
-        return 0;
-    };
-    
-    const currentStageIndex = getStageIndex(status);
-    const isFailed = mappedStatus === 'Failed/Dead' || mappedStatus === 'Indefinitely Postponed';
-    const isVetoed = mappedStatus === 'Vetoed';
-    
-    const handleStageClick = (stage, index, e) => {
-        e.stopPropagation();
-        if (onStageClick) {
-            onStageClick(stage, index, e);
-        }
-    };
-    
-    // Calculate circle color based on dynamic progression
-    const getCircleColor = (index) => {
-        const progress = index / (statusStages.length - 1);
-        
-        if (isFailed || isVetoed) {
-            // Blue to red gradient for failed/vetoed bills
-            const r = Math.round(59 + (239 - 59) * progress);   // 59 (blue) to 239 (red)
-            const g = Math.round(130 + (68 - 130) * progress);  // 130 (blue) to 68 (red)
-            const b = Math.round(246 + (68 - 246) * progress);  // 246 (blue) to 68 (red)
-            return `rgb(${r}, ${g}, ${b})`;
-        } else {
-            // Blue progression for successful bills
-            const r = Math.round(59 + (29 - 59) * progress);    // 59 (light blue) to 29 (dark blue)
-            const g = Math.round(130 + (78 - 130) * progress);  // 130 (light blue) to 78 (dark blue)
-            const b = Math.round(246 + (216 - 246) * progress); // 246 (light blue) to 216 (dark blue)
-            return `rgb(${r}, ${g}, ${b})`;
-        }
-    };
 
-    // Get dynamic icon for each stage
-    const getStageIcon = (stage, index) => {
-        if (index < currentStageIndex) {
-            // Completed stages - only show checkmarks if bill actually succeeded
-            if (isFailed || isVetoed) {
-                // For failed/vetoed bills, show X's for earlier stages (they didn't truly succeed)
-                return <X size={12} className="text-white" strokeWidth={3} />;
-            } else {
-                // For successful bills, show checkmarks for completed stages
-                return <Check size={12} className="text-white" strokeWidth={3} />;
-            }
-        } else if (index === currentStageIndex) {
-            // Current stage depends on status
-            if (isFailed || isVetoed) {
-                return <X size={12} className="text-white" strokeWidth={3} />;
-            } else if (index === statusStages.length - 1 && (mappedStatus === 'Signed by Governor' || mappedStatus === 'Effective')) {
-                // Only show flag for truly enacted laws
-                return <Flag size={12} className="text-white" strokeWidth={3} />;
-            } else {
-                // All other current stages get checkmark (including "Passed", "Introduced", etc.)
-                return <Check size={12} className="text-white" strokeWidth={3} />;
-            }
-        } else {
-            // Future stages are empty
-            return null;
-        }
-    };
-    
-    return (
-        <div className="w-full px-0 py-2">
-            <div className="relative w-full">
-                {/* Progress line background - positioned to align with circle centers */}
-                <div className="absolute top-3 h-2 bg-gray-300" style={{ left: '16px', right: '16px' }}></div>
-                
-                {/* Progress line foreground - positioned to align with circle centers */}
-                <div 
-                    className="absolute top-3 h-2 transition-all duration-300"
-                    style={{
-                        left: '16px',
-                        right: currentStageIndex === statusStages.length - 1 ? '16px' : 'auto',
-                        width: currentStageIndex === statusStages.length - 1 ? 'auto' : `${((currentStageIndex) / (statusStages.length - 1)) * (100 - 32)}%`,
-                        background: isFailed || isVetoed
-                            ? 'linear-gradient(to right, #3b82f6, #ef4444)' // Blue to red for failed/vetoed
-                            : 'linear-gradient(to right, #3b82f6, #1d4ed8)' // Blue progression for successful
-                    }}
-                ></div>
-                
-                {/* Circles positioned across full width */}
-                <div className="flex w-full relative" style={{ justifyContent: 'space-between' }}>
-                    {statusStages.map((stage, index) => (
-                        <div key={stage.key} className="flex flex-col items-center relative">
-                            <div
-                                onClick={(e) => handleStageClick(stage, index, e)}
-                                className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 relative z-10 cursor-pointer border-2"
-                                style={{
-                                    backgroundColor: index <= currentStageIndex ? getCircleColor(index) : 'white',
-                                    borderColor: index <= currentStageIndex ? getCircleColor(index) : '#d1d5db'
-                                }}
-                                title={getStatusDescription(stage.key)}
-                            >
-                                {getStageIcon(stage, index)}
-                            </div>
-                            
-                            {/* Label under circle */}
-                            <span 
-                                className="text-xs font-medium mt-1 text-center whitespace-nowrap"
-                                style={{
-                                    color: index <= currentStageIndex ? getCircleColor(index) : '#6b7280'
-                                }}
-                            >
-                                {stage.shortLabel}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// Fetch Button Component with sliding time period buttons
-const FetchButtonGroup = ({ onFetch, isLoading }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
-    const [selectedPeriod, setSelectedPeriod] = useState(null);
-    const fetchDropdownRef = useRef(null);
-    
-    const handleFetchClick = () => {
-        setIsExpanded(!isExpanded);
-    };
-    
-    const handlePeriodClick = (period) => {
-        setSelectedPeriod(period);
-        onFetch(period);
-        setIsExpanded(false);
-        
-        // Reset selection after a moment
-        setTimeout(() => setSelectedPeriod(null), 2000);
-    };
-    
-    // Close dropdown when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (fetchDropdownRef.current && !fetchDropdownRef.current.contains(event.target)) {
-                setIsExpanded(false);
-            }
-        };
-        
-        if (isExpanded) {
-            document.addEventListener('mousedown', handleClickOutside);
-            return () => document.removeEventListener('mousedown', handleClickOutside);
-        }
-    }, [isExpanded]);
-    
-    return (
-        <div className="relative" ref={fetchDropdownRef}>
-            {/* Main Fetch Button */}
-            <button
-                onClick={handleFetchClick}
-                disabled={isLoading}
-                className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 ${
-                    isLoading 
-                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                        : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700'
-                }`}
-            >
-                {isLoading ? (
-                    <RefreshIcon size={16} className="animate-spin" />
-                ) : (
-                    <Download size={16} />
-                )}
-                <span>{isLoading ? 'Fetching from LegiScan...' : 'Fetch Fresh Bills'}</span>
-            </button>
-            
-            {/* Sliding Time Period Buttons */}
-            <div className={`absolute top-full left-0 mt-2 transition-all duration-300 ease-out ${
-                isExpanded 
-                    ? 'opacity-100 translate-y-0 visible' 
-                    : 'opacity-0 -translate-y-2 invisible'
-            }`}>
-                <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
-                    <div className="py-2">
-                        {[
-                            { key: '7days', label: 'Last 7 Days' },
-                            { key: '30days', label: 'Last 30 Days' },
-                            { key: '90days', label: 'Last 90 Days' }
-                        ].map((period, index) => (
-                            <button
-                                key={period.key}
-                                onClick={() => handlePeriodClick(period.key)}
-                                disabled={isLoading}
-                                className={`w-full px-4 py-2.5 text-left text-sm transition-all duration-200 ${
-                                    isLoading 
-                                        ? 'text-gray-400 cursor-not-allowed'
-                                        : 'hover:bg-blue-50 hover:text-blue-700'
-                                } ${
-                                    selectedPeriod === period.key 
-                                        ? 'bg-blue-100 text-blue-800 font-medium' 
-                                        : 'text-gray-700'
-                                }`}
-                                style={{
-                                    transitionDelay: `${index * 50}ms`
-                                }}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span>{period.label}</span>
-                                    {period.key === '7days' && <span className="text-xs text-gray-500">Recent</span>}
-                                    {period.key === '30days' && <span className="text-xs text-gray-500">Standard</span>}
-                                    {period.key === '90days' && <span className="text-xs text-gray-500">Extended</span>}
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
 
 // Pagination Component
 const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage, onPageChange, itemType = 'bills' }) => {
@@ -642,7 +424,6 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
     // Calculate position to keep tooltip within viewport
     const calculatePosition = () => {
         const tooltipWidth = 256; // w-64 = 16rem = 256px
-        const padding = 16; // padding from screen edges
         const viewportWidth = window.innerWidth;
         const containerPadding = 32; // Approximate container padding
         
@@ -735,7 +516,7 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
 // AI Content Formatting Functions
 
 // Main StatePage Component
-const StatePage = ({ stateName, stableHandlers }) => {
+const StatePage = ({ stateName }) => {
     // Core state
     const [stateOrders, setStateOrders] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -745,18 +526,19 @@ const StatePage = ({ stateName, stableHandlers }) => {
     
     // Manual refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [lastUpdateTime, setLastUpdateTime] = useState(null);
     
     // Filter state (matching ExecutiveOrdersPage pattern)
     const [selectedFilters, setSelectedFilters] = useState([]);
     const [selectedStatusFilter, setSelectedStatusFilter] = useState(null);
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+    const [showFetchDropdown, setShowFetchDropdown] = useState(false);
     
     // Sort state
     const [sortOrder, setSortOrder] = useState('latest');
     
     // Session filter state
     const [selectedSessions, setSelectedSessions] = useState([]);
+    const [availableSessions, setAvailableSessions] = useState([]);
     
     // Highlights filter state - persistent in localStorage
     const [isHighlightFilterActive, setIsHighlightFilterActive] = useState(() => {
@@ -766,12 +548,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
     
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
-    const [pagination, setPagination] = useState({
-        page: 1,
-        per_page: 25,
-        total_pages: 1,
-        count: 0
-    });
     
     // Status tooltip state
     const [statusTooltipOpen, setStatusTooltipOpen] = useState(false);
@@ -784,13 +560,14 @@ const StatePage = ({ stateName, stableHandlers }) => {
         education: 0,
         engineering: 0,
         healthcare: 0,
+        'not-applicable': 0,
         reviewed: 0,
         not_reviewed: 0,
         total: 0
     });
     
     // Review status hook
-    const { toggleReviewStatus, isItemReviewed, isItemReviewLoading } = useReviewStatus(stateOrders, 'state_legislation');
+    const { isItemReviewed } = useReviewStatus(stateOrders, 'state_legislation');
     
     // Highlights state
     const [localHighlights, setLocalHighlights] = useState(new Set());
@@ -798,6 +575,40 @@ const StatePage = ({ stateName, stableHandlers }) => {
     
     
     const filterDropdownRef = useRef(null);
+    
+    // Fetch available sessions from API
+    useEffect(() => {
+        const fetchAvailableSessions = async () => {
+            if (!SUPPORTED_STATES[stateName]) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/legiscan/session-status`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        states: [SUPPORTED_STATES[stateName]],
+                        include_all_sessions: true
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('📋 StatePage session response:', data);
+                    if (data.success && data.active_sessions && data.active_sessions[SUPPORTED_STATES[stateName]]) {
+                        const sessions = data.active_sessions[SUPPORTED_STATES[stateName]];
+                        console.log(`🏛️ ${stateName} sessions from API:`, sessions);
+                        setAvailableSessions(sessions);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch available sessions:', error);
+            }
+        };
+        
+        fetchAvailableSessions();
+    }, [stateName]);
     
     // Early returns for invalid states
     if (!stateName || !SUPPORTED_STATES[stateName]) {
@@ -822,7 +633,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
         if (bill.bill_number) {
             return `${stateName || 'unknown'}-${bill.bill_number}`;
         }
-        return `state-bill-${Math.random().toString(36).substr(2, 9)}`;
+        return `state-bill-${Math.random().toString(36).substring(2, 11)}`;
     }, [stateName]);
     
     
@@ -851,26 +662,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
         return possibleStatus;
     }, [stateOrders.length, getStateBillId]);
     
-    // Handle review toggle with state update
-    const handleReviewToggle = async (bill) => {
-        const success = await toggleReviewStatus(bill);
-        
-        if (success !== null && success !== undefined) {
-            // Update the main stateOrders state to persist the change
-            const billId = getStateBillId(bill);
-            setStateOrders(prevBills => 
-                prevBills.map(b => {
-                    const currentBillId = getStateBillId(b);
-                    if (currentBillId === billId) {
-                        console.log(`🔄 Updating bill ${currentBillId} reviewed status: ${b.reviewed} → ${success}`);
-                        return { ...b, reviewed: success };
-                    }
-                    return b;
-                })
-            );
-            console.log(`✅ Successfully updated reviewed status for bill ${billId}`);
-        }
-    };
     
     const handleCategoryUpdate = useCallback(async (itemId, newCategory) => {
         try {
@@ -939,17 +730,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
             throw error;
         }
     }, [getStateBillId]);
-    const openStatusTooltip = (status, event, bill = null) => {
-        const rect = event.target.getBoundingClientRect();
-        const isMobile = window.innerWidth < 640; // sm breakpoint
-        
-        setTooltipPosition({
-            top: isMobile ? rect.bottom : rect.bottom + window.scrollY,
-            left: isMobile ? rect.left + rect.width * 0.5 : rect.left + window.scrollX + rect.width * 0.5
-        });
-        setSelectedStatus(status);
-        setStatusTooltipOpen(true);
-    };
 
     const closeStatusTooltip = () => {
         setStatusTooltipOpen(false);
@@ -983,7 +763,9 @@ const StatePage = ({ stateName, stableHandlers }) => {
         setCurrentPage(1);
     };
     
+
     // New fetch handler for time periods - fetches fresh bills from LegiScan API
+    // TODO: This function is unused - consider removing or connecting to UI
     const handleFetch = useCallback(async (period) => {
         setFetchLoading(true);
         setError(null); // Clear any existing errors
@@ -1203,12 +985,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
             });
             
             setStateOrders(transformedBills);
-            setPagination({
-                page: currentPage,
-                per_page: perPage,
-                total_pages: totalPages,
-                count: totalCount
-            });
             
         } catch (err) {
             console.error('❌ Error fetching data:', err);
@@ -1218,6 +994,144 @@ const StatePage = ({ stateName, stableHandlers }) => {
             setLoading(false);
         }
     }, [stateName, getStateBillId]);
+    
+    // Session fetch handler - fetches bills from specific sessions
+    const handleSessionFetch = useCallback(async (sessionType) => {
+        setShowFetchDropdown(false);
+        setFetchLoading(true);
+        setError(null);
+        setFetchSuccess(null);
+        
+        try {
+            const stateAbbr = SUPPORTED_STATES[stateName];
+            console.log(`🔍 Fetching bills for session type: ${sessionType}`);
+            
+            // First, check existing bills in the database
+            console.log(`🔍 Checking existing bills in database for ${stateAbbr}...`);
+            const checkResponse = await fetch(`${API_URL}/api/state-legislation/check-existing?state=${stateAbbr}&session_type=${sessionType}`);
+            
+            if (checkResponse.ok) {
+                const checkResult = await checkResponse.json();
+                console.log(`📊 Database check result:`, checkResult);
+                
+                if (checkResult.success && checkResult.recommendation === 'skip') {
+                    setFetchSuccess(`${checkResult.message}. Database is already up to date!`);
+                    setTimeout(() => setFetchSuccess(null), 5000);
+                    setFetchLoading(false);
+                    return;
+                }
+            } else {
+                console.warn('⚠️ Database check failed, proceeding with fetch anyway');
+            }
+            
+            let requestBody = {
+                state: stateAbbr,
+                save_to_db: true,
+                process_one_by_one: false,
+                with_ai_analysis: true,
+                enhanced_ai: true
+            };
+            
+            // Configure fetch parameters based on session type - Use backend's full capacity
+            switch (sessionType) {
+                case 'current':
+                    requestBody = {
+                        ...requestBody,
+                        query: 'current session',
+                        year_filter: 'current',
+                        limit: 2000,  // Increased from 200 to backend max
+                        max_pages: 50  // Increased from 15 to backend max
+                    };
+                    break;
+                case 'all':
+                    requestBody = {
+                        ...requestBody,
+                        query: 'all sessions',
+                        year_filter: 'all',
+                        limit: 2000,  // Increased from 300 to backend max
+                        max_pages: 50  // Increased from 20 to backend max
+                    };
+                    break;
+                case 'recent':
+                    requestBody = {
+                        ...requestBody,
+                        query: '2025-07',
+                        year_filter: 'current',
+                        limit: 2000,  // Increased from 150 to backend max
+                        max_pages: 50  // Increased from 10 to backend max
+                    };
+                    break;
+                default:
+                    requestBody = {
+                        ...requestBody,
+                        query: 'current session',
+                        year_filter: 'current',
+                        limit: 2000,  // Increased from 200 to backend max
+                        max_pages: 50  // Increased from 15 to backend max
+                    };
+            }
+            
+            const response = await fetch(`${API_URL}/api/legiscan/enhanced-search-and-analyze`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('❌ Expected JSON but got:', contentType);
+                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                let newBills = [];
+                if (result.bills) {
+                    newBills = result.bills;
+                } else if (result.results && Array.isArray(result.results)) {
+                    newBills = result.results.reduce((acc, stateResult) => {
+                        if (stateResult.bills) {
+                            acc.push(...stateResult.bills);
+                        }
+                        return acc;
+                    }, []);
+                } else if (result.data && Array.isArray(result.data)) {
+                    newBills = result.data;
+                }
+                
+                console.log(`✅ Successfully fetched ${newBills.length} bills from ${sessionType} session(s)`);
+                
+                if (newBills.length > 0) {
+                    const sessionLabel = sessionType === 'current' ? 'current session' : 
+                                        sessionType === 'all' ? 'all sessions' : 
+                                        'recent bills';
+                    setFetchSuccess(`Successfully fetched ${newBills.length} bills from ${sessionLabel}!`);
+                    await fetchFromDatabase(1);
+                    setTimeout(() => setFetchSuccess(null), 5000);
+                } else {
+                    setFetchSuccess(`No new bills found for ${sessionType} session(s).`);
+                    setTimeout(() => setFetchSuccess(null), 3000);
+                }
+            } else {
+                throw new Error(result.error || 'Failed to fetch bills from LegiScan');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error fetching bills:', error);
+            setError(`Failed to fetch bills from ${sessionType} session(s): ${error.message}`);
+        } finally {
+            setFetchLoading(false);
+        }
+    }, [stateName, fetchFromDatabase]);
     
     // Handle page change
     const handlePageChange = useCallback((newPage) => {
@@ -1313,6 +1227,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
             education: allFilterCounts.education || 0,
             engineering: allFilterCounts.engineering || 0,
             healthcare: allFilterCounts.healthcare || 0,
+            'not-applicable': allFilterCounts['not-applicable'] || 0,
             all_practice_areas: allFilterCounts.all_practice_areas || 0,
             reviewed: allFilterCounts.reviewed || 0,
             not_reviewed: allFilterCounts.not_reviewed || 0,
@@ -1336,6 +1251,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 education: 0,
                 engineering: 0,
                 healthcare: 0,
+                'not-applicable': 0,
                 reviewed: 0,
                 not_reviewed: 0,
                 total: 0
@@ -1358,8 +1274,8 @@ const StatePage = ({ stateName, stableHandlers }) => {
         // Apply status filter
         if (selectedStatusFilter) {
             filtered = filtered.filter(bill => {
-                const billStatus = (bill.status || '').toLowerCase();
-                return billStatus.includes(selectedStatusFilter.toLowerCase());
+                const billStage = getStatusStage(bill.status);
+                return billStage === selectedStatusFilter;
             });
         }
         
@@ -1370,10 +1286,44 @@ const StatePage = ({ stateName, stableHandlers }) => {
         
         // Apply session filters
         if (selectedSessions.length > 0) {
+            console.log('🔍 Filtering bills by session IDs:', selectedSessions);
+            
+            // Create a map from session IDs to session names for lookup
+            const sessionIdToNameMap = new Map();
+            availableSessions.forEach(session => {
+                if (session.session_id && session.session_name) {
+                    sessionIdToNameMap.set(session.session_id, session.session_name);
+                }
+            });
+            
+            // Convert selected session IDs to session names
+            const selectedSessionNames = selectedSessions.map(sessionId => {
+                const sessionName = sessionIdToNameMap.get(sessionId);
+                console.log(`🎯 Session ID "${sessionId}" -> Name "${sessionName}"`);
+                return sessionName || sessionId; // fallback to sessionId if no name found
+            }).filter(Boolean);
+            
+            console.log('📊 Selected session names for filtering:', selectedSessionNames);
+            console.log('📊 Sample bill sessions before filtering:', stateOrders.slice(0, 3).map(b => ({
+                title: b.title?.substring(0, 30) + '...',
+                session: b.session,
+                session_name: b.session_name,
+                combined: b.session || b.session_name
+            })));
+            
             filtered = filtered.filter(bill => {
                 const billSession = bill.session || bill.session_name;
-                return billSession && selectedSessions.includes(billSession);
+                const matches = billSession && selectedSessionNames.includes(billSession);
+                
+                // Debug first few non-matching bills
+                if (!matches && billSession && filtered.length < 5) {
+                    console.log(`❌ Bill session "${billSession}" not in selected session names:`, selectedSessionNames);
+                }
+                
+                return matches;
             });
+            
+            console.log(`📈 Session filter result: ${stateOrders.length} -> ${filtered.length} bills`);
         }
         
         // Sort by date
@@ -1410,15 +1360,16 @@ const StatePage = ({ stateName, stableHandlers }) => {
     }, [stateName, fetchFromDatabase]);
     
     // Manual refresh handlers
+    // TODO: This function is unused - consider removing or connecting to UI
     const handleRefreshStart = useCallback(() => {
         setIsRefreshing(true);
         setError(null);
         setFetchSuccess(null);
     }, []);
     
+    // TODO: This function is unused - consider removing or connecting to UI
     const handleRefreshComplete = useCallback(async (result) => {
         setIsRefreshing(false);
-        setLastUpdateTime(new Date());
         
         if (result && (result.bills_updated > 0 || result.bills_added > 0)) {
             setFetchSuccess(
@@ -1436,11 +1387,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
         }
     }, [fetchFromDatabase]);
     
-    const handleRefreshError = useCallback((error) => {
-        setIsRefreshing(false);
-        setError(`Failed to refresh: ${error.message}`);
-        setTimeout(() => setError(null), 5000);
-    }, []);
     
     const handleRefreshNeeded = useCallback(() => {
         // Scroll to the header refresh button
@@ -1503,6 +1449,10 @@ const StatePage = ({ stateName, stableHandlers }) => {
             if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
                 setShowFilterDropdown(false);
             }
+            // Close fetch dropdown if clicking outside
+            if (!event.target.closest('.fetch-dropdown-container')) {
+                setShowFetchDropdown(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -1541,32 +1491,6 @@ const StatePage = ({ stateName, stableHandlers }) => {
                             Access the latest legislation and bills from {stateName} with simple, clear overviews. Stay informed about new legislation and track the status of important bills affecting your state.
                         </p>
                         
-                        {/* Status Bar with Refresh Button */}
-                        <div className="flex flex-col items-center justify-center gap-4 mb-6">
-                            {/* Refresh Button */}
-                            <div className="flex justify-center">
-                                <ManualRefresh 
-                                    id="main-refresh-button"
-                                    stateCode={SUPPORTED_STATES[stateName]}
-                                    size="medium"
-                                    onRefreshStart={handleRefreshStart}
-                                    onRefreshComplete={handleRefreshComplete}
-                                    onRefreshError={handleRefreshError}
-                                    className="transition-all duration-200"
-                                />
-                            </div>
-                            
-                            {/* Status Info */}
-                            <div className="flex flex-col items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                <span className="font-medium">{stateOrders.length} bills loaded</span>
-                                {lastUpdateTime && (
-                                    <span className="flex items-center gap-1">
-                                        <Clock size={14} />
-                                        Last updated: {lastUpdateTime.toLocaleTimeString()}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
                     </div>
                 </div>
             </section>
@@ -1627,63 +1551,188 @@ const StatePage = ({ stateName, stableHandlers }) => {
                 <div className="max-w-7xl mx-auto">
                     <div className={getCardClasses('rounded-lg shadow-sm')}>
                         <div className="p-6">
-                        {/* Controls Bar - Sort/filter controls */}
+                        {/* Controls Bar - Fetch button left, filters right */}
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 w-full">
-                            {/* Sort Button - Mobile Optimized */}
-                            <button
-                                onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                                className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[44px]"
-                            >
-                                {sortOrder === 'latest' ? (
-                                    <>
-                                        <ArrowDown size={16} />
-                                        <span>Latest</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <ArrowUpIcon size={16} />
-                                        <span>Earliest</span>
-                                    </>
-                                )}
-                            </button>
+                            {/* Fetch Button with Session Options - Left side */}
+                            <div className="flex justify-start">
+                                <div className="relative fetch-dropdown-container">
+                                    <button
+                                        onClick={() => setShowFetchDropdown(!showFetchDropdown)}
+                                        disabled={fetchLoading || loading}
+                                        className={`flex items-center justify-center gap-2 px-8 py-3 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap w-[200px] ${
+                                            fetchLoading || loading
+                                                ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
+                                                : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
+                                        }`}
+                                    >
+                                        {fetchLoading && (
+                                            <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
+                                        )}
+                                        <span>
+                                            {fetchLoading ? 'Fetching...' : 'Fetch Legislation'}
+                                        </span>
+                                        {!fetchLoading && !loading && (
+                                            <ChevronDown size={14} className="ml-1 flex-shrink-0" />
+                                        )}
+                                    </button>
+                                    
+                                    {/* Session Fetch Dropdown */}
+                                    {showFetchDropdown && !fetchLoading && !loading && (
+                                        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[320px] max-h-[400px] overflow-hidden left-0 sm:left-0">
+                                            <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                                    Fetch Legislation Options
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="overflow-y-auto max-h-[320px]">
+                                                <div className="py-1">
+                                                    {/* Current Session Option */}
+                                                    <button
+                                                        onClick={() => handleSessionFetch('current')}
+                                                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <Calendar size={16} className="text-blue-600 dark:text-blue-400" />
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Current Session</span>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Active legislative session</div>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs text-gray-400 dark:text-gray-500">~30-60s</span>
+                                                    </button>
+                                                    
+                                                    {/* All Sessions Option */}
+                                                    <button
+                                                        onClick={() => handleSessionFetch('all')}
+                                                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <CalendarDays size={16} className="text-green-600 dark:text-green-400" />
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">All Sessions</span>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Fetch from all available sessions</div>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs text-gray-400 dark:text-gray-500">~3-5m</span>
+                                                    </button>
+                                                    
+                                                    {/* Recent Bills Option */}
+                                                    <button
+                                                        onClick={() => handleSessionFetch('recent')}
+                                                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <Clock size={16} className="text-purple-600 dark:text-purple-400" />
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Recent Bills</span>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Last 30 days activity</div>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs text-gray-400 dark:text-gray-500">~15-30s</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                             
-                            {/* Middle button group - equally spaced */}
-                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-6 items-stretch sm:items-center">
-                                {/* Highlights Filter */}
-                                <HighlightsFilter 
-                                    isHighlightFilterActive={isHighlightFilterActive}
-                                    onHighlightFilterChange={(value) => {
-                                        setIsHighlightFilterActive(value);
-                                        localStorage.setItem('highlightFilterActive', value.toString());
+                            {/* Filter button group - right aligned */}
+                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
+                                {/* Sort Button */}
+                                <button
+                                    onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
+                                    className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[44px] w-[100px]"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        {sortOrder === 'latest' ? (
+                                            <ArrowDown size={16} />
+                                        ) : (
+                                            <ArrowUpIcon size={16} />
+                                        )}
+                                        <span className="min-w-[44px] text-center">
+                                            {sortOrder === 'latest' ? 'Latest' : 'Earliest'}
+                                        </span>
+                                    </div>
+                                </button>
+                                
+                                {/* Highlights Filter - Matching ExecutiveOrdersPage */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newValue = !isHighlightFilterActive;
+                                        setIsHighlightFilterActive(newValue);
+                                        localStorage.setItem('highlightFilterActive', newValue.toString());
                                     }}
-                                    disabled={loading || fetchLoading}
-                                    loading={loading}
-                                    highlightCount={stateOrders.filter(bill => isStateBillHighlighted(bill)).length}
-                                />
+                                    className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 min-h-[40px] sm:min-h-[44px] flex-shrink-0 w-[110px] sm:w-[130px] ${
+                                        isHighlightFilterActive
+                                            ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
+                                            : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
+                                    }`}
+                                >
+                                    <Star size={16} className={isHighlightFilterActive ? 'fill-current' : ''} />
+                                    <span className="whitespace-nowrap">{isHighlightFilterActive ? 'Highlights' : 'All Items'}</span>
+                                </button>
                                 
                                 {/* Session Filter */}
                                 <SessionFilter 
                                     sessions={(() => {
-                                        // Get unique sessions from bills with actual session data
+                                        // Start with API sessions as the primary source (same as SessionNotification)
+                                        console.log('🔍 Available sessions for filter (same source as header):', availableSessions);
+                                        
                                         const sessionMap = new Map();
+                                        
+                                        // First, add all sessions from the API exactly as they come
+                                        availableSessions.forEach((session) => {
+                                            if (session.session_name) {
+                                                // Use session_name as the key, but keep original data intact
+                                                const sessionKey = session.session_name;
+                                                console.log(`🎯 API Session: "${session.session_name}" (ID: ${session.session_id})`);
+                                                sessionMap.set(sessionKey, {
+                                                    session_id: session.session_id || session.session_name,
+                                                    session_name: session.session_name,
+                                                    year_start: session.year_start || extractYearFromSession(session.session_name),
+                                                    year_end: session.year_end || null,
+                                                    is_active: session.is_active || false,
+                                                    is_likely_active: session.is_likely_active || false,
+                                                    state: SUPPORTED_STATES[stateName],
+                                                    source: 'api'
+                                                });
+                                            }
+                                        });
+                                        
+                                        // Then add sessions from bills ONLY if they are truly missing
+                                        const billSessions = new Set();
                                         stateOrders.forEach((bill) => {
                                             const sessionName = bill.session || bill.session_name;
-                                            
                                             if (sessionName && sessionName.trim() && sessionName !== 'Unknown Session') {
-                                                const sessionKey = sessionName;
-                                                if (!sessionMap.has(sessionKey)) {
-                                                    sessionMap.set(sessionKey, {
-                                                        session_id: sessionKey,
+                                                billSessions.add(sessionName);
+                                                
+                                                // Only add if exact session name doesn't exist in API data
+                                                if (!sessionMap.has(sessionName)) {
+                                                    console.log(`📌 Adding unique session from bills: "${sessionName}"`);
+                                                    sessionMap.set(sessionName, {
+                                                        session_id: sessionName,
                                                         session_name: sessionName,
                                                         year_start: extractYearFromSession(sessionName),
                                                         year_end: null,
                                                         is_active: sessionName.includes('2025') || sessionName.includes('2024'),
-                                                        is_likely_active: sessionName.includes('2025')
+                                                        is_likely_active: sessionName.includes('2025'),
+                                                        state: SUPPORTED_STATES[stateName],
+                                                        source: 'bills'
                                                     });
+                                                } else {
+                                                    console.log(`🔄 Session "${sessionName}" already exists from API, skipping`);
                                                 }
                                             }
                                         });
-                                        return Array.from(sessionMap.values());
+                                        
+                                        const finalSessions = Array.from(sessionMap.values());
+                                        console.log('📚 Sessions found in bills:', Array.from(billSessions));
+                                        console.log('📊 Final session list for filter:', finalSessions.map(s => `${s.session_name} (${s.source})`));
+                                        console.log(`✅ Session count - Header: ${availableSessions.length}, Filter: ${finalSessions.length}`);
+                                        return finalSessions;
                                     })()}
                                     selectedSessions={selectedSessions}
                                     onSessionChange={setSelectedSessions}
@@ -1702,21 +1751,20 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                         const counts = {};
                                         STATUS_FILTERS.forEach(filter => {
                                             counts[filter.key] = stateOrders.filter(bill => {
-                                                const billStatus = (bill.status || '').toLowerCase();
-                                                return billStatus.includes(filter.key.toLowerCase());
+                                                const billStage = getStatusStage(bill.status);
+                                                return billStage === filter.key;
                                             }).length;
                                         });
                                         return counts;
                                     })()}
                                 />
-                            </div>
                                 
-                                {/* Filter Dropdown - Right aligned */}
+                                {/* Practice Areas Filter Dropdown */}
                                 <div className="relative" ref={filterDropdownRef}>
                                     <button
                                         type="button"
                                         onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                                        className={`flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 w-full sm:w-56 min-h-[44px] ${
+                                        className={`flex items-center px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 w-full sm:w-auto min-h-[44px] ${
                                             selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
                                         }`}
                                     >
@@ -1742,7 +1790,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                         </div>
                                         <ChevronDown 
                                             size={16} 
-                                            className={`text-gray-500 dark:text-gray-300 transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
+                                            className={`ml-4 text-gray-500 dark:text-gray-300 transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
                                         />
                                     </button>
 
@@ -1808,6 +1856,7 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                         </div>
                                     )}
                                 </div>
+                            </div>
                         </div>
                         
                         {/* Success Message */}
@@ -1961,27 +2010,25 @@ const StatePage = ({ stateName, stableHandlers }) => {
                                                     </div>
                                                 </div>
                                                 
-                                                {/* Progress Bar - Full Width */}
-                                                {getBillStatus(bill) && (
-                                                    <div className="my-6">
-                                                        <StatusProgressBar 
-                                                            status={getBillStatus(bill)} 
-                                                            onStageClick={(stage, index, e) => {
-                                                                openStatusTooltip(stage.label, e, bill);
-                                                            }}
-                                                        />
-                                                    </div>
-                                                )}
+                                                {/* Bill Progress Bar */}
+                                                <div className="mb-6">
+                                                    <BillProgressBar 
+                                                        status={getBillStatus(bill)} 
+                                                        className="w-full"
+                                                    />
+                                                </div>
                                                 
                                                 {/* Simplified Summary */}
                                                 {bill.summary && bill.summary !== 'No summary available' && (
                                                     <div className="mb-6">
                                                         <div className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-gray-800 dark:to-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-5">
-                                                            <div className="flex items-center gap-3 mb-3">
-                                                                <div className="p-2 bg-purple-600 dark:bg-purple-500 rounded-full">
-                                                                    <Sparkles size={16} className="text-white" />
+                                                            <div className="flex items-center justify-between mb-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{bill.bill_number} AI Generated Summary</h3>
                                                                 </div>
-                                                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{bill.bill_number} AI Generated Summary</h3>
+                                                                <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                                                    AI
+                                                                </div>
                                                             </div>
                                                             <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                                                                 {bill.summary}

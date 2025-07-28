@@ -18,7 +18,7 @@ const HighlightsFilter = ({
       type="button"
       onClick={handleToggle}
       disabled={disabled || loading}
-      className={`flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-48 min-h-[44px] ${
+      className={`flex items-center justify-between px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-48 h-[42px] ${
         disabled || loading 
           ? 'opacity-50 cursor-not-allowed' 
           : 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'

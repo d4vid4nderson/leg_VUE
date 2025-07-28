@@ -448,21 +448,36 @@ def get_executive_order_by_number(eo_number: str) -> Optional[Dict]:
         table_name = "executive_orders" if config['type'] == 'postgresql' else "dbo.executive_orders"
         placeholder = get_parameter_placeholder()
         
+        logger.info(f"🔍 Searching for executive order with ID: {eo_number}")
+        logger.info(f"🔍 Using table: {table_name}, placeholder: {placeholder}")
+        
         with get_db_cursor() as cursor:
-            # Try different variations of the number
-            cursor.execute(
-                f"SELECT * FROM {table_name} WHERE eo_number = {placeholder} OR document_number = {placeholder}",
-                (eo_number, eo_number)
-            )
+            # Try exact matches first
+            queries_to_try = [
+                # Exact matches
+                (f"SELECT * FROM {table_name} WHERE eo_number = {placeholder}", (eo_number,)),
+                (f"SELECT * FROM {table_name} WHERE document_number = {placeholder}", (eo_number,)),
+                (f"SELECT * FROM {table_name} WHERE CAST(id AS VARCHAR) = {placeholder}", (eo_number,)),
+                # With EO prefix
+                (f"SELECT * FROM {table_name} WHERE eo_number = {placeholder}", (f"EO-{eo_number}",)),
+                (f"SELECT * FROM {table_name} WHERE document_number = {placeholder}", (f"EO-{eo_number}",)),
+                # Wildcard searches
+                (f"SELECT * FROM {table_name} WHERE eo_number LIKE {placeholder}", (f"%{eo_number}%",)),
+                (f"SELECT * FROM {table_name} WHERE document_number LIKE {placeholder}", (f"%{eo_number}%",)),
+                (f"SELECT * FROM {table_name} WHERE title LIKE {placeholder}", (f"%{eo_number}%",)),
+            ]
             
-            row = cursor.fetchone()
-            if not row:
-                # Try with wildcard
-                cursor.execute(
-                    f"SELECT * FROM {table_name} WHERE eo_number LIKE {placeholder}",
-                    (f"%{eo_number}%",)
-                )
-                row = cursor.fetchone()
+            for i, (query, params) in enumerate(queries_to_try):
+                try:
+                    logger.info(f"🔎 Trying query {i+1}: {query} with params {params}")
+                    cursor.execute(query, params)
+                    row = cursor.fetchone()
+                    if row:
+                        logger.info(f"✅ Found order with query {i+1}")
+                        break
+                except Exception as query_error:
+                    logger.warning(f"⚠️ Query {i+1} failed: {query_error}")
+                    continue
             
             if row:
                 # Convert to dictionary
@@ -754,7 +769,7 @@ def get_user_highlights_with_content(user_id: str) -> List[Dict]:
                 COALESCE(s.ai_talking_points, '') as ai_talking_points,
                 COALESCE(s.ai_business_impact, '') as ai_business_impact,
                 COALESCE(s.ai_potential_impact, '') as ai_potential_impact,
-                COALESCE(s.category, h.category, 'civic') as category,
+                COALESCE(s.category, h.category, 'not-applicable') as category,
                 COALESCE(s.state, h.state, 'Unknown State') as state,
                 COALESCE(s.state_abbr, '') as state_abbr,
                 COALESCE(s.status, 'Active') as status,
@@ -793,7 +808,7 @@ def get_user_highlights_with_content(user_id: str) -> List[Dict]:
                 COALESCE(e.ai_talking_points, '') as ai_talking_points,
                 COALESCE(e.ai_business_impact, '') as ai_business_impact,
                 COALESCE(e.ai_potential_impact, '') as ai_potential_impact,
-                COALESCE(e.category, h.category, 'civic') as category,
+                COALESCE(e.category, h.category, 'not-applicable') as category,
                 '' as state,
                 '' as state_abbr,
                 '' as status,

@@ -233,7 +233,7 @@ class SimpleExecutiveOrders:
                 
                 # Determine category with comprehensive keyword matching
                 title = order.get('title', '').lower()
-                category = 'civic'  # Default fallback
+                category = 'not-applicable'  # Default fallback
                 
                 # Healthcare keywords
                 healthcare_terms = [
@@ -316,7 +316,8 @@ async def fetch_executive_orders_simple_integration(
     with_ai=True, 
     limit=None, 
     period=None,
-    save_to_db=True
+    save_to_db=True,
+    only_new=False
 ):
     """
     Complete executive orders pipeline: 
@@ -376,12 +377,11 @@ async def fetch_executive_orders_simple_integration(
         # First, check which orders already exist in the database
         existing_orders = set()
         total_fetched = len(raw_orders)
-        if save_to_db:
+        if save_to_db or only_new:
             try:
-                from database_connection import get_db_connection, get_database_config, get_parameter_placeholder
+                from database_config import get_db_connection, get_database_config
                 config = get_database_config()
                 table_name = "executive_orders" if config['type'] == 'postgresql' else "dbo.executive_orders"
-                placeholder = get_parameter_placeholder()
                 
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
@@ -400,6 +400,7 @@ async def fetch_executive_orders_simple_integration(
                 
                 # Filter out orders that already exist
                 new_orders = []
+                skipped_count = 0
                 for order in raw_orders:
                     document_number = order.get('document_number', '')
                     eo_number = order.get('eo_number', '')
@@ -407,9 +408,10 @@ async def fetch_executive_orders_simple_integration(
                     if document_number not in existing_orders and eo_number not in existing_orders:
                         new_orders.append(order)
                     else:
-                        logger.info(f"⏭️ Skipping existing order: {eo_number} ({document_number})")
+                        skipped_count += 1
+                        logger.debug(f"⏭️ Skipping existing order: {eo_number} ({document_number})")
                 
-                logger.info(f"📊 Orders summary: {len(raw_orders)} total, {len(existing_orders)} existing, {len(new_orders)} new")
+                logger.info(f"📊 Orders summary: {len(raw_orders)} fetched, {len(existing_orders)} in DB, {len(new_orders)} new, {skipped_count} skipped")
                 raw_orders = new_orders  # Only process new orders
                 
             except Exception as db_check_error:

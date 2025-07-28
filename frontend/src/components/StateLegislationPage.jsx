@@ -21,13 +21,20 @@ import {
   Globe,
   Star,
   AlertCircle,
-  UserCheck
+  UserCheck,
+  Activity,
+  CalendarDays,
+  Clock
 } from 'lucide-react';
 import StateOutlineBackground from './StateOutlineBackground';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
+import API_URL from '../config/api';
 
 const StateLegislationOverview = () => {
   const navigate = useNavigate();
+  const [sessionData, setSessionData] = useState({});
+  const [billSessionData, setBillSessionData] = useState({});
+  const [loadingSessions, setLoadingSessions] = useState(true);
 
   // Supported states data
   const supportedStates = [
@@ -135,6 +142,166 @@ const StateLegislationOverview = () => {
     }
   ];
 
+  // Fetch session data for all states
+  useEffect(() => {
+    const fetchSessionData = async () => {
+      setLoadingSessions(true);
+      try {
+        const stateCodes = supportedStates.map(state => state.code);
+        const response = await fetch(`${API_URL}/api/legiscan/session-status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            states: stateCodes,
+            include_all_sessions: true
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('📊 State Legislation Page - Full session response:', data);
+          
+          if (data.success && data.active_sessions) {
+            console.log('🤠 Texas sessions specifically:', data.active_sessions.TX);
+            setSessionData(data.active_sessions);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch session data:', error);
+      } finally {
+        setLoadingSessions(false);
+      }
+    };
+    
+    fetchSessionData();
+    
+    // Also fetch sessions from bills data for all states
+    const fetchBillSessions = async () => {
+      // Add a small delay to ensure bills are available
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        // Fetch bills for each state to see what sessions are in the data
+        for (const state of supportedStates) {
+          const response = await fetch(`${API_URL}/api/state-legislation?state=${state.name}&page=1&per_page=25`);
+          if (response.ok) {
+            const data = await response.json();
+            const sessions = new Set();
+            
+            if (data.orders && Array.isArray(data.orders)) {
+              data.orders.forEach(bill => {
+                const sessionName = bill.session || bill.session_name;
+                if (sessionName && sessionName !== 'Unknown Session') {
+                  sessions.add(sessionName);
+                }
+              });
+            }
+            
+            if (sessions.size > 0) {
+              console.log(`🎯 ${state.name} sessions found in bills:`, Array.from(sessions));
+              setBillSessionData(prev => ({ ...prev, [state.code]: Array.from(sessions) }));
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch bill sessions:', error);
+      }
+    };
+    
+    fetchBillSessions();
+  }, []);
+
+  // Helper function to get session info for a state
+  const getStateSessionInfo = (stateCode) => {
+    const apiSessions = sessionData[stateCode] || [];
+    const billSessions = billSessionData[stateCode] || [];
+    
+    // Create a map to merge sessions
+    const sessionMap = new Map();
+    
+    // Add API sessions
+    apiSessions.forEach(session => {
+      sessionMap.set(session.session_id || session.session_name, session);
+    });
+    
+    // Add sessions from bills that aren't in the API
+    billSessions.forEach(sessionName => {
+      if (!Array.from(sessionMap.values()).some(s => s.session_name === sessionName)) {
+        // Extract year from session name
+        const yearMatch = sessionName.match(/(\d{2,4})/);
+        let year = yearMatch ? parseInt(yearMatch[1]) : new Date().getFullYear();
+        
+        // Handle legislature numbers (e.g., "88th Legislature" = 2023-2024)
+        if (yearMatch && yearMatch[1].length === 2 && parseInt(yearMatch[1]) > 50) {
+          // For Texas, 88th Legislature is 2023-2024
+          const legislatureNum = parseInt(yearMatch[1]);
+          year = 1789 + (legislatureNum - 1) * 2; // Texas legislature starts in 1789, biennial
+        } else if (year < 100) {
+          year = 2000 + year; // Handle 2-digit years
+        }
+        
+        sessionMap.set(sessionName, {
+          session_id: sessionName,
+          session_name: sessionName,
+          year_start: sessionName.toLowerCase().includes('special') ? new Date().getFullYear() : year,
+          is_active: true, // Assume active if found in recent bills
+          is_likely_active: true,
+          state: stateCode
+        });
+      }
+    });
+    
+    const allSessions = Array.from(sessionMap.values());
+    
+    // More inclusive check for active sessions
+    const currentYear = new Date().getFullYear();
+    const activeSessions = allSessions.filter(s => {
+      // Check explicit active flags
+      if (s.is_active || s.is_likely_active) return true;
+      
+      // Special sessions are always considered active if recent
+      if (s.session_name && s.session_name.toLowerCase().includes('special')) {
+        // Check if it's from current or previous year
+        if (!s.year_start || s.year_start >= currentYear - 1) {
+          return true;
+        }
+      }
+      
+      // Check if session is recent (current or previous year)
+      if (s.year_start && (s.year_start === currentYear || s.year_start === currentYear - 1)) {
+        return true;
+      }
+      
+      // For Texas specifically, include 88th and 89th legislature sessions
+      if (stateCode === 'TX' && s.session_name) {
+        if (s.session_name.includes('88th') || s.session_name.includes('89th')) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+    
+    const regularSessions = activeSessions.filter(s => !s.session_name.toLowerCase().includes('special'));
+    const specialSessions = activeSessions.filter(s => s.session_name.toLowerCase().includes('special'));
+    
+    console.log(`📍 ${stateCode} sessions:`, { 
+      api: apiSessions.length, 
+      bills: billSessions.length,
+      total: allSessions.length, 
+      active: activeSessions.length, 
+      sessions: activeSessions 
+    });
+    
+    return {
+      totalActive: activeSessions.length,
+      regular: regularSessions.length,
+      special: specialSessions.length,
+      sessions: activeSessions
+    };
+  };
+
   // Show all states (removed region filter)
   const filteredStates = supportedStates;
 
@@ -199,39 +366,54 @@ const StateLegislationOverview = () => {
                     {state.description}
                   </p>
                   
-                  {/* Practice Areas Stats - Fixed position from bottom */}
+                  {/* Legislative Sessions - Fixed position from bottom */}
                   <div className="space-y-3 mb-6">
-                    <h4 className={`text-sm font-semibold mb-3 ${getTextClasses('primary')}`}>Bills by Practice Area</h4>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Building size={16} className="text-blue-600 dark:text-blue-400" />
-                          <span className={`text-sm ${getTextClasses('secondary')}`}>Civic</span>
-                        </div>
-                        <span className={`text-sm font-semibold ${getTextClasses('primary')}`}>{state.stats.civic}</span>
+                    <h4 className={`text-sm font-semibold mb-3 ${getTextClasses('primary')}`}>Legislative Sessions</h4>
+                    {loadingSessions ? (
+                      <div className="animate-pulse space-y-2">
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3"></div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <GraduationCap size={16} className="text-orange-600 dark:text-orange-400" />
-                          <span className={`text-sm ${getTextClasses('secondary')}`}>Education</span>
+                    ) : (() => {
+                      const sessionInfo = getStateSessionInfo(state.code);
+                      
+                      if (sessionInfo.totalActive === 0) {
+                        return (
+                          <div className={`text-sm ${getTextClasses('secondary')} italic`}>
+                            No active sessions
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="space-y-2">
+                          {sessionInfo.sessions.slice(0, 3).map((session, idx) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                                session.session_name.toLowerCase().includes('special') 
+                                  ? 'bg-purple-500 animate-pulse' 
+                                  : 'bg-green-500 animate-pulse'
+                              }`}></div>
+                              <div className="flex-1">
+                                <div className={`text-sm font-medium ${getTextClasses('primary')}`}>
+                                  {session.session_name}
+                                </div>
+                                {session.year_start && (
+                                  <div className={`text-xs ${getTextClasses('secondary')}`}>
+                                    {session.year_start}{session.year_end && session.year_end !== session.year_start ? `-${session.year_end}` : ''}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {sessionInfo.totalActive > 3 && (
+                            <div className={`text-xs ${getTextClasses('secondary')} italic`}>
+                              +{sessionInfo.totalActive - 3} more session{sessionInfo.totalActive - 3 > 1 ? 's' : ''}
+                            </div>
+                          )}
                         </div>
-                        <span className={`text-sm font-semibold ${getTextClasses('primary')}`}>{state.stats.education}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Wrench size={16} className="text-green-600 dark:text-green-400" />
-                          <span className={`text-sm ${getTextClasses('secondary')}`}>Engineering</span>
-                        </div>
-                        <span className={`text-sm font-semibold ${getTextClasses('primary')}`}>{state.stats.engineering}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <HeartPulse size={16} className="text-red-600 dark:text-red-400" />
-                          <span className={`text-sm ${getTextClasses('secondary')}`}>Healthcare</span>
-                        </div>
-                        <span className={`text-sm font-semibold ${getTextClasses('primary')}`}>{state.stats.healthcare}</span>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </div>
                   
                   {/* Action Button */}

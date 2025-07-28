@@ -13,12 +13,14 @@ import {
 } from "lucide-react";
 import { PublicClientApplication } from "@azure/msal-browser";
 import { useAuth } from "../context/AuthContext";
+import { useDarkMode } from "../context/DarkModeContext";
 
 import yourLogo from "/favicon.png";
 
 const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
   // ✅ ADDED onLoginSuccess prop
   const { login } = useAuth();
+  const { isDarkMode } = useDarkMode();
   const [formData, setFormData] = useState({
     username: "",
     password: "",
@@ -298,19 +300,19 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
     <div className="fixed inset-0 z-[150] flex items-center justify-center">
       {/* Blurred overlay */}
       <div
-        className="absolute inset-0 backdrop-blur-xl bg-gray-900 bg-opacity-70"
+        className="absolute inset-0 backdrop-blur-xl bg-gray-900 bg-opacity-70 dark:bg-black dark:bg-opacity-80"
         onClick={(e) => {
           if (!isLoading && !isAzureLoading) onClose();
         }}
       ></div>
 
       {/* Modal Content */}
-      <div className="relative z-10 bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="relative z-10 bg-white dark:bg-dark-bg-secondary rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {/* Close button */}
         <button
           onClick={onClose}
           disabled={isLoading || isAzureLoading}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10"
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:text-dark-text-secondary dark:hover:text-dark-text z-10"
         >
           <XIcon size={24} />
         </button>
@@ -326,17 +328,17 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
                 className="w-full h-full object-contain"
               />
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-dark-text mb-2">
               Welcome to LegislationVUE
             </h2>
-            <p className="text-gray-600">Sign in with your company account</p>
+            <p className="text-gray-600 dark:text-dark-text-secondary">Sign in with your company account</p>
           </div>
 
           {/* Azure AD Error Messages */}
           {errors.azure && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-              <span className="text-red-700 text-sm">{errors.azure}</span>
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0" />
+              <span className="text-red-700 dark:text-red-300 text-sm">{errors.azure}</span>
             </div>
           )}
 
@@ -349,13 +351,13 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
                 disabled={isAzureLoading || !msalInstance}
                 className={`w-full py-4 px-6 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-3 ${
                   isAzureLoading || !msalInstance
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg transform hover:scale-105"
+                    ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                    : "bg-blue-600 dark:bg-blue-700 text-white hover:bg-blue-700 dark:hover:bg-blue-600 hover:shadow-lg transform hover:scale-105"
                 }`}
               >
                 {isAzureLoading ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-5 h-5 border-2 border-gray-400 dark:border-gray-300 border-t-transparent rounded-full animate-spin"></div>
                     Signing in with Microsoft...
                   </>
                 ) : (
@@ -363,36 +365,36 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
                     <svg
                       className="w-5 h-5"
                       viewBox="0 0 23 23"
-                      fill="currentColor"
+                      fill="none"
                     >
-                      <path d="M1 1h10v10H1z" />
-                      <path d="M12 1h10v10H12z" />
-                      <path d="M1 12h10v10H1z" />
-                      <path d="M12 12h10v10H12z" />
+                      <path d="M1 1h10v10H1z" fill="currentColor" />
+                      <path d="M12 1h10v10H12z" fill="currentColor" />
+                      <path d="M1 12h10v10H1z" fill="currentColor" />
+                      <path d="M12 12h10v10H12z" fill="currentColor" />
                     </svg>
                     Sign in with Microsoft
                   </>
                 )}
               </button>
 
-              <p className="text-xs text-gray-500 text-center mt-2">
+              <p className="text-xs text-gray-500 dark:text-dark-text-secondary text-center mt-2">
                 Use your company Microsoft account to sign in
               </p>
 
               {/* Divider */}
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300"></div>
+                  <div className="w-full border-t border-gray-300 dark:border-dark-border"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">or</span>
+                  <span className="px-2 bg-white dark:bg-dark-bg-secondary text-gray-500 dark:text-dark-text-secondary">or</span>
                 </div>
               </div>
             </div>
           ) : (
             // Show message if Azure AD not configured
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800 text-sm">
+            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <p className="text-yellow-800 dark:text-yellow-300 text-sm">
                 Azure AD is not configured. Use demo login for testing.
               </p>
             </div>
@@ -513,11 +515,11 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
 
           {/* Footer Links */}
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-600 dark:text-dark-text-secondary">
               Need help?
               <a
                 href="mailto:legal@moregroup-inc.com"
-                className="ml-1 text-blue-600 hover:text-blue-700 font-medium"
+                className="ml-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
               >
                 Contact IT Support
               </a>

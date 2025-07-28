@@ -65,7 +65,7 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo }) => {
       <button
         onClick={handleFetch}
         disabled={isLoading}
-        className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap min-w-fit ${
+        className={`flex items-center justify-center gap-2 px-6 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap w-[180px] ${
           isLoading 
             ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
             : hasUpdates
@@ -74,11 +74,11 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo }) => {
         }`}
       >
         {isLoading ? (
-          <RefreshIcon size={16} className="animate-spin" />
+          <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
         ) : hasUpdates ? (
-          <Download size={16} className="animate-bounce" />
+          <Download size={16} className="animate-bounce flex-shrink-0" />
         ) : (
-          <Download size={16} />
+          <Download size={16} className="flex-shrink-0" />
         )}
         <span>
           {isLoading ? 'Checking...' : hasUpdates ? `${updateCount} New Updates` : 'Check for Updates'}
@@ -95,32 +95,7 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo }) => {
   );
 };
 
-// =====================================
-// REGENERATE AI BUTTON COMPONENT
-// =====================================
-const RegenerateAIButton = ({ onRegenerate, isLoading, totalOrders }) => {
-  return (
-    <button
-      onClick={() => onRegenerate()}
-      disabled={isLoading || totalOrders === 0}
-      className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap min-w-fit ${
-        isLoading 
-          ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
-          : totalOrders === 0
-          ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
-          : 'bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white border-purple-600 dark:border-purple-500 hover:from-purple-700 hover:to-indigo-700 dark:hover:from-purple-400 dark:hover:to-indigo-400 hover:border-purple-700 dark:hover:border-purple-400'
-      }`}
-      title={totalOrders === 0 ? 'No orders to regenerate' : `Regenerate AI analysis for all ${totalOrders} orders`}
-    >
-      {isLoading ? (
-        <RotateCw size={16} className="animate-spin" />
-      ) : (
-        <Sparkles size={16} />
-      )}
-      <span>{isLoading ? 'Regenerating...' : 'Regenerate AI'}</span>
-    </button>
-  );
-};
+// RegenerateAIButton component removed - individual order regeneration only
 
 // =====================================
 // UTILITY FUNCTIONS
@@ -380,10 +355,10 @@ const formatTalkingPoints = (content) => {
             <div className="space-y-2">
                 {points.slice(0, 5).map((point, idx) => (
                     <div key={idx} className="flex gap-2">
-                        <div className="flex-shrink-0 w-4 flex items-start justify-start text-sm font-bold text-gray-700 dark:text-gray-300">
+                        <div className="flex-shrink-0 w-4 flex items-start justify-start text-sm font-bold">
                             {idx + 1}.
                         </div>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-snug flex-1">
+                        <p className="text-sm leading-snug flex-1">
                             {point}
                         </p>
                     </div>
@@ -525,8 +500,8 @@ const formatUniversalContent = (content) => {
         <div className="space-y-2">
             {finalImpacts.map((impact, idx) => (
                 <div key={idx} className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full mt-2 flex-shrink-0"></div>
-                    <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                    <div className="w-1.5 h-1.5 bg-current opacity-50 rounded-full mt-2 flex-shrink-0"></div>
+                    <div className="text-sm leading-relaxed">
                         {impact}
                     </div>
                 </div>
@@ -852,8 +827,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const [hasData, setHasData] = useState(false);
   const [fetchStatus, setFetchStatus] = useState('');
   
-  const [regeneratingAI, setRegeneratingAI] = useState(false);
-  const [regenerationStatus, setRegenerationStatus] = useState('');
+  // Bulk regeneration state removed - individual order regeneration only
   
   const [updateInfo, setUpdateInfo] = useState(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -949,95 +923,27 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const fetchExecutiveOrders = useCallback(async (docType = 'executive_orders') => {
     try {
       setFetchingData(true);
+      setError(null);
       
-      // Set status message based on document type
-      const getDocTypeName = (type) => {
-        switch (type) {
-          case 'all': return 'All Documents';
-          case 'executive_orders': return 'Executive Orders';
-          case 'proclamations': return 'Proclamations';
-          case 'other': return 'Other Documents';
-          default: return 'Executive Orders';
-        }
-      };
+      const docTypeName = 'Executive Orders';
+      console.log(`🔄 Starting fetch for ${docTypeName}...`);
       
-      const docTypeName = getDocTypeName(docType);
-      setFetchStatus(`Checking for new ${docTypeName}...`);
-      console.log(`🔄 Checking for new ${docTypeName}...`);
-
-      // Use the appropriate check-count endpoint based on document type
-      const getCheckCountEndpoint = (type) => {
-        switch (type) {
-          case 'proclamations': return '/api/proclamations/check-count';
-          case 'executive_orders':
-          case 'all':
-          case 'other':
-          default: return '/api/executive-orders/check-count';
-        }
-      };
-
-      setFetchStatus('Checking counts...');
-      console.log('📊 Checking counts...');
-      const checkCountEndpoint = getCheckCountEndpoint(docType);
-      console.log(`🔗 Using endpoint: ${checkCountEndpoint}`);
-      
-      const checkCountResponse = await fetch(`${API_URL}${checkCountEndpoint}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!checkCountResponse.ok) {
-        throw new Error(`Failed to check counts: ${checkCountResponse.status}`);
-      }
-
-      const checkData = await checkCountResponse.json();
-      console.log('📊 Check count response:', checkData);
-
-      const federalRegisterCount = checkData.federal_register_count || 0;
-      const databaseCount = checkData.database_count || 0;
-      const newOrdersCount = federalRegisterCount - databaseCount;
-
-      console.log(`📊 Federal Register count: ${federalRegisterCount}`);
-      console.log(`📊 Database count: ${databaseCount}`);
-      console.log(`📊 New orders to fetch: ${newOrdersCount}`);
-
-      // Check if we actually need to fetch anything
-      if (newOrdersCount <= 0) {
-        console.log('✅ Database is already up to date - no new orders to fetch');
-        setFetchStatus('Database is already up to date');
-        setTimeout(() => setFetchStatus(''), 3000);
-        await fetchFromDatabase(); // Refresh the display
-        return;
-      }
-
-      // Only fetch new orders if there are actually new ones
-      setFetchStatus(`Fetching ${newOrdersCount} new ${docTypeName.toLowerCase()} from Federal Register...`);
-      console.log(`🔄 Fetching only ${newOrdersCount} new ${docTypeName.toLowerCase()} from Federal Register...`);
-
-      // Fetch only new orders using intelligent limit
-      // We'll fetch with a small buffer to ensure we get all new orders
-      const bufferAmount = Math.max(5, Math.ceil(newOrdersCount * 0.1)); // 10% buffer or minimum 5
-      const fetchLimit = newOrdersCount + bufferAmount;
-
-      console.log(`📊 Fetching ${fetchLimit} orders (${newOrdersCount} new + ${bufferAmount} buffer)`);
+      setFetchStatus(`Checking for new ${docTypeName.toLowerCase()}...`);
 
       const requestBody = {
         start_date: "2025-01-20",
         end_date: null,
         with_ai: true,
-        save_to_db: true,
-        force_fetch: false,
-        limit: fetchLimit, // Only fetch what we need plus buffer
-        max_concurrent: 3
+        save_to_db: true
       };
 
-      // Use the appropriate fetch endpoint based on document type
-      const getFetchEndpoint = (type) => {
-        switch (type) {
-          case 'proclamations': return '/api/proclamations/fetch';
+      console.log('📡 Sending request:', requestBody);
+      
+      const getEndpoint = () => {
+        switch (docType) {
+          case 'proclamations': return '/api/fetch-proclamations-simple';
+          case 'memoranda': return '/api/fetch-memoranda-simple';
+          case 'notices': return '/api/fetch-notices-simple';
           case 'executive_orders':
           case 'all':
           case 'other':
@@ -1045,51 +951,50 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         }
       };
 
-      const fetchEndpoint = getFetchEndpoint(docType);
-      console.log(`🔗 Using fetch endpoint: ${fetchEndpoint}`);
-
-      const response = await fetch(`${API_URL}${fetchEndpoint}`, {
+      const endpoint = getEndpoint();
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      // Check if response is actually JSON
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const textResponse = await response.text();
-        console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
-        throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
-      }
-
       const result = await response.json();
-      console.log('📥 Fetch Result:', result);
+      console.log(`📥 Fetch API response:`, result);
 
-      if (result.success !== false) {
+      if (!response.ok) {
+        console.error(`❌ API Error: ${result.detail || result.error || 'Unknown error'}`);
+        throw new Error(result.detail || result.error || 'Failed to fetch from API');
+      }
+
+      if (result.success) {
         const actualNewOrders = result.orders_saved || result.count || 0;
-        console.log(`✅ Successfully processed ${actualNewOrders} orders (${newOrdersCount} expected new orders)`);
-        setFetchStatus(`Successfully fetched ${actualNewOrders} new ${docTypeName.toLowerCase()}`);
+        const totalOrders = result.total_found || 0;
+        const databaseCount = result.database_count || 0;
+        
+        if (actualNewOrders === 0 && result.message && result.message.includes('up to date')) {
+          console.log('✅ Database is already up to date');
+          setFetchStatus('Database is already up to date');
+        } else {
+          console.log(`✅ Successfully processed ${actualNewOrders} new orders`);
+          setFetchStatus(`Successfully fetched ${actualNewOrders} new ${docTypeName.toLowerCase()}`);
+        }
+        
         setTimeout(() => setFetchStatus(''), 3000);
         
         // Clear update notification since we just fetched new orders
         setUpdateInfo(null);
         
+        // Refresh the display with the latest data
         setTimeout(async () => {
           await fetchFromDatabase();
-          // Database refreshed - updates will be checked on next manual refresh  
-        }, 2000);
+        }, 1000);
         
       } else {
-        throw new Error(result.message || result.error || 'Fetch failed');
+        throw new Error(result.error || 'Failed to fetch orders');
       }
-
+      
     } catch (err) {
       console.error('❌ Fetch failed:', err);
       setError(`Failed to fetch new executive orders: ${err.message}`);
@@ -1209,57 +1114,9 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   }, []);
 
   // Regenerate AI Analysis function
-  const regenerateAI = useCallback(async () => {
-    try {
-      setRegeneratingAI(true);
-      setRegenerationStatus(`Regenerating AI analysis for all ${allOrders.length} executive orders...`);
-      console.log('🤖 Starting AI regeneration for all executive orders...');
+  // Regenerate AI for a single order
 
-      // Use the existing run-pipeline endpoint which processes with AI
-      const response = await fetch(`${API_URL}/api/executive-orders/run-pipeline`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          start_date: "2025-01-20",
-          end_date: null,
-          with_ai: true,
-          save_to_db: true
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API returned ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('🤖 AI Regeneration Result:', result);
-
-      if (result.success) {
-        const ordersProcessed = result.orders_saved || result.orders_fetched || 0;
-        console.log(`✅ Successfully regenerated AI for ${ordersProcessed} orders`);
-        setRegenerationStatus(`✅ Successfully updated ${ordersProcessed} orders with new AI analysis`);
-        
-        // Refresh the data to show new AI analysis
-        setTimeout(async () => {
-          await fetchFromDatabase();
-          setRegenerationStatus('');
-        }, 3000);
-        
-      } else {
-        throw new Error(result.message || 'AI regeneration failed');
-      }
-    } catch (err) {
-      console.error('❌ AI Regeneration failed:', err);
-      setError(`Failed to regenerate AI analysis: ${err.message}`);
-      setRegenerationStatus('');
-    } finally {
-      setRegeneratingAI(false);
-    }
-  }, [allOrders.length, fetchFromDatabase]);
+  // Bulk regenerateAI function removed - individual order regeneration only
 
   // Close mobile menu when clicking outside
   useEffect(() => {
@@ -1909,17 +1766,12 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         <div className="p-4 sm:p-6">
           {/* Controls Bar - Mobile Responsive */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
-            {/* Left side - FetchButtonGroup and RegenerateAIButton */}
+            {/* Left side - FetchButtonGroup only */}
             <div className="flex flex-col sm:flex-row gap-3">
               <FetchButtonGroup 
                 onFetch={(docType) => fetchExecutiveOrders(docType)} 
                 isLoading={fetchingData}
                 updateInfo={updateInfo}
-              />
-              <RegenerateAIButton 
-                onRegenerate={regenerateAI} 
-                isLoading={regeneratingAI} 
-                totalOrders={allOrders.length}
               />
             </div>
 
@@ -1928,7 +1780,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               <button
                 type="button"
                 onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
-                className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 min-h-[40px] sm:min-h-[44px] flex-shrink-0 ${
+                className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 min-h-[40px] sm:min-h-[44px] flex-shrink-0 w-[110px] sm:w-[130px] ${
                   showHighlightsOnly
                     ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
                     : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
@@ -1942,16 +1794,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               <button
                 type="button"
                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[40px] sm:min-h-[44px] flex-shrink-0"
+                className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[40px] sm:min-h-[44px] flex-shrink-0 w-[130px] sm:w-[150px]"
               >
                 {sortOrder === 'latest' ? (
                   <>
-                    <ArrowDown size={16} />
+                    <ArrowDown size={16} className="flex-shrink-0" />
                     <span className="whitespace-nowrap">Latest Date</span>
                   </>
                 ) : (
                   <>
-                    <ArrowUp size={16} />
+                    <ArrowUp size={16} className="flex-shrink-0" />
                     <span className="whitespace-nowrap">Earliest Date</span>
                   </>
                 )}
@@ -2147,15 +1999,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 </div>
               )}
 
-              {/* Regeneration Status Display */}
-              {regenerationStatus && (
-                <div className="mt-4 text-center">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm">
-                    {regeneratingAI && <Sparkles size={16} className="animate-pulse" />}
-                    <span>{regenerationStatus}</span>
-                  </div>
-                </div>
-              )}
+              {/* Bulk regeneration status display removed */}
             </div>
           ) : (
             <div className="space-y-6 relative">
@@ -2334,7 +2178,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                     AI
                                   </div>
                                 </div>
-                                <div className="space-y-3">
+                                <div className={getTextClasses('secondary', 'text-sm leading-relaxed')}>
                                   {formatTalkingPoints(order.ai_talking_points)}
                                 </div>
                               </div>
@@ -2382,7 +2226,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                             </div>
                           )}
 
-                          {/* Source and PDF Links with Read More Button - Expanded */}
+                          {/* Action Buttons Section */}
                           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-dark-border">
                             <div className="flex items-center gap-6">
                               {order.html_url && (
@@ -2412,26 +2256,28 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               )}
                             </div>
                             
-                            {/* Read Less Button */}
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setExpandedOrders(prev => {
-                                  const newSet = new Set(prev);
-                                  if (newSet.has(orderId)) {
-                                    newSet.delete(orderId);
-                                  } else {
-                                    newSet.add(orderId);
-                                  }
-                                  return newSet;
-                                });
-                              }}
-                              className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm flex items-center gap-1"
-                            >
-                              {isExpanded ? 'Read Less' : 'Read More'}
-                              <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-                            </button>
+                            {/* Read More/Less Button */}
+                            <div className="flex justify-end">
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setExpandedOrders(prev => {
+                                    const newSet = new Set(prev);
+                                    if (newSet.has(orderId)) {
+                                      newSet.delete(orderId);
+                                    } else {
+                                      newSet.add(orderId);
+                                    }
+                                    return newSet;
+                                  });
+                                }}
+                                className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm flex items-center gap-1"
+                              >
+                                {isExpanded ? 'Read Less' : 'Read More'}
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                            </div>
                           </div>
 
                         </div>

@@ -124,7 +124,7 @@ class ExecutiveOrderProcessor:
     def _categorize_order(self, title: str) -> str:
         """Simple categorization based on title keywords"""
         if not title:
-            return 'civic'
+            return 'not-applicable'
         
         title_lower = title.lower()
         
@@ -135,7 +135,7 @@ class ExecutiveOrderProcessor:
         elif any(keyword in title_lower for keyword in ['infrastructure', 'transport', 'construction']):
             return 'engineering'
         else:
-            return 'civic'
+            return 'not-applicable'
     
     async def process_with_azure_ai(self, orders: List[Dict], max_concurrent: int = 3) -> List[Dict]:
         """

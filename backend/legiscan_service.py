@@ -62,49 +62,25 @@ def get_ai_client():
 enhanced_ai_client = get_ai_client()
 
 async def enhanced_bill_analysis(bill_data: Dict, search_context: str = "") -> Dict:
-    """Enhanced AI analysis for bills"""
+    """Enhanced AI analysis for bills using proper prompts from ai.py"""
     try:
-        if not enhanced_ai_client:
-            return {
-                'ai_summary': '<p>AI analysis not available - no client configured</p>',
-                'ai_talking_points': '<p>AI analysis not available</p>',
-                'ai_business_impact': '<p>AI analysis not available</p>',
-                'category': 'not_applicable',
-                'ai_version': 'unavailable'
-            }
-
-        # Create analysis prompt
-        bill_text = f"""
-        Title: {bill_data.get('title', 'N/A')}
-        Description: {bill_data.get('description', 'N/A')}
-        Status: {bill_data.get('status', 'N/A')}
-        State: {bill_data.get('state', 'N/A')}
-        Search Context: {search_context}
-        """
-
-        # Generate AI analysis
-        response = await enhanced_ai_client.chat.completions.create(
-            model=os.getenv('AZURE_MODEL_NAME', 'gpt-4'),
-            messages=[
-                {"role": "system", "content": "You are a policy analyst. Analyze this bill and provide a summary, talking points, and business impact assessment."},
-                {"role": "user", "content": bill_text}
-            ],
-            max_tokens=1500
-        )
-
-        analysis = response.choices[0].message.content
-
-        # Parse analysis (basic implementation - enhance as needed)
-        return {
-            'ai_summary': f'<p>{analysis}</p>',
-            'ai_talking_points': f'<p>Key points from AI analysis</p>',
-            'ai_business_impact': f'<p>Business impact assessment</p>',
-            'category': 'not_applicable',  # Enhance with categorization logic
-            'ai_version': '1.0'
-        }
+        print(f"🔍 DEBUG: enhanced_bill_analysis called for bill: {bill_data.get('bill_id', 'unknown')}")
+        
+        # Import the proper AI analysis function
+        from ai import analyze_legiscan_bill
+        print(f"🔍 DEBUG: Successfully imported analyze_legiscan_bill from ai.py")
+        
+        # Use the proper AI analysis with our improved prompts
+        analysis_result = await analyze_legiscan_bill(bill_data, enhanced_context=True)
+        print(f"🔍 DEBUG: AI analysis result keys: {list(analysis_result.keys())}")
+        print(f"🔍 DEBUG: AI summary preview: {analysis_result.get('ai_summary', 'No summary')[:150]}...")
+        
+        return analysis_result
 
     except Exception as e:
         print(f"❌ Enhanced AI analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             'ai_summary': f'<p>AI analysis failed: {str(e)}</p>',
             'ai_talking_points': '<p>AI analysis not available</p>',
@@ -162,7 +138,7 @@ class EnhancedLegiScanClient:
             print(f"❌ Enhanced LegiScan API request failed: {e}")
             raise
     
-    async def search_bills_enhanced(self, state: str, query: str, limit: int = 100, year_filter: str = 'all', max_pages: int = 5) -> Dict:
+    async def search_bills_enhanced(self, state: str, query: str, limit: int = 2000, year_filter: str = 'current', max_pages: int = 50, session_id: int = None) -> Dict:
         """Enhanced bill search with comprehensive data and pagination"""
         try:
             all_results = []
@@ -177,15 +153,24 @@ class EnhancedLegiScanClient:
             elif year_filter == 'recent':
                 year_param = 4  # Recent years (current + prior)
             
-            print(f"🔍 Enhanced search for {state} with year filter '{year_filter}' (param: {year_param})")
+            if session_id:
+                print(f"🔍 Enhanced search for {state} with session_id {session_id}")
+            else:
+                print(f"🔍 Enhanced search for {state} with year filter '{year_filter}' (param: {year_param})")
             
             # Fetch multiple pages
             for page in range(1, max_pages + 1):
                 params = {
                     'query': query, 
-                    'year': year_param, 
                     'page': page
                 }
+                
+                # Add session_id if provided, otherwise use year filter
+                if session_id:
+                    params['id'] = session_id  # LegiScan uses 'id' parameter for session searches
+                else:
+                    params['year'] = year_param
+                    
                 if state:
                     params['state'] = state
                 
@@ -388,15 +373,16 @@ class EnhancedLegiScanClient:
                 'timestamp': datetime.now().isoformat()
             }
     
-    async def enhanced_search_and_analyze(self, state: str, query: str, limit: int = 100, 
-                                        year_filter: str = 'current', max_pages: int = 10,
-                                        with_ai: bool = True, db_manager = None) -> Dict:
+    async def enhanced_search_and_analyze(self, state: str, query: str, limit: int = 2000, 
+                                        year_filter: str = 'current', max_pages: int = 50,
+                                        with_ai: bool = True, db_manager = None, session_id: int = None,
+                                        skip_existing: bool = True, force_refresh: bool = False) -> Dict:
         """Enhanced search and analyze workflow with one-by-one processing"""
         try:
             print(f"🚀 Enhanced search and analyze: {query} in {state}")
             
             # Step 1: Search for bills
-            search_result = await self.search_bills_enhanced(state, query, limit, year_filter, max_pages)
+            search_result = await self.search_bills_enhanced(state, query, limit, year_filter, max_pages, session_id)
             
             if not search_result.get('success') or not search_result.get('results'):
                 return {
@@ -408,8 +394,38 @@ class EnhancedLegiScanClient:
             search_results = search_result['results']
             analyzed_bills = []
             
-            # Step 2: Process each bill one by one
-            for i, bill_summary in enumerate(search_results, 1):
+            # Step 1.5: Check for existing bills to avoid re-processing (unless force refresh)
+            existing_bill_ids = set()
+            if db_manager and skip_existing and not force_refresh:
+                try:
+                    existing_bill_ids = db_manager.get_existing_bill_ids(state, session_id, year_filter)
+                    print(f"🔍 Found {len(existing_bill_ids)} existing bills in database")
+                except Exception as e:
+                    print(f"⚠️ Could not check existing bills: {e}")
+                    existing_bill_ids = set()
+            elif force_refresh:
+                print(f"🔄 Force refresh enabled - processing all bills regardless of existing records")
+            else:
+                print(f"➡️ Skip existing disabled - processing all bills")
+            
+            # Filter out bills that already exist in database (unless force refresh)
+            new_bills = []
+            skipped_count = 0
+            for bill_summary in search_results:
+                bill_id = bill_summary.get('bill_id')
+                if bill_id and bill_id in existing_bill_ids and not force_refresh:
+                    skipped_count += 1
+                    print(f"⏭️ Skipping existing bill: {bill_id}")
+                else:
+                    new_bills.append(bill_summary)
+            
+            if skip_existing and not force_refresh:
+                print(f"📊 Processing {len(new_bills)} new bills (skipped {skipped_count} existing bills)")
+            else:
+                print(f"📊 Processing {len(new_bills)} bills (no filtering applied)")
+            
+            # Step 2: Process each new bill one by one
+            for i, bill_summary in enumerate(new_bills, 1):
                 try:
                     bill_id = bill_summary.get('bill_id')
                     if not bill_id:
@@ -429,6 +445,7 @@ class EnhancedLegiScanClient:
                         try:
                             ai_analysis = await enhanced_bill_analysis(detailed_bill, f"Search: {query}")
                             print(f"✅ Enhanced AI analysis completed for bill {bill_id}")
+                            print(f"🔍 AI Summary preview: {ai_analysis.get('ai_summary', 'No summary')[:100]}...")
                         except Exception as e:
                             print(f"❌ Enhanced AI analysis failed for bill {bill_id}: {e}")
                             ai_analysis = {
@@ -500,6 +517,8 @@ class EnhancedLegiScanClient:
                 'timestamp': datetime.now().isoformat(),
                 'processing_results': {
                     'total_fetched': len(search_results),
+                    'existing_skipped': skipped_count,
+                    'new_bills_found': len(new_bills),
                     'total_processed': len(analyzed_bills),
                     'total_saved': len(analyzed_bills) if db_manager else 0,
                     'errors': []
@@ -521,27 +540,101 @@ class StateLegislationDatabaseManager:
     def __init__(self, connection):
         self.connection = connection
     
+    def get_existing_bill_ids(self, state: str, session_id: str = None, year_filter: str = None) -> set:
+        """Get existing bill IDs from database to avoid re-fetching"""
+        try:
+            cursor = self.connection.cursor()
+            
+            # Base query
+            query = "SELECT bill_id, last_action_date FROM state_legislation WHERE (state = %s OR state_abbr = %s)"
+            params = [state, state]
+            
+            # Add session filter if provided
+            if session_id:
+                query += " AND session_id = %s"
+                params.append(session_id)
+            
+            # Add year filter if provided
+            if year_filter and year_filter != 'all':
+                if year_filter == 'current':
+                    current_year = datetime.now().year
+                    query += " AND YEAR(introduced_date) = %s"
+                    params.append(current_year)
+                elif year_filter == 'recent':
+                    current_year = datetime.now().year
+                    query += " AND YEAR(introduced_date) >= %s"
+                    params.append(current_year - 1)
+            
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+            
+            # Return set of bill_ids for quick lookup
+            existing_bill_ids = {row[0] for row in results if row[0]}
+            print(f"📊 Found {len(existing_bill_ids)} existing bills in database for {state}")
+            return existing_bill_ids
+            
+        except Exception as e:
+            print(f"❌ Error getting existing bill IDs: {e}")
+            return set()
+    
+    def get_existing_bills_with_dates(self, state: str, session_id: str = None) -> dict:
+        """Get existing bills with their last action dates for update checking"""
+        try:
+            cursor = self.connection.cursor()
+            
+            query = """
+            SELECT bill_id, last_action_date, status, last_updated 
+            FROM state_legislation 
+            WHERE (state = %s OR state_abbr = %s)
+            """
+            params = [state, state]
+            
+            if session_id:
+                query += " AND session_id = %s"
+                params.append(session_id)
+            
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+            
+            # Return dict with bill_id as key and metadata as value
+            existing_bills = {}
+            for row in results:
+                bill_id, last_action_date, status, last_updated = row
+                if bill_id:
+                    existing_bills[bill_id] = {
+                        'last_action_date': last_action_date,
+                        'status': status,
+                        'last_updated': last_updated
+                    }
+            
+            print(f"📊 Retrieved metadata for {len(existing_bills)} existing bills for {state}")
+            return existing_bills
+            
+        except Exception as e:
+            print(f"❌ Error getting existing bills with dates: {e}")
+            return {}
+    
     def save_bill(self, bill_data: dict):
         """Save a single bill to the database"""
         try:
             cursor = self.connection.cursor()
             
             # Check if bill already exists
-            check_query = "SELECT id FROM dbo.state_legislation WHERE bill_id = ?"
-            cursor.execute(check_query, bill_data.get('bill_id'))
+            check_query = "SELECT id FROM state_legislation WHERE bill_id = %s"
+            cursor.execute(check_query, (bill_data.get('bill_id'),))
             existing = cursor.fetchone()
             
             if existing:
                 # Update existing bill
                 update_query = """
-                UPDATE dbo.state_legislation SET
-                    bill_number = ?, title = ?, description = ?, summary = ?, state = ?, state_abbr = ?,
-                    status = ?, category = ?, introduced_date = ?, last_action_date = ?,
-                    session_id = ?, session_name = ?, bill_type = ?, body = ?,
-                    legiscan_url = ?, pdf_url = ?, ai_summary = ?, ai_executive_summary = ?,
-                    ai_talking_points = ?, ai_key_points = ?, ai_business_impact = ?,
-                    ai_potential_impact = ?, ai_version = ?, last_updated = ?, reviewed = ?
-                WHERE bill_id = ?
+                UPDATE state_legislation SET
+                    bill_number = %s, title = %s, description = %s, summary = %s, state = %s, state_abbr = %s,
+                    status = %s, category = %s, introduced_date = %s, last_action_date = %s,
+                    session_id = %s, session_name = %s, bill_type = %s, body = %s,
+                    legiscan_url = %s, pdf_url = %s, ai_summary = %s, ai_executive_summary = %s,
+                    ai_talking_points = %s, ai_key_points = %s, ai_business_impact = %s,
+                    ai_potential_impact = %s, ai_version = %s, last_updated = %s, reviewed = %s
+                WHERE bill_id = %s
                 """
                 
                 values = (
@@ -579,14 +672,14 @@ class StateLegislationDatabaseManager:
             else:
                 # Insert new bill
                 insert_query = """
-                INSERT INTO dbo.state_legislation (
+                INSERT INTO state_legislation (
                     bill_id, bill_number, title, description, summary, state, state_abbr,
                     status, category, introduced_date, last_action_date,
                     session_id, session_name, bill_type, body,
                     legiscan_url, pdf_url, ai_summary, ai_executive_summary,
                     ai_talking_points, ai_key_points, ai_business_impact,
                     ai_potential_impact, ai_version, created_at, last_updated, reviewed
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 
                 values = (
@@ -633,29 +726,31 @@ class StateLegislationDatabaseManager:
 # Pydantic models for requests
 class LegiScanConfigRequest(BaseModel):
     """Configuration for LegiScan API requests"""
-    default_limit: int = 100
-    default_year_filter: str = 'all'  # 'all', 'current', 'recent'
-    default_max_pages: int = 5
+    default_limit: int = 2000  # Increased to capture more bills
+    default_year_filter: str = 'current'  # 'all', 'current', 'recent' - Default to current to get newest bills
+    default_max_pages: int = 50  # Increased to allow more pages (50 pages × 50 bills = 2500 bills max)
     enable_pagination: bool = True
     rate_limit_delay: float = 1.1
 
 class LegiScanSearchRequest(BaseModel):
     query: str
     state: str
-    limit: int = 100
+    limit: int = 2000  # Increased to capture more bills
     save_to_db: bool = True
     process_one_by_one: bool = False
     with_ai_analysis: bool = True
     enhanced_ai: bool = True
-    year_filter: str = 'all'  # 'all', 'current', 'recent'
-    max_pages: int = 5
+    year_filter: str = 'current'  # 'all', 'current', 'recent' - Default to current to get newest bills
+    max_pages: int = 50  # Increased to allow more pages
+    skip_existing: bool = True  # Skip bills that already exist in database
+    force_refresh: bool = False  # Force re-processing of all bills regardless of existing records
 
 class StateLegislationFetchRequest(BaseModel):
     states: List[str]
     save_to_db: bool = True
-    bills_per_state: int = 50
-    year_filter: str = 'all'
-    max_pages: int = 3
+    bills_per_state: int = 1000  # Increased significantly for active states
+    year_filter: str = 'current'  # Default to current to get newest bills
+    max_pages: int = 25  # Increased to support more bills per state
 
 class SessionStatusRequest(BaseModel):
     states: List[str]

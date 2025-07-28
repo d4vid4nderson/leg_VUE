@@ -30,7 +30,7 @@ def analyze_database_statuses():
         # Get distinct status values from the database
         cursor.execute('''
             SELECT DISTINCT status, COUNT(*) as count 
-            FROM dbo.state_legislation 
+            FROM state_legislation 
             WHERE status IS NOT NULL AND status != ''
             GROUP BY status 
             ORDER BY count DESC

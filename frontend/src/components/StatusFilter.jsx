@@ -59,7 +59,7 @@ const StatusFilter = ({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled || loading}
-        className={`flex items-center justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-48 min-h-[44px] ${
+        className={`flex items-center px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-auto h-[42px] ${
           disabled || loading 
             ? 'opacity-50 cursor-not-allowed' 
             : 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
@@ -70,11 +70,11 @@ const StatusFilter = ({
             const IconComponent = getButtonIcon();
             return <IconComponent size={16} className="text-gray-500 dark:text-gray-300" />;
           })()}
-          <span className="truncate">{getButtonLabel()}</span>
+          <span className="whitespace-nowrap">{getButtonLabel()}</span>
         </div>
         <ChevronDown 
           size={16} 
-          className={`ml-2 text-gray-500 dark:text-gray-300 transition-transform duration-200 ${
+          className={`ml-4 text-gray-500 dark:text-gray-300 transition-transform duration-200 ${
             isOpen ? 'rotate-180' : ''
           }`} 
         />
@@ -82,7 +82,7 @@ const StatusFilter = ({
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
-        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[280px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
+        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[220px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
           <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-700 dark:text-gray-300">

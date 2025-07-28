@@ -1,9 +1,10 @@
 // src/config/api.js
 export const getApiUrl = () => {
   const hostname = window.location.hostname;
+  const port = window.location.port;
   
   // Log details for debugging
-  console.log('🔍 Hostname detection:', hostname);
+  console.log('🔍 Hostname detection:', hostname, 'Port:', port);
   
   // In Azure or production, use backend container URL
   if (hostname.includes('azurecontainerapps.io') || 
@@ -23,9 +24,15 @@ export const getApiUrl = () => {
     return `https://${backendUrl}`;
   }
   
-  // In development, use localhost
-  console.log('✅ Development environment detected, using localhost');
-  return 'http://localhost:8000';
+  // If running on port 3000, use Vite dev server with proxy
+  if (port === '3000') {
+    console.log('✅ Vite development server detected on port 3000, using relative URLs for Vite proxy');
+    return '';
+  }
+  
+  // For Docker development (port 80), use relative URLs for nginx proxy
+  console.log('✅ Docker development environment detected, using relative URLs for nginx proxy');
+  return '';
 };
 
 const API_URL = getApiUrl();

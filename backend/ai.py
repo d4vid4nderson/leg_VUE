@@ -12,19 +12,20 @@ import requests
 import traceback
 
 # Safe imports with fallbacks
+# Use local PromptType definition to ensure STATE_BILL types are available
+class PromptType(Enum):
+    EXECUTIVE_SUMMARY = "executive_summary"
+    KEY_TALKING_POINTS = "key_talking_points"
+    BUSINESS_IMPACT = "business_impact"
+    # State Bill specific prompts
+    STATE_BILL_SUMMARY = "state_bill_summary"
+    STATE_BILL_TALKING_POINTS = "state_bill_talking_points"
+    STATE_BILL_IMPACT = "state_bill_impact"
+
 try:
-    from utils import format_text_as_html, parse_ai_response, PromptType, Category
+    from utils import format_text_as_html, parse_ai_response, Category
 except ImportError:
     print("Warning: utils module not found. Using fallback definitions.")
-    
-    class PromptType(Enum):
-        EXECUTIVE_SUMMARY = "executive_summary"
-        KEY_TALKING_POINTS = "key_talking_points"
-        BUSINESS_IMPACT = "business_impact"
-        # State Bill specific prompts
-        STATE_BILL_SUMMARY = "state_bill_summary"
-        STATE_BILL_TALKING_POINTS = "state_bill_talking_points"
-        STATE_BILL_IMPACT = "state_bill_impact"
     
     class Category(Enum):
         HEALTHCARE = "healthcare"
@@ -237,13 +238,17 @@ Executive Order Content: {text}
 
     # State Bill specific prompts
     PromptType.STATE_BILL_SUMMARY: """
-    Write a simple, clear overview of this state bill in 1-2 sentences.
-    Focus only on:
-    - What the bill does (main purpose in plain language)
-    - Who or what it affects (in basic terms)
+    Write a comprehensive, clear summary of this bill in 5-7 sentences.
     
-    Keep it very simple and accessible. Avoid technical details, legislative jargon, or complex explanations.
-    Write as if explaining to someone who just wants a quick understanding of what this bill is about.
+    Requirements:
+    - Write 5-7 complete sentences (approximately 120-150 words)
+    - Plain language that anyone can understand
+    - No headers, titles, or formatting
+    - No bullet points or sections
+    - Form a cohesive paragraph
+    - Cover what the bill does, who it affects, key provisions, and potential impact
+    
+    Structure: Start with what the bill does, explain who it affects, describe key provisions or changes, mention implementation details if relevant, and conclude with the broader impact or significance.
     
     State Bill Content: {text}
     """,
@@ -297,7 +302,7 @@ SYSTEM_MESSAGES = {
     PromptType.KEY_TALKING_POINTS: "You are an elite strategic communications consultant who has advised presidents, CEOs, and world leaders on complex policy communications. You excel at creating sophisticated talking points that demonstrate policy expertise while remaining accessible to diverse stakeholder audiences. Your talking points are used in congressional hearings, board meetings, and high-stakes negotiations. You understand the nuanced interests of different stakeholder groups and can articulate complex policy positions with precision and authority.",
     
     PromptType.BUSINESS_IMPACT: "You are a premier management consultant specializing in regulatory strategy and business impact analysis, with extensive experience at McKinsey, BCG, and Bain. You advise Fortune 100 companies on navigating complex regulatory environments and capitalizing on policy changes. Your analysis combines deep regulatory knowledge with practical business acumen, helping companies transform regulatory challenges into competitive advantages. You understand market dynamics, competitive positioning, operational implications, and strategic opportunities that emerge from policy changes.",
-    PromptType.STATE_BILL_SUMMARY: "You are a legislative analyst who creates simple, clear overviews of state bills for the general public. Focus on the basic purpose and impact in plain language that anyone can understand quickly.",
+    PromptType.STATE_BILL_SUMMARY: "You are a legislative analyst who writes comprehensive yet accessible summaries. You write exactly 5-7 complete sentences that form a cohesive paragraph. You use plain, everyday language that anyone can understand while avoiding technical jargon and legal terminology. You NEVER use headers, sections, bullet points, or special formatting.",
     PromptType.STATE_BILL_TALKING_POINTS: "You are a community engagement specialist helping elected officials communicate with constituents. Create talking points that are accessible, relevant, and useful for public discussions.",
     PromptType.STATE_BILL_IMPACT: "You are a civic policy analyst who evaluates how state legislation affects communities and residents. Focus on practical, real-world implications for everyday citizens.",
 }
@@ -696,7 +701,18 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
         if context:
             text = f"Context: {context}\n\n{text}"
         
-        prompt = PROMPTS[prompt_type].format(text=text)
+        try:
+            print(f"🔍 Attempting to access PROMPTS for {prompt_type}")
+            print(f"🔍 prompt_type type: {type(prompt_type)}")
+            print(f"🔍 Available PROMPTS keys: {list(PROMPTS.keys())}")
+            print(f"🔍 Available PROMPTS key types: {[type(k) for k in PROMPTS.keys()]}")
+            prompt = PROMPTS[prompt_type].format(text=text)
+        except KeyError as ke:
+            print(f"❌ KeyError accessing PROMPTS for {prompt_type}: {ke}")
+            raise Exception(f"Prompt type {prompt_type} not found in PROMPTS dictionary")
+        except Exception as format_error:
+            print(f"❌ Error formatting prompt for {prompt_type}: {format_error}")
+            raise Exception(f"Error formatting prompt: {format_error}")
         
         messages = [
             {
@@ -710,13 +726,15 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
         ]
 
         print(f"🤖 Calling AI for: {prompt_type.value} (with context: {context})")
+        print(f"🔧 Azure endpoint: {AZURE_ENDPOINT}")
+        print(f"🔧 Model name: {MODEL_NAME}")
         
         # Enhanced parameters for sophisticated analysis with higher token limits
         if prompt_type == PromptType.EXECUTIVE_SUMMARY:
             max_tokens = 600  # Increased for comprehensive executive analysis
             temperature = 0.2  # Slightly higher for more sophisticated language
         elif prompt_type == PromptType.STATE_BILL_SUMMARY:
-            max_tokens = 150  # Keep shorter for simple overview
+            max_tokens = 200  # Increased for 5-7 sentence comprehensive summaries
             temperature = 0.1
         elif prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS]:
             max_tokens = 800  # Significantly increased for detailed talking points
@@ -725,20 +743,29 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
             max_tokens = 1000  # Doubled for comprehensive business analysis
             temperature = 0.25  # Balanced for analytical depth
         
-        response = await client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=30,
-            top_p=0.95,
-            frequency_penalty=0.3,
-            presence_penalty=0.2,
-            stop=["6.", "7.", "8.", "9."] if prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS] else None
-        )
+        try:
+            print(f"🔧 Making Azure API call with max_tokens={max_tokens}, temperature={temperature}")
+            response = await client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=60,
+                top_p=0.95,
+                frequency_penalty=0.3,
+                presence_penalty=0.2,
+                stop=["6.", "7.", "8.", "9."] if prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS] else None
+            )
+            print(f"✅ Azure API call successful for {prompt_type.value}")
+        except Exception as api_error:
+            print(f"❌ Azure API call failed for {prompt_type.value}: {type(api_error).__name__}: {api_error}")
+            raise api_error
 
         raw_response = response.choices[0].message.content
-        print(f"Raw AI response ({prompt_type.value}):\n---\n{raw_response[:200]}...\n---")
+        print(f"Raw AI response ({prompt_type.value}):\n---\n{raw_response[:300]}...\n---")
+        
+        if prompt_type == PromptType.STATE_BILL_SUMMARY:
+            print(f"🔍 DEBUG: STATE_BILL_SUMMARY raw response: {raw_response[:500]}")
 
         # Enhanced formatting for each type
         if prompt_type in [PromptType.EXECUTIVE_SUMMARY, PromptType.STATE_BILL_SUMMARY]:
@@ -756,8 +783,36 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
         return formatted_response
 
     except Exception as e:
-        print(f"❌ Error during AI {prompt_type.value} call: {e}")
-        return f"<p>Error generating {prompt_type.value.replace('_', ' ')}: {str(e)}</p>"
+        import openai
+        error_type = type(e).__name__
+        
+        # Distinguish between different types of connection errors
+        if "timeout" in str(e).lower() or isinstance(e, asyncio.TimeoutError):
+            error_msg = f"Connection timeout (exceeded 60 seconds) - API server response too slow"
+            print(f"❌ Timeout error during AI {prompt_type.value} call: {e}")
+        elif "connection" in str(e).lower() or "network" in str(e).lower():
+            error_msg = f"Network connection error - unable to reach API server"
+            print(f"❌ Network error during AI {prompt_type.value} call: {e}")
+        elif hasattr(openai, 'RateLimitError') and isinstance(e, openai.RateLimitError):
+            error_msg = f"API rate limit exceeded - too many requests"
+            print(f"❌ Rate limit error during AI {prompt_type.value} call: {e}")
+        elif hasattr(openai, 'AuthenticationError') and isinstance(e, openai.AuthenticationError):
+            error_msg = f"API authentication failed - check credentials"
+            print(f"❌ Authentication error during AI {prompt_type.value} call: {e}")
+        elif hasattr(openai, 'APIError') and isinstance(e, openai.APIError):
+            error_msg = f"API server error - service temporarily unavailable"
+            print(f"❌ API error during AI {prompt_type.value} call: {e}")
+        else:
+            error_msg = f"Unexpected error ({error_type}): {str(e)}"
+            print(f"❌ Unexpected error during AI {prompt_type.value} call:")
+            print(f"❌ Error type: {type(e)}")
+            print(f"❌ Error value: {e}")
+            print(f"❌ Error str: {str(e)}")
+            print(f"❌ Error repr: {repr(e)}")
+            import traceback
+            print(f"❌ Full traceback: {traceback.format_exc()}")
+        
+        return f"<p>Error generating {prompt_type.value.replace('_', ' ')}: {error_msg}</p>"
 
 async def get_executive_summary(text: str, context: str = "") -> str:
     return await process_with_ai(text, PromptType.EXECUTIVE_SUMMARY, context=context)
@@ -819,6 +874,7 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         content = "\n\n".join(content_parts)
         
         print(f"🔍 Analyzing LegiScan bill: {bill_number} - {title[:50]}...")
+        print(f"🔍 DEBUG: Using improved prompts from ai.py")
         
         # Categorize the bill
         category = categorize_bill(title, description)
