@@ -655,20 +655,6 @@ const Homepage = () => {
             AI-powered analysis and insights.
           </p>
           
-          <div className="mt-8 flex flex-wrap justify-center items-center gap-8 text-blue-100 text-sm">
-            <div className="flex items-center gap-2">
-              <Shield size={16} />
-              SOC 2 Compliant
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock size={16} />
-              24/7 Monitoring
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle size={16} />
-              99.9% Uptime
-            </div>
-          </div>
         </div>
       </section>
     </div>

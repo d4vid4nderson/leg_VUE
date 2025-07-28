@@ -31,22 +31,17 @@ def get_database_config():
             'description': 'Azure SQL Server (Development)'
         }
     else:
-        # Production - Use Azure SQL with ODBC
+        # Production - Use Azure SQL with MSI authentication
         server = os.getenv('AZURE_SQL_SERVER', 'sql-legislation-tracker.database.windows.net')
         database = os.getenv('AZURE_SQL_DATABASE', 'db-executiveorders')
-        username = os.getenv('AZURE_SQL_USERNAME')
-        password = os.getenv('AZURE_SQL_PASSWORD')
-        
-        if not username or not password:
-            raise ValueError("❌ SQL credentials required for Azure SQL. Set AZURE_SQL_USERNAME and AZURE_SQL_PASSWORD")
         
         return {
             'type': 'azure_sql',
             'server': server,
             'database': database,
-            'username': username,
-            'password': password,
-            'description': 'Azure SQL Server (Production)'
+            'username': None,  # Not needed for MSI authentication
+            'password': None,  # Not needed for MSI authentication
+            'description': 'Azure SQL Server (Production with MSI)'
         }
 
 @contextmanager
