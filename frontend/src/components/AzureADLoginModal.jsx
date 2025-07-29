@@ -307,7 +307,7 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
       ></div>
 
       {/* Modal Content */}
-      <div className="relative z-10 bg-white dark:bg-dark-bg-secondary rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="relative z-10 bg-white dark:bg-dark-bg-secondary rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -318,7 +318,7 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
         </button>
 
         {/* Login Card */}
-        <div className="p-8">
+        <div className="px-8 pt-12 pb-8">
           <div className="text-center mb-8">
             {/* Image Logo */}
             <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
@@ -332,6 +332,19 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
               Welcome to LegislationVUE
             </h2>
             <p className="text-gray-600 dark:text-dark-text-secondary">Sign in with your company account</p>
+          </div>
+
+          {/* Disclaimer */}
+          <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+              <strong className="text-gray-700 dark:text-gray-300">Disclaimer:</strong> This legislation tracking tool (LegislationVUE) is intended for internal use by MOREgroup employees only. It is provided for informational purposes and does not constitute legal advice.
+            </p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
+              The content has not been reviewed or corroborated by legal counsel and should not be relied upon as a substitute for professional legal guidance.
+            </p>
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
+              MOREgroup makes no representations or warranties regarding the accuracy of the information contained herein.
+            </p>
           </div>
 
           {/* Azure AD Error Messages */}
@@ -380,16 +393,6 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
               <p className="text-xs text-gray-500 dark:text-dark-text-secondary text-center mt-2">
                 Use your company Microsoft account to sign in
               </p>
-
-              {/* Divider */}
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300 dark:border-dark-border"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white dark:bg-dark-bg-secondary text-gray-500 dark:text-dark-text-secondary">or</span>
-                </div>
-              </div>
             </div>
           ) : (
             // Show message if Azure AD not configured
@@ -513,8 +516,9 @@ const AzureADLoginModal = ({ isOpen, onClose, onLoginSuccess }) => {
 )}
 */}
 
+
           {/* Footer Links */}
-          <div className="mt-6 text-center">
+          <div className="mt-2 text-center">
             <p className="text-sm text-gray-600 dark:text-dark-text-secondary">
               Need help?
               <a
