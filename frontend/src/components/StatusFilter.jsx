@@ -59,7 +59,7 @@ const StatusFilter = ({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled || loading}
-        className={`flex items-center px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full sm:w-auto h-[42px] ${
+        className={`flex items-center justify-center xl:justify-between px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white transition-all duration-300 w-full xl:w-auto h-[44px] ${
           disabled || loading 
             ? 'opacity-50 cursor-not-allowed' 
             : 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
@@ -82,7 +82,7 @@ const StatusFilter = ({
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
-        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[220px] max-h-[400px] overflow-hidden left-0 sm:left-auto sm:right-0">
+        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full xl:w-auto xl:min-w-[220px] max-h-[400px] overflow-hidden left-0 xl:left-auto xl:right-0">
           <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-700 dark:text-gray-300">

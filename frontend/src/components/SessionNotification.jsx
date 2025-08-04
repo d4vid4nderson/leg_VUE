@@ -208,21 +208,23 @@ const SessionNotification = ({
           <div className="bg-gray-100 dark:bg-slate-600 rounded-full p-1">
             <Calendar size={14} className="text-gray-600 dark:text-gray-300" />
           </div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-white whitespace-nowrap">
               Active Legislative Session{activeSessions.length > 1 ? 's' : ''}
             </h3>
-            <div className="flex items-center gap-1" title={hasActiveSession ? "Legislative session is currently in progress" : "Legislative session is scheduled/planned"}>
-              <div className={`w-2 h-2 rounded-full ${hasActiveSession ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
-              <span className={`text-xs font-medium ${hasActiveSession ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                {hasActiveSession ? 'IN SESSION' : 'SCHEDULED'}
-              </span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1" title={hasActiveSession ? "Legislative session is currently in progress" : "Legislative session is scheduled/planned"}>
+                <div className={`w-2 h-2 rounded-full ${hasActiveSession ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                <span className={`text-xs font-medium ${hasActiveSession ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {hasActiveSession ? 'IN SESSION' : 'SCHEDULED'}
+                </span>
+              </div>
+              {activeSessions.length > 1 && (
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  ({activeSessions.length} sessions)
+                </span>
+              )}
             </div>
-            {activeSessions.length > 1 && (
-              <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                ({activeSessions.length} sessions)
-              </span>
-            )}
           </div>
         </div>
         

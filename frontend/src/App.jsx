@@ -15,7 +15,6 @@ import AzureADLoginModal from './components/AzureADLoginModal';
 
 // Lazy loaded components for code splitting
 const Homepage = lazy(() => import('./components/Homepage'));
-const HighlightsPage = lazy(() => import('./components/HighlightsPage'));
 const ExecutiveOrdersPage = lazy(() => import('./components/ExecutiveOrdersPage'));
 const FederalLegislationPage = lazy(() => import('./components/FederalLegislationPage'));
 const StateLegislationPage = lazy(() => import('./components/StateLegislationPage'));
@@ -31,7 +30,6 @@ console.log('🔍 Component imports check:', {
   AzureADLoginModal,
   // Lazy loaded components logged differently
   Homepage: 'Lazy loaded',
-  HighlightsPage: 'Lazy loaded',
   ExecutiveOrdersPage: 'Lazy loaded',
   FederalLegislationPage: 'Lazy loaded',
   StateLegislationPage: 'Lazy loaded',
@@ -401,19 +399,6 @@ const AppContent = () => {
                 } 
               />
 
-              {/* Highlights Route */}
-              <Route 
-                path="/highlights" 
-                element={
-                  <SafeComponent
-                    component={HighlightsPage}
-                    fallbackName="HighlightsPage"
-                    makeApiCall={makeApiCall}
-                    copyToClipboard={copyToClipboard}
-                    stableHandlers={stableHandlers}
-                  />
-                } 
-              />
 
               {/* Executive Orders Route */}
               <Route 

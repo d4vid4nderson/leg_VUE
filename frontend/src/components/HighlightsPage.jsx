@@ -2121,13 +2121,13 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6">
           {/* Controls Section - Mobile Responsive */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
             {/* Left side - Refresh Button (matching StatePage FetchButtonGroup style) */}
             <div className="relative w-full sm:w-auto">
               <button
                 onClick={handleManualRefresh}
                 disabled={isRefreshing}
-                className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 w-full sm:w-auto ${
+                className={`flex items-center justify-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 w-full xl:w-auto ${
                   isRefreshing
                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                     : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700'
@@ -2143,11 +2143,11 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
               </button>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
+            <div className="flex flex-col xl:flex-row gap-3 xl:gap-4 items-stretch xl:items-center">
               {/* Sort Button - Mobile Optimized */}
               <button
                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center justify-center gap-3 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px]"
+                className="flex items-center justify-center gap-3 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white text-gray-700 border-gray-300 hover:bg-gray-50 min-h-[44px] w-full xl:w-auto"
               >
                 {sortOrder === 'latest' ? (
                   <>
@@ -2167,7 +2167,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
                 <button
                   type="button"
                   onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                  className="flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-full sm:w-48 min-h-[44px]"
+                  className="flex items-center justify-center xl:justify-between px-4 py-3 border border-gray-300 rounded-lg text-sm font-medium bg-white hover:bg-gray-50 transition-all duration-300 w-full xl:w-48 min-h-[44px]"
                 >
                   <div className="flex items-center gap-2">
                     <span className="truncate">

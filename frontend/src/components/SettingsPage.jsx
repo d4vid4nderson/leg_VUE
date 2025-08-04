@@ -532,8 +532,11 @@ const SettingsPage = ({
                 </div>
             </section>
 
-            {/* Clear Status */}
-            {clearStatus && (
+            {/* Settings Content Section */}
+            <section className="py-8 px-6">
+                <div className="max-w-7xl mx-auto">
+                    {/* Clear Status */}
+                    {clearStatus && (
                 <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md">
                     <p className="text-blue-800 dark:text-blue-300 text-sm font-medium">{clearStatus}</p>
                 </div>
@@ -910,7 +913,9 @@ const SettingsPage = ({
             </div>
 
             {/* Database Clear Modal */}
-            <DatabaseClearModal />
+                    <DatabaseClearModal />
+                </div>
+            </section>
         </div>
     );
 };

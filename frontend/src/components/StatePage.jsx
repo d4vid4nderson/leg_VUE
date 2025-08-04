@@ -425,7 +425,7 @@ const ScrollToTopButton = () => {
     return (
         <button
             onClick={scrollToTop}
-            className={`fixed right-6 bottom-6 z-50 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+            className={`fixed right-6 bottom-6 z-[200] p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                 isVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
             }`}
             title="Scroll to top"
@@ -1593,7 +1593,7 @@ const StatePage = ({ stateName }) => {
                     <div className={getCardClasses('rounded-lg shadow-sm')}>
                         <div className="p-6">
                         {/* Controls Bar - Fetch button left, filters right */}
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 w-full">
+                        <div className="flex flex-col xl:flex-row xl:justify-between xl:items-center gap-4 mb-6 w-full">
                             {/* Fetch Button with Session Options - Left side */}
                             <div className="flex items-center gap-3 justify-start">
                                 <div className="relative fetch-dropdown-container">
@@ -1688,11 +1688,11 @@ const StatePage = ({ stateName }) => {
                             </div>
                             
                             {/* Filter button group - right aligned */}
-                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
+                            <div className="flex flex-col xl:flex-row gap-3 xl:gap-2 items-stretch xl:items-center">
                                 {/* Sort Button */}
                                 <button
                                     onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                                    className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[44px] w-[100px]"
+                                    className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[44px] w-full xl:w-[100px]"
                                 >
                                     <div className="flex items-center gap-2">
                                         {sortOrder === 'latest' ? (
@@ -1706,7 +1706,7 @@ const StatePage = ({ stateName }) => {
                                     </div>
                                 </button>
                                 
-                                {/* Highlights Filter - Matching ExecutiveOrdersPage */}
+                                {/* Highlights Filter - Hidden on mobile */}
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -1714,7 +1714,7 @@ const StatePage = ({ stateName }) => {
                                         setIsHighlightFilterActive(newValue);
                                         localStorage.setItem('highlightFilterActive', newValue.toString());
                                     }}
-                                    className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 min-h-[40px] sm:min-h-[44px] flex-shrink-0 w-[110px] sm:w-[130px] ${
+                                    className={`hidden xl:flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 min-h-[44px] w-full xl:w-[130px] ${
                                         isHighlightFilterActive
                                             ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
                                             : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
@@ -1810,7 +1810,7 @@ const StatePage = ({ stateName }) => {
                                     <button
                                         type="button"
                                         onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                                        className={`flex items-center px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 w-full sm:w-auto min-h-[44px] ${
+                                        className={`flex items-center justify-center xl:justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 w-full xl:w-auto min-h-[44px] ${
                                             selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
                                         }`}
                                     >
@@ -1842,7 +1842,7 @@ const StatePage = ({ stateName }) => {
 
                                     {/* Dropdown content - Match HighlightsPage structure exactly */}
                                     {showFilterDropdown && (
-                                        <div className={`absolute top-full mt-2 w-full sm:w-64 ${getCardClasses('')} rounded-lg shadow-lg overflow-hidden z-[120] left-0 sm:left-auto sm:right-0`}>
+                                        <div className={`absolute top-full mt-2 w-full xl:w-64 ${getCardClasses('')} rounded-lg shadow-lg overflow-hidden z-[120] left-0 xl:left-auto xl:right-0`}>
                                             {/* Header */}
                                             <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-dark-border">
                                                 <div className="flex items-center justify-between">
@@ -2033,7 +2033,7 @@ const StatePage = ({ stateName }) => {
                                                                 }
                                                             }}
                                                             disabled={isBillHighlightLoading(bill)}
-                                                            className={`p-3 rounded-lg transition-all duration-300 min-w-[44px] min-h-[44px] flex items-center justify-center ${
+                                                            className={`hidden xl:flex p-3 rounded-lg transition-all duration-300 min-w-[44px] min-h-[44px] items-center justify-center ${
                                                                 isStateBillHighlighted(bill)
                                                                     ? 'text-yellow-500 bg-yellow-50 border border-yellow-200 hover:bg-yellow-100'
                                                                     : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-500 border border-gray-200'

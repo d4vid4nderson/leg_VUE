@@ -693,7 +693,7 @@ const ScrollToTopButton = () => {
   return (
     <button
       onClick={scrollToTop}
-      className={`fixed right-6 bottom-6 z-50 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+      className={`fixed right-6 bottom-6 z-[200] p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
         isVisible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
       }`}
       title="Scroll to top"
@@ -1773,12 +1773,14 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       </section>
 
       {/* Results Section */}
-      <div className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg shadow-sm overflow-visible">
-        <div className="p-4 sm:p-6">
-          {/* Controls Bar - Mobile Responsive */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
-            {/* Left side - FetchButtonGroup only */}
-            <div className="flex flex-col sm:flex-row gap-3">
+      <section className="py-8 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg shadow-sm overflow-visible">
+            <div className="p-4 sm:p-6">
+              {/* Controls Bar - Mobile Responsive */}
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
+                {/* Left side - FetchButtonGroup only */}
+            <div className="flex flex-col gap-3 xl:flex-row">
               <FetchButtonGroup 
                 onFetch={(docType) => fetchExecutiveOrders(docType)} 
                 isLoading={fetchingData}
@@ -1787,12 +1789,12 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               />
             </div>
 
-            <div className="flex flex-wrap gap-2 sm:gap-3 items-center justify-end pb-2 sm:pb-0" style={{overflow: 'visible'}}>
+            <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:gap-2 xl:items-center xl:justify-end pb-2 xl:pb-0" style={{overflow: 'visible'}}>
               {/* Highlight Filter Button */}
               <button
                 type="button"
                 onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
-                className={`flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 min-h-[40px] sm:min-h-[44px] flex-shrink-0 w-[110px] sm:w-[130px] ${
+                className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 min-h-[44px] w-full xl:w-[130px] ${
                   showHighlightsOnly
                     ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
                     : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
@@ -1806,7 +1808,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               <button
                 type="button"
                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[40px] sm:min-h-[44px] flex-shrink-0 w-[130px] sm:w-[150px]"
+                className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[44px] w-full xl:w-[150px]"
               >
                 {sortOrder === 'latest' ? (
                   <>
@@ -1826,7 +1828,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 <button
                   type="button"
                   onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                  className={`flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 dark:border-dark-border rounded-lg text-xs sm:text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-w-[140px] sm:min-w-[224px] min-h-[40px] sm:min-h-[44px] flex-shrink-0 ${
+                  className={`flex items-center justify-center xl:justify-between px-4 py-3 border border-gray-300 dark:border-dark-border rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-h-[44px] w-full xl:w-[224px] ${
                     selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
                   }`}
                 >
@@ -2314,30 +2316,33 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
             itemType="executive orders"
           />
         )}
-      </div>
 
-      {/* Filter Results Summary */}
-      {!loading && !error && selectedFilters.length > 0 && (
-        <div className="mt-4 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
-            <span>
-              {orders.length === 0 ? 'No results' : `${pagination.count} total results`} for: 
-              <span className="font-medium ml-1">
-                {selectedFilters.map(f => {
-                  if (f === 'all_practice_areas') return 'All Practice Areas';
-                  return CATEGORY_FILTERS.find(cf => cf.key === f)?.label || f;
-                }).join(', ')}
+        {/* Filter Results Summary */}
+        {!loading && !error && selectedFilters.length > 0 && (
+          <div className="mt-4 text-center">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-sm">
+              <span>
+                {orders.length === 0 ? 'No results' : `${pagination.count} total results`} for: 
+                <span className="font-medium ml-1">
+                  {selectedFilters.map(f => {
+                    if (f === 'all_practice_areas') return 'All Practice Areas';
+                    return CATEGORY_FILTERS.find(cf => cf.key === f)?.label || f;
+                  }).join(', ')}
+                </span>
               </span>
-            </span>
-            {pagination.count > 25 && (
-              <span className="text-xs bg-blue-100 dark:bg-blue-800/50 text-blue-700 dark:text-blue-200 px-2 py-1 rounded">
-                {pagination.total_pages} pages
-              </span>
-            )}
+              {pagination.count > 25 && (
+                <span className="text-xs bg-blue-100 dark:bg-blue-800/50 text-blue-700 dark:text-blue-200 px-2 py-1 rounded">
+                  {pagination.total_pages} pages
+                </span>
+              )}
+            </div>
+          </div>
+        )}
           </div>
         </div>
-      )}
+      </section>
 
+      <ScrollToTopButton />
     </div>
   );
 };
