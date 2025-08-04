@@ -23,7 +23,6 @@ const StatePage = lazy(() => import('./components/StatePage'));
 const SettingsPage = lazy(() => import('./components/SettingsPage'));
 const AuthRedirect = lazy(() => import('./components/AuthRedirect'));
 const HR1Page = lazy(() => import('./components/HR1Page'));
-const AnalyticsPage = lazy(() => import('./components/AnalyticsPage'));
 
 // Debug: Log imported components to identify undefined ones
 console.log('🔍 Component imports check:', {
@@ -472,17 +471,6 @@ const AppContent = () => {
                 } 
               />
 
-              {/* Analytics Route */}
-              <Route 
-                path="/analytics" 
-                element={
-                  <SafeComponent
-                    component={AnalyticsPage}
-                    fallbackName="AnalyticsPage"
-                    makeApiCall={makeApiCall}
-                  />
-                } 
-              />
 
               {/* HR1 Policy Analysis Route */}
               <Route 

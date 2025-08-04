@@ -31,7 +31,6 @@ import {
     Users,
     ChevronRight,
     Play,
-    BarChart3,
     Mail,
     MessageCircle,
     Phone,
@@ -321,12 +320,6 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                     {/* Separator */}
                     <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
-                    <MobileMenuItem
-                        icon={BarChart3}
-                        label="Analytics"
-                        onClick={() => handleNavigate('/analytics')}
-                        active={location.pathname === '/analytics'}
-                    />
 
                     <MobileMenuItem
                         icon={Settings}
@@ -601,19 +594,6 @@ const Header = ({
                                         {/* Separator */}
                                         <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
-                                        {/* Analytics */}
-                                        <button
-                                            onClick={() => handleMenuItemClick(() => navigate('/analytics'))}
-                                            className={
-                                                "w-full text-left px-6 py-3 text-sm font-semibold transition-all duration-300 flex items-center gap-3 " +
-                                                (location.pathname === '/analytics'
-                                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                                                    : 'text-gray-800 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary')
-                                            }
-                                        >
-                                            <BarChart3 size={16} />
-                                            <span>Analytics</span>
-                                        </button>
 
                                         {/* Settings */}
                                         <button
