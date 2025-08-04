@@ -37,6 +37,27 @@ import SessionFilter from '../components/SessionFilter';
 import StatusFilter from '../components/StatusFilter';
 import API_URL from '../config/api';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
+
+// Utility function to add timeout to fetch requests
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 300000) => { // 5 minutes default
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error(`Request timed out after ${timeoutMs / 1000} seconds. Large datasets may take longer to process.`);
+        }
+        throw error;
+    }
+};
 import { 
     getCurrentStatus, 
     mapLegiScanStatus, 
@@ -491,7 +512,7 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
         >
             <div className="absolute bottom-full transform -translate-y-0" style={arrowPosition}>
                 <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-200 dark:border-b-gray-700"></div>
-                <div className="w-0 h-0 border-l-3 border-r-3 border-b-3 border-transparent border-b-white dark:border-b-dark-bg-secondary absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-px"></div>
+                <div className="w-0 h-0 border-l-[3px] border-r-[3px] border-b-[3px] border-transparent border-b-white dark:border-b-dark-bg-secondary absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-px"></div>
             </div>
             
             <div className="flex justify-between items-start mb-2">
@@ -523,6 +544,7 @@ const StatePage = ({ stateName }) => {
     const [error, setError] = useState(null);
     const [fetchLoading, setFetchLoading] = useState(false); // New state for fetch loading
     const [fetchSuccess, setFetchSuccess] = useState(null); // Success message for fetch
+    const [fetchProgress, setFetchProgress] = useState(null); // Progress message for long operations
     
     // Manual refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -595,10 +617,10 @@ const StatePage = ({ stateName }) => {
                 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('📋 StatePage session response:', data);
+                    // Removed verbose session response logging
                     if (data.success && data.active_sessions && data.active_sessions[SUPPORTED_STATES[stateName]]) {
                         const sessions = data.active_sessions[SUPPORTED_STATES[stateName]];
-                        console.log(`🏛️ ${stateName} sessions from API:`, sessions);
+                        // API sessions loaded successfully
                         setAvailableSessions(sessions);
                     }
                 }
@@ -912,13 +934,14 @@ const StatePage = ({ stateName }) => {
             const stateAbbr = SUPPORTED_STATES[stateName];
             const url = `${API_URL}/api/state-legislation?state=${stateAbbr}&page=${pageNum}&per_page=${perPage}`;
             
-            const response = await fetch(url, {
+            // Use timeout wrapper for large dataset handling
+            const response = await fetchWithTimeout(url, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 }
-            });
+            }, 120000); // 2 minutes for regular database queries
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1001,27 +1024,29 @@ const StatePage = ({ stateName }) => {
         setFetchLoading(true);
         setError(null);
         setFetchSuccess(null);
+        setFetchProgress('Checking existing data...');
         
         try {
             const stateAbbr = SUPPORTED_STATES[stateName];
-            console.log(`🔍 Fetching bills for session type: ${sessionType}`);
+            // Fetching bills from LegiScan API
             
             // First, check existing bills in the database
-            console.log(`🔍 Checking existing bills in database for ${stateAbbr}...`);
-            const checkResponse = await fetch(`${API_URL}/api/state-legislation/check-existing?state=${stateAbbr}&session_type=${sessionType}`);
+            // Checking existing bills in database
+            const checkResponse = await fetchWithTimeout(`${API_URL}/api/state-legislation/check-existing?state=${stateAbbr}&session_type=${sessionType}`, {}, 60000); // 1 minute for check
             
             if (checkResponse.ok) {
                 const checkResult = await checkResponse.json();
-                console.log(`📊 Database check result:`, checkResult);
+                // Database check completed
                 
                 if (checkResult.success && checkResult.recommendation === 'skip') {
                     setFetchSuccess(`${checkResult.message}. Database is already up to date!`);
                     setTimeout(() => setFetchSuccess(null), 5000);
                     setFetchLoading(false);
+                    setFetchProgress(null);
                     return;
                 }
             } else {
-                console.warn('⚠️ Database check failed, proceeding with fetch anyway');
+                // Database check failed, proceeding with fetch
             }
             
             let requestBody = {
@@ -1039,8 +1064,8 @@ const StatePage = ({ stateName }) => {
                         ...requestBody,
                         query: 'current session',
                         year_filter: 'current',
-                        limit: 2000,  // Increased from 200 to backend max
-                        max_pages: 50  // Increased from 15 to backend max
+                        limit: 500,  // More reasonable limit for faster processing
+                        max_pages: 10  // Reduced for better user experience
                     };
                     break;
                 case 'all':
@@ -1048,8 +1073,8 @@ const StatePage = ({ stateName }) => {
                         ...requestBody,
                         query: 'all sessions',
                         year_filter: 'all',
-                        limit: 2000,  // Increased from 300 to backend max
-                        max_pages: 50  // Increased from 20 to backend max
+                        limit: 300,  // Reduced for all sessions (larger dataset)
+                        max_pages: 5   // Much lower for all sessions to prevent timeouts
                     };
                     break;
                 case 'recent':
@@ -1071,18 +1096,27 @@ const StatePage = ({ stateName }) => {
                     };
             }
             
-            const response = await fetch(`${API_URL}/api/legiscan/enhanced-search-and-analyze`, {
+            // Show progress message with more specific information
+            const estimatedTime = sessionType === 'all' ? '3-5 minutes' : 
+                                 sessionType === 'current' ? '1-3 minutes' : '1-2 minutes';
+            setFetchProgress(`Fetching ${sessionType} bills for ${stateName} from LegiScan... Estimated time: ${estimatedTime}`);
+            
+            // Use extended timeout for large dataset imports (10 minutes)
+            const response = await fetchWithTimeout(`${API_URL}/api/legiscan/enhanced-search-and-analyze`, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestBody)
-            });
+            }, 600000); // 10 minutes for large bill imports
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
+            
+            // Update progress message during response processing
+            setFetchProgress('Processing response and saving to database...');
             
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
@@ -1108,7 +1142,7 @@ const StatePage = ({ stateName }) => {
                     newBills = result.data;
                 }
                 
-                console.log(`✅ Successfully fetched ${newBills.length} bills from ${sessionType} session(s)`);
+                // Bills fetched successfully
                 
                 if (newBills.length > 0) {
                     const sessionLabel = sessionType === 'current' ? 'current session' : 
@@ -1127,11 +1161,40 @@ const StatePage = ({ stateName }) => {
             
         } catch (error) {
             console.error('❌ Error fetching bills:', error);
-            setError(`Failed to fetch bills from ${sessionType} session(s): ${error.message}`);
+            
+            // Provide more helpful error messages for timeout and network issues
+            let errorMessage = error.message;
+            if (error.message.includes('timed out')) {
+                errorMessage = `Request timed out while fetching ${sessionType} bills. Large datasets may require multiple attempts. Please try again or contact support if the issue persists.`;
+            } else if (error.message.includes('fetch')) {
+                errorMessage = `Network error while fetching ${sessionType} bills. Please check your connection and try again.`;
+            }
+            
+            setError(`Failed to fetch bills from ${sessionType} session(s): ${errorMessage}`);
         } finally {
             setFetchLoading(false);
+            setFetchProgress(null);
         }
     }, [stateName, fetchFromDatabase]);
+    
+    // Add browser warning for long operations
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (fetchLoading) {
+                e.preventDefault();
+                e.returnValue = 'A data fetch operation is in progress. Leaving may interrupt the process. Are you sure?';
+                return e.returnValue;
+            }
+        };
+        
+        if (fetchLoading) {
+            window.addEventListener('beforeunload', handleBeforeUnload);
+        }
+        
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [fetchLoading]);
     
     // Handle page change
     const handlePageChange = useCallback((newPage) => {
@@ -1286,7 +1349,7 @@ const StatePage = ({ stateName }) => {
         
         // Apply session filters
         if (selectedSessions.length > 0) {
-            console.log('🔍 Filtering bills by session IDs:', selectedSessions);
+            // Applying session filter
             
             // Create a map from session IDs to session names for lookup
             const sessionIdToNameMap = new Map();
@@ -1299,31 +1362,23 @@ const StatePage = ({ stateName }) => {
             // Convert selected session IDs to session names
             const selectedSessionNames = selectedSessions.map(sessionId => {
                 const sessionName = sessionIdToNameMap.get(sessionId);
-                console.log(`🎯 Session ID "${sessionId}" -> Name "${sessionName}"`);
+                // Mapping session ID to name
                 return sessionName || sessionId; // fallback to sessionId if no name found
             }).filter(Boolean);
             
-            console.log('📊 Selected session names for filtering:', selectedSessionNames);
-            console.log('📊 Sample bill sessions before filtering:', stateOrders.slice(0, 3).map(b => ({
-                title: b.title?.substring(0, 30) + '...',
-                session: b.session,
-                session_name: b.session_name,
-                combined: b.session || b.session_name
-            })));
+            // Session names prepared for filtering
             
             filtered = filtered.filter(bill => {
                 const billSession = bill.session || bill.session_name;
                 const matches = billSession && selectedSessionNames.includes(billSession);
                 
                 // Debug first few non-matching bills
-                if (!matches && billSession && filtered.length < 5) {
-                    console.log(`❌ Bill session "${billSession}" not in selected session names:`, selectedSessionNames);
-                }
+                // Filter bills by session
                 
                 return matches;
             });
             
-            console.log(`📈 Session filter result: ${stateOrders.length} -> ${filtered.length} bills`);
+            // Session filtering completed
         }
         
         // Sort by date
@@ -1359,33 +1414,7 @@ const StatePage = ({ stateName }) => {
         }
     }, [stateName, fetchFromDatabase]);
     
-    // Manual refresh handlers
-    // TODO: This function is unused - consider removing or connecting to UI
-    const handleRefreshStart = useCallback(() => {
-        setIsRefreshing(true);
-        setError(null);
-        setFetchSuccess(null);
-    }, []);
-    
-    // TODO: This function is unused - consider removing or connecting to UI
-    const handleRefreshComplete = useCallback(async (result) => {
-        setIsRefreshing(false);
-        
-        if (result && (result.bills_updated > 0 || result.bills_added > 0)) {
-            setFetchSuccess(
-                `Successfully updated! ${result.bills_added || 0} new bills added, ${result.bills_updated || 0} bills updated.`
-            );
-            
-            // Refresh the bills list
-            await fetchFromDatabase(1);
-            
-            // Clear success message after 5 seconds
-            setTimeout(() => setFetchSuccess(null), 5000);
-        } else {
-            setFetchSuccess('No new updates found. Your data is current.');
-            setTimeout(() => setFetchSuccess(null), 3000);
-        }
-    }, [fetchFromDatabase]);
+    // Removed unused refresh handlers to clean up code
     
     
     const handleRefreshNeeded = useCallback(() => {
@@ -1497,6 +1526,18 @@ const StatePage = ({ stateName }) => {
             
             {/* Single Smart Notification System */}
             <div className="max-w-7xl mx-auto px-6 mb-4">
+                {/* Progress Message */}
+                {fetchProgress && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 flex items-start space-x-3 mb-4">
+                        <RefreshIcon size={20} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0 animate-spin" />
+                        <div>
+                            <p className="text-blue-800 dark:text-blue-200 font-medium">Processing Request</p>
+                            <p className="text-blue-700 dark:text-blue-300 text-sm mt-1">{fetchProgress}</p>
+                            <p className="text-blue-600 dark:text-blue-400 text-xs mt-2">Please keep this page open. Large datasets may take up to 10 minutes to process.</p>
+                        </div>
+                    </div>
+                )}
+                
                 {/* Success Message */}
                 {fetchSuccess && (
                     <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4 flex items-start space-x-3 mb-4">
@@ -1554,7 +1595,7 @@ const StatePage = ({ stateName }) => {
                         {/* Controls Bar - Fetch button left, filters right */}
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-6 w-full">
                             {/* Fetch Button with Session Options - Left side */}
-                            <div className="flex justify-start">
+                            <div className="flex items-center gap-3 justify-start">
                                 <div className="relative fetch-dropdown-container">
                                     <button
                                         onClick={() => setShowFetchDropdown(!showFetchDropdown)}
@@ -1569,7 +1610,7 @@ const StatePage = ({ stateName }) => {
                                             <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
                                         )}
                                         <span>
-                                            {fetchLoading ? 'Fetching...' : 'Fetch Legislation'}
+                                            {fetchLoading ? 'Processing...' : 'Fetch Legislation'}
                                         </span>
                                         {!fetchLoading && !loading && (
                                             <ChevronDown size={14} className="ml-1 flex-shrink-0" />
@@ -1636,6 +1677,14 @@ const StatePage = ({ stateName }) => {
                                         </div>
                                     )}
                                 </div>
+                                
+                                {/* Bill Count Display */}
+                                <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-xs">
+                                    <FileText size={12} className="text-gray-500 dark:text-gray-400" />
+                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                        {loading ? '...' : `${filteredStateOrders.length.toLocaleString()}`}
+                                    </span>
+                                </div>
                             </div>
                             
                             {/* Filter button group - right aligned */}
@@ -1677,9 +1726,9 @@ const StatePage = ({ stateName }) => {
                                 
                                 {/* Session Filter */}
                                 <SessionFilter 
-                                    sessions={(() => {
+                                    sessions={useMemo(() => {
                                         // Start with API sessions as the primary source (same as SessionNotification)
-                                        console.log('🔍 Available sessions for filter (same source as header):', availableSessions);
+                                        // Removed excessive logging for performance
                                         
                                         const sessionMap = new Map();
                                         
@@ -1688,7 +1737,6 @@ const StatePage = ({ stateName }) => {
                                             if (session.session_name) {
                                                 // Use session_name as the key, but keep original data intact
                                                 const sessionKey = session.session_name;
-                                                console.log(`🎯 API Session: "${session.session_name}" (ID: ${session.session_id})`);
                                                 sessionMap.set(sessionKey, {
                                                     session_id: session.session_id || session.session_name,
                                                     session_name: session.session_name,
@@ -1711,7 +1759,6 @@ const StatePage = ({ stateName }) => {
                                                 
                                                 // Only add if exact session name doesn't exist in API data
                                                 if (!sessionMap.has(sessionName)) {
-                                                    console.log(`📌 Adding unique session from bills: "${sessionName}"`);
                                                     sessionMap.set(sessionName, {
                                                         session_id: sessionName,
                                                         session_name: sessionName,
@@ -1722,18 +1769,17 @@ const StatePage = ({ stateName }) => {
                                                         state: SUPPORTED_STATES[stateName],
                                                         source: 'bills'
                                                     });
-                                                } else {
-                                                    console.log(`🔄 Session "${sessionName}" already exists from API, skipping`);
                                                 }
                                             }
                                         });
                                         
                                         const finalSessions = Array.from(sessionMap.values());
-                                        console.log('📚 Sessions found in bills:', Array.from(billSessions));
-                                        console.log('📊 Final session list for filter:', finalSessions.map(s => `${s.session_name} (${s.source})`));
-                                        console.log(`✅ Session count - Header: ${availableSessions.length}, Filter: ${finalSessions.length}`);
+                                        
+                                        // Only log summary information once for debugging
+                                        // Sessions loaded and processed
+                                        
                                         return finalSessions;
-                                    })()}
+                                    }, [availableSessions, stateOrders])}
                                     selectedSessions={selectedSessions}
                                     onSessionChange={setSelectedSessions}
                                     disabled={loading || fetchLoading}

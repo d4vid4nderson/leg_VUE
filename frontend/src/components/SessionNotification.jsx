@@ -95,7 +95,7 @@ const SessionNotification = ({
       setError(null);
       
       try {
-        console.log(`🔍 Checking sessions for ${stateAbbr}`);
+        // Session checking in progress
         
         const response = await fetch(`${API_URL}/api/legiscan/session-status`, {
           method: 'POST',
@@ -113,29 +113,7 @@ const SessionNotification = ({
         }
         
         const data = await response.json();
-        console.log('📊 Session check response:', data);
-        
-        // Debug: Log Texas sessions specifically
-        if (stateAbbr === 'TX') {
-          console.log('🤠 Full Texas data response:', data);
-          if (data.active_sessions && data.active_sessions.TX) {
-            console.log('Texas sessions found:', data.active_sessions.TX);
-            console.log('Number of TX sessions:', data.active_sessions.TX.length);
-            data.active_sessions.TX.forEach((session, idx) => {
-              console.log(`Session ${idx + 1}:`, {
-                name: session.session_name,
-                id: session.session_id,
-                year: session.year_start,
-                is_active: session.is_active
-              });
-            });
-          }
-          
-          // Check if there's other session data in the response
-          if (data.all_sessions && data.all_sessions.TX) {
-            console.log('🎯 All Texas sessions (not just active):', data.all_sessions.TX);
-          }
-        }
+        // Removed verbose session logging to reduce console noise
         
         if (data.success) {
           setSessionData(data);
@@ -205,8 +183,7 @@ const SessionNotification = ({
 
   const activeSessions = sessionData.active_sessions[stateAbbr] || [];
   
-  // Debug log to see what sessions we have
-  console.log(`📊 ${stateAbbr} active sessions in notification:`, activeSessions);
+  // Removed verbose logging for performance
   
   if (activeSessions.length === 0) {
     return null;

@@ -354,6 +354,7 @@ class StateLegislationDB(Base):
     # Session information
     session_id = Column(String(50), nullable=True)
     session_name = Column(String(100), nullable=True)
+    session = Column(String(100), nullable=True, index=True)  # Added session column
     bill_type = Column(String(50), nullable=True)
     body = Column(String(20), nullable=True)
     

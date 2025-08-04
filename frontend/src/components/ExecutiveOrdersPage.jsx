@@ -27,7 +27,8 @@ import {
   Ban,
   RotateCw as RefreshIcon,
   Calendar,
-  MoreVertical // Added for mobile menu
+  MoreVertical, // Added for mobile menu
+  FileText
 } from 'lucide-react';
 
 import { 
@@ -52,7 +53,7 @@ const CATEGORY_FILTERS = FILTERS;
 // =====================================
 // SIMPLE FETCH BUTTON COMPONENT
 // =====================================
-const FetchButtonGroup = ({ onFetch, isLoading, updateInfo }) => {
+const FetchButtonGroup = ({ onFetch, isLoading, updateInfo, filteredCount = 0 }) => {
   const handleFetch = () => {
     onFetch('executive_orders');
   };
@@ -61,8 +62,9 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo }) => {
   const updateCount = updateInfo?.update_count || 0;
 
   return (
-    <div className="relative">
-      <button
+    <div className="flex items-center gap-3">
+      <div className="relative">
+        <button
         onClick={handleFetch}
         disabled={isLoading}
         className={`flex items-center justify-center gap-2 px-6 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap w-[180px] ${
@@ -91,6 +93,15 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo }) => {
           {updateCount > 99 ? '99+' : updateCount}
         </div>
       )}
+      </div>
+      
+      {/* Bill Count Display */}
+      <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-xs">
+        <FileText size={12} className="text-gray-500 dark:text-gray-400" />
+        <span className="font-medium text-gray-700 dark:text-gray-300">
+          {filteredCount.toLocaleString()}
+        </span>
+      </div>
     </div>
   );
 };
@@ -1772,6 +1783,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 onFetch={(docType) => fetchExecutiveOrders(docType)} 
                 isLoading={fetchingData}
                 updateInfo={updateInfo}
+                filteredCount={filteredOrders.length}
               />
             </div>
 

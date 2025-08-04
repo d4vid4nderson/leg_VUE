@@ -6560,7 +6560,15 @@ async def check_existing_bills(
             ORDER BY last_updated DESC
         """, [state])
         last_update_row = cursor.fetchone()
-        last_updated = last_update_row[0].isoformat() if last_update_row and last_update_row[0] else None
+        if last_update_row and last_update_row[0]:
+            # Handle both datetime objects and string dates
+            last_update_value = last_update_row[0]
+            if hasattr(last_update_value, 'isoformat'):
+                last_updated = last_update_value.isoformat()
+            else:
+                last_updated = str(last_update_value)
+        else:
+            last_updated = None
         
         cursor.close()
         conn.close()

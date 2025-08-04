@@ -161,10 +161,9 @@ const StateLegislationOverview = () => {
         
         if (response.ok) {
           const data = await response.json();
-          console.log('📊 State Legislation Page - Full session response:', data);
+          // Session response processed successfully
           
           if (data.success && data.active_sessions) {
-            console.log('🤠 Texas sessions specifically:', data.active_sessions.TX);
             setSessionData(data.active_sessions);
           }
         }
@@ -199,7 +198,7 @@ const StateLegislationOverview = () => {
             }
             
             if (sessions.size > 0) {
-              console.log(`🎯 ${state.name} sessions found in bills:`, Array.from(sessions));
+              // Sessions extracted from bills data
               setBillSessionData(prev => ({ ...prev, [state.code]: Array.from(sessions) }));
             }
           }
@@ -286,13 +285,7 @@ const StateLegislationOverview = () => {
     const regularSessions = activeSessions.filter(s => !s.session_name.toLowerCase().includes('special'));
     const specialSessions = activeSessions.filter(s => s.session_name.toLowerCase().includes('special'));
     
-    console.log(`📍 ${stateCode} sessions:`, { 
-      api: apiSessions.length, 
-      bills: billSessions.length,
-      total: allSessions.length, 
-      active: activeSessions.length, 
-      sessions: activeSessions 
-    });
+    // Combined sessions processed successfully
     
     return {
       totalActive: activeSessions.length,
