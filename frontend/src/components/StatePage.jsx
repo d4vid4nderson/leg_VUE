@@ -964,7 +964,7 @@ const StatePage = ({ stateName }) => {
                     title: bill?.title || 'Untitled Bill',
                     category: cleanCategory(bill?.category),
                     description: bill?.description || bill?.ai_summary || 'No description available',
-                    summary: bill?.summary ? stripHtmlTags(bill.summary) : 'No summary available',
+                    summary: bill?.ai_summary ? stripHtmlTags(bill.ai_summary) : (bill?.summary ? stripHtmlTags(bill.summary) : 'No summary available'),
                     bill_number: bill?.bill_number,
                     state: bill?.state || stateName,
                     status: bill?.status, // ✅ ADD THE STATUS FIELD!

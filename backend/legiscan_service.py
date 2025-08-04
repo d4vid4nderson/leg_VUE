@@ -693,7 +693,7 @@ class StateLegislationDatabaseManager:
             if existing:
                 # Update existing bill
                 placeholders = ', '.join([f"{field} = {param_placeholder}" for field in [
-                    'bill_number', 'title', 'description', 'summary', 'state', 'state_abbr',
+                    'bill_number', 'title', 'description', 'state', 'state_abbr',
                     'status', 'category', 'introduced_date', 'last_action_date',
                     'session_id', 'session_name', 'bill_type', 'body',
                     'legiscan_url', 'pdf_url', 'ai_summary', 'ai_executive_summary',
@@ -710,7 +710,6 @@ class StateLegislationDatabaseManager:
                     bill_data.get('bill_number', ''),
                     bill_data.get('title', ''),
                     bill_data.get('description', ''),
-                    bill_data.get('summary', ''),  # Add summary field
                     bill_data.get('state', ''),
                     bill_data.get('state_abbr', ''),
                     bill_data.get('status', ''),
@@ -741,7 +740,7 @@ class StateLegislationDatabaseManager:
             else:
                 # Insert new bill
                 fields = [
-                    'bill_id', 'bill_number', 'title', 'description', 'summary', 'state', 'state_abbr',
+                    'bill_id', 'bill_number', 'title', 'description', 'state', 'state_abbr',
                     'status', 'category', 'introduced_date', 'last_action_date',
                     'session_id', 'session_name', 'bill_type', 'body',
                     'legiscan_url', 'pdf_url', 'ai_summary', 'ai_executive_summary',
@@ -759,7 +758,6 @@ class StateLegislationDatabaseManager:
                     bill_data.get('bill_number', ''),
                     bill_data.get('title', ''),
                     bill_data.get('description', ''),
-                    bill_data.get('summary', ''),  # Add summary field
                     bill_data.get('state', ''),
                     bill_data.get('state_abbr', ''),
                     bill_data.get('status', ''),
