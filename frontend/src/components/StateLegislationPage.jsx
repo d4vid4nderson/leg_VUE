@@ -28,10 +28,25 @@ import {
 } from 'lucide-react';
 import StateOutlineBackground from './StateOutlineBackground';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
+import { usePageTracking } from '../hooks/usePageTracking';
+import { trackPageView } from '../utils/analytics';
 import API_URL from '../config/api';
 
 const StateLegislationOverview = () => {
   const navigate = useNavigate();
+  
+  // Track page view for state legislation overview
+  usePageTracking('State Legislation Overview');
+  
+  // Handle state navigation with analytics tracking
+  const handleStateNavigation = (stateName) => {
+    // Track the state selection
+    trackPageView(`State Selection - ${stateName}`, `/state/${stateName.toLowerCase().replace(' ', '-')}`);
+    
+    // Navigate to the state page
+    navigate(`/state/${stateName.toLowerCase().replace(' ', '-')}`);
+  };
+  
   const [sessionData, setSessionData] = useState({});
   const [billSessionData, setBillSessionData] = useState({});
   const [loadingSessions, setLoadingSessions] = useState(true);
@@ -412,7 +427,7 @@ const StateLegislationOverview = () => {
                   {/* Action Button */}
                   <div>
                     <button
-                      onClick={() => navigate(`/state/${state.name.toLowerCase().replace(' ', '-')}`)}
+                      onClick={() => handleStateNavigation(state.name)}
                       className="w-full bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-400 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
                     >
                       <span>{state.name} Legislation</span>

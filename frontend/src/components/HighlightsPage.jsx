@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
   Star,
   Copy,
@@ -1589,6 +1590,16 @@ const PaginationControls = ({
 
 // Main HighlightsPage Component
 const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
+  // Authentication context
+  const { currentUser } = useAuth();
+  
+  // Helper function to get current user identifier
+  const getCurrentUserId = () => {
+    // Use numeric user ID for database compatibility
+    // In production, this should map MSI user to numeric ID
+    return '1'; // Consistent with analytics tracking
+  };
+  
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
   
@@ -1937,7 +1948,7 @@ const HighlightsPage = ({ makeApiCall, copyToClipboard, stableHandlers }) => {
           console.log(`🔍 Trying to delete with ${description}: "${id}"`);
           
           try {
-            const response = await fetch(`${API_URL}/api/highlights/${id}?user_id=1`, {
+            const response = await fetch(`${API_URL}/api/highlights/${id}?user_id=${getCurrentUserId()}`, {
               method: 'DELETE',
             });
             

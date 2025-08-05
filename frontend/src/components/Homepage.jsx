@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import HR1PolicyBanner from './HR1PolicyBanner';
 import { getPageContainerClasses, getCardClasses, getTextClasses } from '../utils/darkModeClasses';
+import { usePageTracking } from '../hooks/usePageTracking';
 import {
   ScrollText,
   Star,
@@ -40,6 +41,9 @@ const Homepage = () => {
   const navigate = useNavigate();
   const [hoveredFeature, setHoveredFeature] = useState(null);
   const [hoveredButton, setHoveredButton] = useState(null);
+
+  // Track page view
+  usePageTracking('Homepage');
 
   return (
     <div className={getPageContainerClasses()}>
@@ -290,8 +294,24 @@ const Homepage = () => {
                 onMouseEnter={() => setHoveredFeature(index)}
                 onMouseLeave={() => setHoveredFeature(null)}
               >
-                <div className={`w-12 h-12 rounded-xl bg-${feature.color}-100 flex items-center justify-center mb-4`}>
-                  <feature.icon size={24} className={`text-${feature.color}-600`} />
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
+                  feature.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                  feature.color === 'purple' ? 'bg-purple-100 dark:bg-purple-900/30' :
+                  feature.color === 'green' ? 'bg-green-100 dark:bg-green-900/30' :
+                  feature.color === 'orange' ? 'bg-orange-100 dark:bg-orange-900/30' :
+                  feature.color === 'yellow' ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                  feature.color === 'indigo' ? 'bg-indigo-100 dark:bg-indigo-900/30' :
+                  'bg-gray-100 dark:bg-gray-900/30'
+                }`}>
+                  <feature.icon size={24} className={
+                    feature.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
+                    feature.color === 'purple' ? 'text-purple-600 dark:text-purple-400' :
+                    feature.color === 'green' ? 'text-green-600 dark:text-green-400' :
+                    feature.color === 'orange' ? 'text-orange-600 dark:text-orange-400' :
+                    feature.color === 'yellow' ? 'text-yellow-600 dark:text-yellow-400' :
+                    feature.color === 'indigo' ? 'text-indigo-600 dark:text-indigo-400' :
+                    'text-gray-600 dark:text-gray-400'
+                  } />
                 </div>
                 <h3 className={getTextClasses('primary', 'text-lg font-semibold mb-2')}>{feature.title}</h3>
                 <p className={getTextClasses('secondary', 'text-sm leading-relaxed')}>{feature.description}</p>
@@ -314,9 +334,9 @@ const Homepage = () => {
             </p>
           </div>
           
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid md:grid-cols-2 gap-12 items-start">
             {/* Federal Coverage */}
-            <div className={getCardClasses('rounded-2xl p-8 shadow-lg')}>
+            <div className={getCardClasses('rounded-2xl p-8 shadow-lg h-full')}>
               <div className="flex items-center gap-4 mb-6">
                 <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
                   <ScrollText size={32} className="text-purple-600 dark:text-purple-400" />
@@ -343,7 +363,7 @@ const Homepage = () => {
             </div>
             
             {/* State Coverage */}
-            <div className={getCardClasses('rounded-2xl p-8 shadow-lg')}>
+            <div className={getCardClasses('rounded-2xl p-8 shadow-lg h-full')}>
               <div className="flex items-center gap-4 mb-6">
                 <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl">
                   <FileText size={32} className="text-green-600 dark:text-green-400" />
@@ -356,15 +376,15 @@ const Homepage = () => {
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <CheckCircle size={20} className="text-green-500" />
-                  <span className={getTextClasses('secondary')}>Track legislative sessions across multiple states</span>
+                  <span className={getTextClasses('secondary')}>Multi-state legislative tracking</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckCircle size={20} className="text-green-500" />
-                  <span className={getTextClasses('secondary')}>Monitor bill progress through legislative stages</span>
+                  <span className={getTextClasses('secondary')}>Bill progress monitoring</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckCircle size={20} className="text-green-500" />
-                  <span className={getTextClasses('secondary')}>Visual progress tracking and status updates</span>
+                  <span className={getTextClasses('secondary')}>Visual status updates</span>
                 </div>
               </div>
             </div>
@@ -555,8 +575,20 @@ const Homepage = () => {
               }
             ].map((area, index) => (
               <div key={index} className={getCardClasses('border-2 border-gray-200 rounded-xl p-6 hover:border-gray-300 dark:hover:border-dark-border transition-all duration-300 hover:shadow-lg')}>
-                <div className={`w-12 h-12 rounded-lg bg-${area.color}-100 flex items-center justify-center mb-4`}>
-                  <area.icon size={24} className={`text-${area.color}-600`} />
+                <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
+                  area.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                  area.color === 'orange' ? 'bg-orange-100 dark:bg-orange-900/30' :
+                  area.color === 'green' ? 'bg-green-100 dark:bg-green-900/30' :
+                  area.color === 'red' ? 'bg-red-100 dark:bg-red-900/30' :
+                  'bg-gray-100 dark:bg-gray-900/30'
+                }`}>
+                  <area.icon size={24} className={
+                    area.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
+                    area.color === 'orange' ? 'text-orange-600 dark:text-orange-400' :
+                    area.color === 'green' ? 'text-green-600 dark:text-green-400' :
+                    area.color === 'red' ? 'text-red-600 dark:text-red-400' :
+                    'text-gray-600 dark:text-gray-400'
+                  } />
                 </div>
                 <h3 className={getTextClasses('primary', 'text-lg font-semibold mb-2')}>{area.title}</h3>
                 <p className={getTextClasses('secondary', 'text-sm leading-relaxed')}>{area.description}</p>

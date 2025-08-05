@@ -44,6 +44,7 @@ import { useLoadingAnimation } from './hooks/useLoadingAnimation';
 
 // Utils
 import { SUPPORTED_STATES } from './utils/constants';
+import { startSession, trackLogin, endSession } from './utils/analytics';
 
 // Styles
 import './index.css';
@@ -98,6 +99,28 @@ const AppContent = () => {
   // Global highlights state for sharing between pages
   const [globalHighlights, setGlobalHighlights] = useState(new Set());
   const [highlightsLoaded, setHighlightsLoaded] = useState(false);
+
+  // Initialize analytics session on mount
+  useEffect(() => {
+    startSession();
+    
+    // Track login if user is authenticated
+    if (isAuthenticated && currentUser) {
+      trackLogin(currentUser.email, currentUser.displayName || currentUser.name);
+    }
+    
+    // End session on unmount
+    return () => {
+      endSession();
+    };
+  }, []);
+
+  // Track login when authentication changes
+  useEffect(() => {
+    if (isAuthenticated && currentUser) {
+      trackLogin(currentUser.email, currentUser.displayName || currentUser.name);
+    }
+  }, [isAuthenticated, currentUser]);
 
   // Handle clicks outside dropdown to close it
   useEffect(() => {

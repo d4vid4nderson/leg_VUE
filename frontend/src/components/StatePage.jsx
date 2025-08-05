@@ -1,6 +1,7 @@
 // StatePage.jsx - Updated with fetch button and sliding time period buttons
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
     ChevronDown,
     FileText,
@@ -30,6 +31,8 @@ import { FILTERS, SUPPORTED_STATES } from '../utils/constants';
 import { stripHtmlTags } from '../utils/helpers';
 import { calculateAllCounts } from '../utils/filterUtils';
 import useReviewStatus from '../hooks/useReviewStatus';
+import { usePageTracking } from '../hooks/usePageTracking';
+import { trackPageView } from '../utils/analytics';
 import BillCardSkeleton from '../components/BillCardSkeleton';
 import BillProgressBar from '../components/BillProgressBar';
 import SessionNotification from '../components/SessionNotification';
@@ -220,6 +223,9 @@ const EditableCategoryTag = ({ category, itemId, onCategoryChange, disabled }) =
     const handleCategorySelect = async (newCategory) => {
         if (newCategory !== selectedCategory && onCategoryChange) {
             try {
+                // Track category change
+                trackPageView(`State Bill Category - ${newCategory}`, window.location.pathname);
+                
                 await onCategoryChange(itemId, newCategory);
                 setSelectedCategory(newCategory);
             } catch (error) {
@@ -538,6 +544,19 @@ const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
 
 // Main StatePage Component
 const StatePage = ({ stateName }) => {
+    // Authentication context
+    const { currentUser } = useAuth();
+    
+    // Track page view with state-specific name
+    usePageTracking(`State Legislation - ${stateName || 'Unknown State'}`);
+    
+    // Helper function to get current user identifier
+    const getCurrentUserId = () => {
+        // Use numeric user ID for database compatibility
+        // In production, this should map MSI user to numeric ID
+        return '1'; // Consistent with analytics tracking
+    };
+    
     // Core state
     const [stateOrders, setStateOrders] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -706,7 +725,7 @@ const StatePage = ({ stateName }) => {
                 },
                 body: JSON.stringify({
                     category: newCategory,
-                    user_id: 1 // You might want to get this from authentication
+                    user_id: getCurrentUserId()
                 })
             });
             
@@ -1218,7 +1237,7 @@ const StatePage = ({ stateName }) => {
                     return newSet;
                 });
                 
-                const response = await fetch(`${API_URL}/api/highlights/${billId}?user_id=1`, {
+                const response = await fetch(`${API_URL}/api/highlights/${billId}?user_id=${getCurrentUserId()}`, {
                     method: 'DELETE',
                 });
                 
@@ -1232,7 +1251,7 @@ const StatePage = ({ stateName }) => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user_id: 1,
+                        user_id: getCurrentUserId(),
                         order_id: billId,
                         order_type: 'state_legislation',
                         notes: null,
@@ -1434,7 +1453,7 @@ const StatePage = ({ stateName }) => {
     useEffect(() => {
         const loadHighlights = async () => {
             try {
-                const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+                const response = await fetch(`${API_URL}/api/highlights?user_id=${getCurrentUserId()}`);
                 if (response.ok) {
                     // Check if response is actually JSON
                     const contentType = response.headers.get('content-type');
@@ -1600,7 +1619,7 @@ const StatePage = ({ stateName }) => {
                                     <button
                                         onClick={() => setShowFetchDropdown(!showFetchDropdown)}
                                         disabled={fetchLoading || loading}
-                                        className={`flex items-center justify-center gap-2 px-8 py-3 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap w-[200px] ${
+                                        className={`flex items-center justify-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap ${
                                             fetchLoading || loading
                                                 ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
                                                 : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
@@ -1610,7 +1629,7 @@ const StatePage = ({ stateName }) => {
                                             <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
                                         )}
                                         <span>
-                                            {fetchLoading ? 'Processing...' : 'Fetch Legislation'}
+                                            {fetchLoading ? 'Processing...' : 'Check for Updates'}
                                         </span>
                                         {!fetchLoading && !loading && (
                                             <ChevronDown size={14} className="ml-1 flex-shrink-0" />

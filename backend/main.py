@@ -53,6 +53,31 @@ from pydantic import BaseModel
 
 load_dotenv(override=True)
 
+# User ID mapping function for database compatibility
+def normalize_user_id(user_id_input):
+    """Convert email addresses to unique user IDs for database compatibility"""
+    if not user_id_input:
+        return "1"  # Default fallback
+    
+    # If it's already numeric, return as-is 
+    if str(user_id_input).isdigit():
+        return str(user_id_input)
+    
+    user_id_str = str(user_id_input).lower().strip()
+    
+    # Special case for the main admin user
+    if user_id_str == "david.anderson@moregroup-inc.com":
+        return "1"
+    
+    # For other email addresses, create a unique numeric ID based on email hash
+    # This ensures each email gets a consistent, unique ID
+    import hashlib
+    email_hash = hashlib.md5(user_id_str.encode()).hexdigest()
+    # Convert first 8 characters of hash to a number, ensuring it's not "1"
+    numeric_id = str(int(email_hash[:8], 16) % 999999999 + 2)  # +2 ensures it's never 1
+    
+    return numeric_id
+
 print("🔍 ENVIRONMENT VARIABLE DEBUG:")
 print(f"   LEGISCAN_API_KEY raw: {repr(os.getenv('LEGISCAN_API_KEY'))}")
 print(f"   LEGISCAN_API_KEY exists: {bool(os.getenv('LEGISCAN_API_KEY'))}")
@@ -1287,7 +1312,7 @@ class ExecutiveOrderSearchRequest(BaseModel):
     user_id: Optional[str] = None
 
 class HighlightCreateRequest(BaseModel):
-    user_id: int
+    user_id: str  # Changed to str to support email-based IDs
     order_id: str
     order_type: str  # 'executive_order' or 'state_legislation'
     notes: Optional[str] = None
@@ -1296,7 +1321,7 @@ class HighlightCreateRequest(BaseModel):
     is_archived: Optional[bool] = False
 
 class HighlightUpdateRequest(BaseModel):
-    user_id: int
+    user_id: str  # Changed to str to support email-based IDs
     notes: Optional[str] = None
     priority_level: Optional[int] = None
     tags: Optional[str] = None
@@ -3701,6 +3726,936 @@ async def check_enhanced_ai_connection():
         print(f"❌ Enhanced Azure OpenAI test failed: {e}")
         return "error"
 
+@app.get("/api/debug/users")
+async def debug_users():
+    """Debug endpoint to see all users in database"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check user_profiles table
+            cursor.execute("SELECT user_id, display_name, msi_email, login_count, last_login, is_active FROM dbo.user_profiles")
+            profiles = cursor.fetchall()
+            
+            # Check user_sessions table for unique users
+            cursor.execute("SELECT DISTINCT user_id FROM dbo.user_sessions")
+            session_users = cursor.fetchall()
+            
+            # Check user_highlights for unique users  
+            cursor.execute("SELECT DISTINCT user_id FROM dbo.user_highlights")
+            highlight_users = cursor.fetchall()
+            
+            return {
+                "success": True,
+                "user_profiles": [{"user_id": row[0], "display_name": row[1], "email": row[2], "login_count": row[3], "last_login": str(row[4]) if row[4] else None, "is_active": row[5]} for row in profiles],
+                "session_users": [row[0] for row in session_users],
+                "highlight_users": [row[0] for row in highlight_users]
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/admin/schema-info")
+async def get_schema_info():
+    """Get user_profiles table schema information"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check current table schema
+            cursor.execute("""
+                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_profiles'
+                ORDER BY ORDINAL_POSITION
+            """)
+            columns = [{"name": row[0], "type": row[1], "nullable": row[2]} for row in cursor.fetchall()]
+            
+            # Check if table exists
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_profiles'
+            """)
+            table_exists = cursor.fetchone()[0] > 0
+            
+            return {
+                "success": True,
+                "table_exists": table_exists,
+                "columns": columns,
+                "column_names": [col["name"] for col in columns]
+            }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/admin/remove-test-users")
+async def remove_test_users():
+    """Remove test users Jane Doe and John Smith"""
+    try:
+        print("🧹 Removing test users...")
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Test user IDs to remove  
+            test_user_ids = ["739446089", "445124510"]  # Jane Doe, John Smith
+            
+            for user_id in test_user_ids:
+                print(f"🗑️ Removing user {user_id}")
+                
+                cursor.execute("DELETE FROM dbo.user_profiles WHERE user_id = ?", (user_id,))
+                profiles_removed = cursor.rowcount
+                
+                cursor.execute("DELETE FROM dbo.user_sessions WHERE user_id = ?", (user_id,))  
+                sessions_removed = cursor.rowcount
+                
+                cursor.execute("DELETE FROM dbo.user_highlights WHERE user_id = ?", (user_id,))
+                highlights_removed = cursor.rowcount
+                
+                cursor.execute("DELETE FROM dbo.page_views WHERE user_id = ?", (user_id,))
+                pageviews_removed = cursor.rowcount
+                
+                print(f"✅ User {user_id}: profiles={profiles_removed}, sessions={sessions_removed}, highlights={highlights_removed}, pageviews={pageviews_removed}")
+            
+            conn.commit()
+            print("🎉 Test users removed successfully!")
+            
+            return {"success": True, "message": "Test users removed"}
+            
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/admin/migrate-user-profiles")
+async def migrate_user_profiles():
+    """Migrate user_profiles table to add missing columns"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get current columns
+            cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_profiles'
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            migration_steps = []
+            
+            # Add missing columns one by one
+            if 'email' not in existing_columns:
+                try:
+                    cursor.execute("ALTER TABLE dbo.user_profiles ADD email NVARCHAR(255)")
+                    migration_steps.append("✅ Added email column")
+                except Exception as e:
+                    migration_steps.append(f"⚠️ Email column: {e}")
+            
+            if 'first_name' not in existing_columns:
+                try:
+                    cursor.execute("ALTER TABLE dbo.user_profiles ADD first_name NVARCHAR(100)")
+                    migration_steps.append("✅ Added first_name column")
+                except Exception as e:
+                    migration_steps.append(f"⚠️ First_name column: {e}")
+                    
+            if 'last_name' not in existing_columns:
+                try:
+                    cursor.execute("ALTER TABLE dbo.user_profiles ADD last_name NVARCHAR(100)")
+                    migration_steps.append("✅ Added last_name column")
+                except Exception as e:
+                    migration_steps.append(f"⚠️ Last_name column: {e}")
+                    
+            if 'department' not in existing_columns:
+                try:
+                    cursor.execute("ALTER TABLE dbo.user_profiles ADD department NVARCHAR(100)")
+                    migration_steps.append("✅ Added department column")
+                except Exception as e:
+                    migration_steps.append(f"⚠️ Department column: {e}")
+                    
+            if 'created_at' not in existing_columns:
+                try:
+                    cursor.execute("ALTER TABLE dbo.user_profiles ADD created_at DATETIME2 DEFAULT GETDATE()")
+                    migration_steps.append("✅ Added created_at column")
+                except Exception as e:
+                    migration_steps.append(f"⚠️ Created_at column: {e}")
+            
+            conn.commit()
+            
+            return {
+                "success": True,
+                "message": "Migration completed",
+                "steps": migration_steps,
+                "original_columns": existing_columns
+            }
+            
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/admin/cleanup-test-users")
+async def cleanup_test_users():
+    """Remove test users created during development"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Remove test users by user_id (Jane Doe and John Smith)
+            test_user_ids = ["739446089", "445124510"]  # Jane Doe, John Smith
+            
+            cleanup_results = []
+            
+            for user_id in test_user_ids:
+                # Remove from user_profiles
+                cursor.execute("DELETE FROM dbo.user_profiles WHERE user_id = ?", (user_id,))
+                profiles_removed = cursor.rowcount
+                
+                # Remove from user_sessions  
+                cursor.execute("DELETE FROM dbo.user_sessions WHERE user_id = ?", (user_id,))
+                sessions_removed = cursor.rowcount
+                
+                # Remove from user_highlights
+                cursor.execute("DELETE FROM dbo.user_highlights WHERE user_id = ?", (user_id,))
+                highlights_removed = cursor.rowcount
+                
+                # Remove from page_views
+                cursor.execute("DELETE FROM dbo.page_views WHERE user_id = ?", (user_id,))
+                pageviews_removed = cursor.rowcount
+                
+                cleanup_results.append({
+                    "user_id": user_id,
+                    "profiles_removed": profiles_removed,
+                    "sessions_removed": sessions_removed, 
+                    "highlights_removed": highlights_removed,
+                    "pageviews_removed": pageviews_removed
+                })
+                
+                print(f"✅ Cleaned up test user {user_id}")
+            
+            conn.commit()
+            
+            return {
+                "success": True,
+                "message": "Test users cleaned up successfully",
+                "results": cleanup_results
+            }
+            
+    except Exception as e:
+        print(f"❌ Failed to cleanup test users: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/admin/analytics")
+async def get_admin_analytics_optimized(cleanup_test_users: bool = False):
+    """Get admin analytics data including user activity and page statistics - OPTIMIZED"""
+    try:
+        print("🔍 Analytics endpoint called - OPTIMIZED VERSION - NEW TEST")
+        print(f"📊 Request received at {datetime.now()}")
+        print(f"🔍 cleanup_test_users parameter = {cleanup_test_users}")
+        print(f"🔍 cleanup_test_users type = {type(cleanup_test_users)}")
+        
+        # CLEANUP FUNCTIONALITY - if cleanup_test_users parameter is True  
+        if cleanup_test_users or True:  # FORCE CLEANUP FOR NOW
+            print("🧹 CLEANUP MODE ACTIVATED - Removing test users...")
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                test_user_ids = ["739446089", "445124510"]  # Jane Doe, John Smith
+                
+                for user_id in test_user_ids:
+                    print(f"🗑️ Removing user {user_id}")
+                    cursor.execute("DELETE FROM dbo.user_profiles WHERE user_id = ?", (user_id,))
+                    cursor.execute("DELETE FROM dbo.user_sessions WHERE user_id = ?", (user_id,))
+                    cursor.execute("DELETE FROM dbo.user_highlights WHERE user_id = ?", (user_id,))
+                    cursor.execute("DELETE FROM dbo.page_views WHERE user_id = ?", (user_id,))
+                    print(f"✅ Removed test user {user_id}")
+                
+                conn.commit()
+                print("🎉 Test users cleanup completed!")
+        
+        start_time = time.time()
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Single optimized query to get all analytics data at once
+            cursor.execute("""
+                WITH UserStats AS (
+                    SELECT TOP 10 
+                        p.user_id,
+                        p.display_name,
+                        p.login_count,
+                        p.last_login,
+                        ISNULL(h.highlight_count, 0) as highlight_count,
+                        ISNULL(h.active_days, 0) as active_days,
+                        ISNULL(pv.page_views, 0) as page_views,
+                        ISNULL(pv.most_active_page, 'N/A') as most_active_page
+                    FROM dbo.user_profiles p
+                    LEFT JOIN (
+                        SELECT 
+                            user_id,
+                            COUNT(*) as highlight_count,
+                            COUNT(DISTINCT CAST(highlighted_at AS DATE)) as active_days
+                        FROM dbo.user_highlights 
+                        WHERE is_archived = 0
+                        GROUP BY user_id
+                    ) h ON p.user_id = h.user_id
+                    LEFT JOIN (
+                        SELECT 
+                            user_id,
+                            COUNT(*) as page_views,
+                            (SELECT TOP 1 page_name FROM dbo.page_views pv2 
+                             WHERE pv2.user_id = pv1.user_id 
+                             GROUP BY page_name 
+                             ORDER BY COUNT(*) DESC) as most_active_page
+                        FROM dbo.page_views pv1
+                        GROUP BY user_id
+                    ) pv ON p.user_id = pv.user_id
+                    WHERE p.is_active = 1
+                    ORDER BY p.login_count DESC, h.highlight_count DESC
+                ),
+                GeneralStats AS (
+                    SELECT 
+                        (SELECT COUNT(*) FROM executive_orders) as eo_count,
+                        (SELECT COUNT(*) FROM state_legislation) as sl_count,
+                        (SELECT COUNT(*) FROM dbo.user_profiles WHERE is_active = 1) as unique_users,
+                        (SELECT COUNT(*) FROM dbo.page_views) as total_page_views,
+                        (SELECT COUNT(DISTINCT session_id) FROM dbo.user_sessions) as unique_sessions,
+                        (SELECT COUNT(DISTINCT user_id) FROM dbo.user_sessions 
+                         WHERE CAST(started_at AS DATE) = CAST(GETDATE() AS DATE)) as active_today
+                ),
+                TopPages AS (
+                    SELECT TOP 5 page_name, COUNT(*) as view_count
+                    FROM dbo.page_views 
+                    GROUP BY page_name 
+                    ORDER BY COUNT(*) DESC
+                )
+                SELECT 
+                    'USER' as data_type,
+                    user_id, display_name, login_count, last_login, 
+                    highlight_count, active_days, page_views, most_active_page,
+                    NULL as stat_name, NULL as stat_value
+                FROM UserStats
+                UNION ALL
+                SELECT 
+                    'GENERAL' as data_type,
+                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                    'stats' as stat_name,
+                    CONCAT(eo_count, '|', sl_count, '|', unique_users, '|', 
+                           total_page_views, '|', unique_sessions, '|', active_today) as stat_value
+                FROM GeneralStats
+                UNION ALL
+                SELECT 
+                    'PAGE' as data_type,
+                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                    page_name as stat_name, CAST(view_count AS NVARCHAR) as stat_value
+                FROM TopPages
+                ORDER BY data_type, login_count DESC
+            """)
+            
+            # Process the combined results efficiently
+            results = cursor.fetchall()
+            
+            top_users = []
+            general_stats = {}
+            top_pages = []
+            
+            for row in results:
+                data_type = row[0]
+                
+                if data_type == 'USER' and row[1]:  # user_id is not None
+                    user_dict = {
+                        "userId": str(row[1]),
+                        "displayName": row[2] or "Unknown User",
+                        "loginCount": row[3] or 0,
+                        "lastLogin": row[4].isoformat() if row[4] else None,
+                        "highlightCount": row[5] or 0,
+                        "activeDays": row[6] or 0,
+                        "pageViewCount": row[7] or 0,
+                        "mostActivePage": row[8] or "N/A"
+                    }
+                    top_users.append(user_dict)
+                    
+                elif data_type == 'GENERAL':
+                    # Parse the concatenated stats
+                    stats_str = row[10]  # stat_value
+                    if stats_str:
+                        stats = stats_str.split('|')
+                        if len(stats) >= 6:
+                            general_stats = {
+                                "eo_count": int(stats[0]),
+                                "sl_count": int(stats[1]), 
+                                "unique_users": int(stats[2]),
+                                "total_page_views": int(stats[3]),
+                                "unique_sessions": int(stats[4]),
+                                "active_today": int(stats[5])
+                            }
+                            
+                elif data_type == 'PAGE':
+                    page_dict = {
+                        "pageName": row[9],  # stat_name 
+                        "viewCount": int(row[10])  # stat_value
+                    }
+                    top_pages.append(page_dict)
+            
+            # Build response efficiently
+            analytics_data = {
+                "totalPageViews": general_stats.get("total_page_views", 0),
+                "uniqueSessions": general_stats.get("unique_sessions", 0),
+                "activeToday": general_stats.get("active_today", 0),
+                "topUsers": top_users[:5],  # Top 5 users
+                "topPages": top_pages,
+                "stateAnalytics": []  # Simplified for now
+            }
+            
+            elapsed_time = time.time() - start_time
+            print(f"✅ Analytics data prepared in {elapsed_time:.2f} seconds")
+            
+            return {
+                "success": True,
+                "data": analytics_data,
+                "performance": {
+                    "query_time_seconds": elapsed_time,
+                    "optimized": True
+                }
+            }
+    
+    except Exception as e:
+        print(f"❌ Analytics endpoint error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "data": {
+                "totalPageViews": 0,
+                "uniqueSessions": 0, 
+                "activeToday": 0,
+                "topUsers": [],
+                "topPages": []
+            }
+        }
+
+class UserProfileSyncRequest(BaseModel):
+    email: str
+    display_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    department: Optional[str] = None
+
+@app.post("/api/user/sync-profile-safe")  
+async def sync_user_profile_safe(request: UserProfileSyncRequest):
+    """Safe sync that works with existing table schema"""
+    try:
+        print(f"🔄 Safe syncing profile for user: {request.email}")
+        
+        # Generate consistent user ID for this email
+        normalized_user_id = normalize_user_id(request.email)
+        print(f"📋 Normalized user ID: {normalized_user_id} for email: {request.email}")
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if user profile already exists (by user_id only)
+            cursor.execute("""
+                SELECT user_id FROM dbo.user_profiles 
+                WHERE user_id = ?
+            """, (normalized_user_id,))
+            
+            existing_profile = cursor.fetchone()
+            
+            if existing_profile:
+                # Update existing profile (safe columns only)
+                cursor.execute("""
+                    UPDATE dbo.user_profiles 
+                    SET display_name = ?, 
+                        last_login = GETDATE(),
+                        login_count = ISNULL(login_count, 0) + 1
+                    WHERE user_id = ?
+                """, (
+                    request.display_name,
+                    normalized_user_id
+                ))
+                print(f"✅ Updated existing profile for {request.email} (user_id: {normalized_user_id})")
+            else:
+                # Create new profile (safe columns only)
+                cursor.execute("""
+                    INSERT INTO dbo.user_profiles (
+                        user_id, display_name, last_login, login_count, is_active
+                    ) VALUES (?, ?, GETDATE(), 1, 1)
+                """, (
+                    normalized_user_id,
+                    request.display_name
+                ))
+                print(f"✅ Created new profile for {request.email} (user_id: {normalized_user_id})")
+            
+            conn.commit()
+            
+            return {
+                "success": True,
+                "message": f"Profile synced for {request.email}",
+                "user_id": normalized_user_id,
+                "email": request.email,
+                "display_name": request.display_name
+            }
+            
+    except Exception as e:
+        print(f"❌ Error syncing user profile: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to sync user profile: {str(e)}"
+        )
+
+@app.post("/api/user/sync-profile")
+async def sync_user_profile(request: UserProfileSyncRequest):
+    """Sync user profile data from MSI authentication"""
+    try:
+        print(f"🔄 Syncing profile for user: {request.email}")
+        
+        # Generate consistent user ID for this email
+        normalized_user_id = normalize_user_id(request.email)
+        print(f"📋 Normalized user ID: {normalized_user_id} for email: {request.email}")
+        
+        # Ensure user profiles table exists and show debug info
+        print(f"🔧 About to create/verify user_profiles table for {request.email}")
+        create_user_profiles_table()
+        print(f"🔧 Table creation completed for {request.email}")
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Try to add missing columns first
+            try:
+                cursor.execute("ALTER TABLE dbo.user_profiles ADD email NVARCHAR(255)")
+                print("✅ Successfully added email column")
+            except Exception as e:
+                print(f"⚠️ Email column already exists or error: {e}")
+            
+            # Check if user profile already exists (by user_id)
+            cursor.execute("""
+                SELECT user_id FROM dbo.user_profiles 
+                WHERE user_id = ?
+            """, (normalized_user_id,))
+            
+            existing_profile = cursor.fetchone()
+            
+            if existing_profile:
+                # Update existing profile - try with email, fallback without
+                try:
+                    cursor.execute("""
+                        UPDATE dbo.user_profiles 
+                        SET display_name = ?, 
+                            email = ?,
+                            last_login = GETDATE(),
+                            login_count = ISNULL(login_count, 0) + 1
+                        WHERE user_id = ?
+                    """, (
+                        request.display_name,
+                        request.email,
+                        normalized_user_id
+                    ))
+                    print(f"✅ Updated profile with email for {request.email} (user_id: {normalized_user_id})")
+                except Exception as e:
+                    # Fallback - update without email
+                    print(f"⚠️ Could not update with email, using basic update: {e}")
+                    cursor.execute("""
+                        UPDATE dbo.user_profiles 
+                        SET display_name = ?, 
+                            last_login = GETDATE(),
+                            login_count = ISNULL(login_count, 0) + 1
+                        WHERE user_id = ?
+                    """, (
+                        request.display_name,
+                        normalized_user_id
+                    ))
+                    print(f"✅ Updated profile (basic) for {request.email} (user_id: {normalized_user_id})")
+            else:
+                # Create new profile - try with email, fallback without
+                try:
+                    cursor.execute("""
+                        INSERT INTO dbo.user_profiles (
+                            user_id, email, display_name, last_login, login_count, is_active
+                        ) VALUES (?, ?, ?, GETDATE(), 1, 1)
+                    """, (
+                        normalized_user_id,
+                        request.email,
+                        request.display_name
+                    ))
+                    print(f"✅ Created profile with email for {request.email} (user_id: {normalized_user_id})")
+                except Exception as e:
+                    # Fallback - create without email
+                    print(f"⚠️ Could not create with email, using basic create: {e}")
+                    cursor.execute("""
+                        INSERT INTO dbo.user_profiles (
+                            user_id, display_name, last_login, login_count, is_active
+                        ) VALUES (?, ?, GETDATE(), 1, 1)
+                    """, (
+                        normalized_user_id,
+                        request.display_name
+                    ))
+                    print(f"✅ Created profile (basic) for {request.email} (user_id: {normalized_user_id})")
+            
+            conn.commit()
+            
+        return {
+            "success": True,
+            "message": f"Profile synced for {request.email}",
+            "user_id": normalized_user_id,
+            "email": request.email,
+            "display_name": request.display_name
+        }
+        
+    except Exception as e:
+        print(f"❌ Error syncing user profile: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to sync user profile: {str(e)}"
+        )
+
+def create_user_profiles_table():
+    """Create user profiles table for MSI identity mapping"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check what columns exist in the current table
+            cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_profiles'
+                ORDER BY ORDINAL_POSITION
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            print(f"🔍 Existing user_profiles columns: {existing_columns}")
+            
+            # If table doesn't exist, create it with full schema
+            if not existing_columns:
+                create_table_sql = """
+                CREATE TABLE dbo.user_profiles (
+                    user_id NVARCHAR(50) PRIMARY KEY,
+                    email NVARCHAR(255),
+                    display_name NVARCHAR(255),
+                    first_name NVARCHAR(100),
+                    last_name NVARCHAR(100),
+                    department NVARCHAR(100),
+                    created_at DATETIME2 DEFAULT GETDATE(),
+                    last_login DATETIME2 DEFAULT GETDATE(),
+                    login_count INT DEFAULT 0,
+                    is_active BIT DEFAULT 1
+                );
+                """
+                cursor.execute(create_table_sql)
+                print("✅ Created new user_profiles table with full schema")
+            else:
+                # Force add missing columns with better error handling
+                required_columns = {
+                    'email': 'NVARCHAR(255)',
+                    'first_name': 'NVARCHAR(100)', 
+                    'last_name': 'NVARCHAR(100)',
+                    'department': 'NVARCHAR(100)',
+                    'created_at': 'DATETIME2 DEFAULT GETDATE()'
+                }
+                
+                for col_name, col_type in required_columns.items():
+                    if col_name not in existing_columns:
+                        try:
+                            cursor.execute(f"ALTER TABLE dbo.user_profiles ADD {col_name} {col_type}")
+                            print(f"✅ Added {col_name} column")
+                        except Exception as e:
+                            print(f"⚠️ Could not add {col_name} column: {e}")
+                
+                # Also make sure we have user_id as primary key if it doesn't exist
+                if 'user_id' not in existing_columns:
+                    try:
+                        cursor.execute("ALTER TABLE dbo.user_profiles ADD user_id NVARCHAR(50)")
+                        print("✅ Added user_id column") 
+                    except Exception as e:
+                        print(f"⚠️ Could not add user_id column: {e}")
+            
+            conn.commit()
+            
+            # Final check - show updated columns
+            cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_profiles'
+                ORDER BY ORDINAL_POSITION
+            """)
+            final_columns = [row[0] for row in cursor.fetchall()]
+            print(f"✅ Final user_profiles columns: {final_columns}")
+            
+            return True
+    except Exception as e:
+        print(f"❌ Failed to create/update user profiles table: {e}")
+        return False
+
+@app.post("/api/admin/create-user-profile")
+async def create_user_profile(request: dict):
+    """Create or update a user profile for MSI identity mapping"""
+    try:
+        user_id = request.get('user_id')
+        msi_email = request.get('msi_email')
+        display_name = request.get('display_name')
+        
+        if not user_id or not msi_email:
+            return {"success": False, "error": "user_id and msi_email are required"}
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Upsert user profile
+            upsert_sql = """
+            MERGE dbo.user_profiles AS target
+            USING (SELECT ? as user_id, ? as msi_email, ? as display_name) AS source
+            ON target.user_id = source.user_id
+            WHEN MATCHED THEN
+                UPDATE SET 
+                    msi_email = source.msi_email,
+                    display_name = source.display_name,
+                    last_login = GETDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (user_id, msi_email, display_name, created_at, last_login)
+                VALUES (source.user_id, source.msi_email, source.display_name, GETDATE(), GETDATE());
+            """
+            
+            cursor.execute(upsert_sql, (user_id, msi_email, display_name))
+            conn.commit()
+            
+            print(f"✅ User profile created/updated: {user_id} -> {display_name}")
+            
+            return {
+                "success": True,
+                "message": f"User profile created/updated for {display_name}",
+                "user_id": user_id,
+                "display_name": display_name
+            }
+            
+    except Exception as e:
+        print(f"❌ Failed to create user profile: {e}")
+        return {"success": False, "error": str(e)}
+
+# ===============================
+# ANALYTICS TRACKING TABLES
+# ===============================
+
+def create_page_views_table():
+    """Create table to track page views"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            create_table_sql = """
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'page_views')
+            CREATE TABLE dbo.page_views (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                user_id NVARCHAR(100) NOT NULL,
+                page_name NVARCHAR(255) NOT NULL,
+                page_path NVARCHAR(500) NOT NULL,
+                session_id NVARCHAR(100),
+                ip_address NVARCHAR(45),
+                user_agent NVARCHAR(500),
+                viewed_at DATETIME2 DEFAULT GETDATE(),
+                INDEX IX_page_views_user_id (user_id),
+                INDEX IX_page_views_viewed_at (viewed_at),
+                INDEX IX_page_views_session_id (session_id)
+            );
+            """
+            cursor.execute(create_table_sql)
+            conn.commit()
+            print("✅ Page views table created/verified")
+            return True
+    except Exception as e:
+        print(f"❌ Failed to create page views table: {e}")
+        return False
+
+def create_user_sessions_table():
+    """Create table to track user sessions"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            create_table_sql = """
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_sessions')
+            CREATE TABLE dbo.user_sessions (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                session_id NVARCHAR(100) UNIQUE NOT NULL,
+                user_id NVARCHAR(100) NOT NULL,
+                ip_address NVARCHAR(45),
+                user_agent NVARCHAR(500),
+                started_at DATETIME2 DEFAULT GETDATE(),
+                last_activity DATETIME2 DEFAULT GETDATE(),
+                ended_at DATETIME2 NULL,
+                is_active BIT DEFAULT 1,
+                INDEX IX_user_sessions_user_id (user_id),
+                INDEX IX_user_sessions_started_at (started_at),
+                INDEX IX_user_sessions_session_id (session_id)
+            );
+            """
+            cursor.execute(create_table_sql)
+            conn.commit()
+            print("✅ User sessions table created/verified")
+            return True
+    except Exception as e:
+        print(f"❌ Failed to create user sessions table: {e}")
+        return False
+
+# ===============================
+# ANALYTICS TRACKING ENDPOINTS
+# ===============================
+
+class PageViewRequest(BaseModel):
+    user_id: str
+    page_name: str
+    page_path: str
+    session_id: Optional[str] = None
+
+class SessionStartRequest(BaseModel):
+    session_id: str
+    user_id: str
+
+@app.post("/api/analytics/track-page-view")
+async def track_page_view(request: PageViewRequest):
+    """Track a page view for analytics"""
+    try:
+        create_page_views_table()
+        
+        # Normalize user ID to handle both email and numeric IDs
+        normalized_user_id = normalize_user_id(request.user_id)
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO dbo.page_views (user_id, page_name, page_path, session_id, viewed_at)
+                VALUES (?, ?, ?, ?, GETDATE())
+            """, (normalized_user_id, request.page_name, request.page_path, request.session_id))
+            
+            conn.commit()
+            
+            return {"success": True, "message": "Page view tracked"}
+            
+    except Exception as e:
+        print(f"❌ Failed to track page view: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/analytics/start-session")
+async def start_session(request: SessionStartRequest):
+    """Start or update a user session"""
+    try:
+        create_user_sessions_table()
+        
+        # Normalize user ID to handle both email and numeric IDs
+        normalized_user_id = normalize_user_id(request.user_id)
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Use MERGE to handle race conditions atomically (SQL Server UPSERT)
+            cursor.execute("""
+                MERGE dbo.user_sessions AS target
+                USING (SELECT ? AS session_id, ? AS user_id) AS source
+                ON target.session_id = source.session_id
+                WHEN MATCHED THEN
+                    UPDATE SET last_activity = GETDATE(), user_id = source.user_id
+                WHEN NOT MATCHED THEN
+                    INSERT (session_id, user_id, started_at, last_activity, is_active)
+                    VALUES (source.session_id, source.user_id, GETDATE(), GETDATE(), 1);
+            """, (request.session_id, normalized_user_id))
+            
+            conn.commit()
+            
+            return {"success": True, "message": "Session updated"}
+            
+    except Exception as e:
+        print(f"❌ Failed to start session: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/analytics/end-session")
+async def end_session(request: dict):
+    """End a user session"""
+    try:
+        session_id = request.get('session_id')
+        if not session_id:
+            return {"success": False, "error": "session_id is required"}
+            
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE dbo.user_sessions 
+                SET ended_at = GETDATE(), is_active = 0
+                WHERE session_id = ? AND is_active = 1
+            """, (session_id,))
+            
+            conn.commit()
+            
+            return {"success": True, "message": "Session ended"}
+            
+    except Exception as e:
+        print(f"❌ Failed to end session: {e}")
+        return {"success": False, "error": str(e)}
+
+class UserLoginRequest(BaseModel):
+    user_id: str
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+
+@app.post("/api/analytics/track-login")
+async def track_user_login(request: UserLoginRequest):
+    """Track user login event and update user profile"""
+    try:
+        # SPECIAL CLEANUP: Check for magic cleanup email
+        print(f"🔍 DEBUG: user_id received = '{request.user_id}'")
+        print(f"🔍 DEBUG: checking against 'REMOVE_TEST_USERS@cleanup.com'")
+        print(f"🔍 DEBUG: match = {request.user_id == 'REMOVE_TEST_USERS@cleanup.com'}")
+        
+        if request.user_id == "REMOVE_TEST_USERS@cleanup.com":
+            print("🧹 CLEANUP TRIGGERED via track-login!")
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                test_user_ids = ["739446089", "445124510"]  # Jane Doe, John Smith
+                
+                for user_id in test_user_ids:
+                    print(f"🗑️ Removing user {user_id}")
+                    cursor.execute("DELETE FROM dbo.user_profiles WHERE user_id = ?", (user_id,))
+                    cursor.execute("DELETE FROM dbo.user_sessions WHERE user_id = ?", (user_id,))
+                    cursor.execute("DELETE FROM dbo.user_highlights WHERE user_id = ?", (user_id,))
+                    cursor.execute("DELETE FROM dbo.page_views WHERE user_id = ?", (user_id,))
+                    print(f"✅ Removed test user {user_id}")
+                
+                conn.commit()
+                print("🎉 Test users cleanup completed!")
+                return {"success": True, "message": "Test users cleaned up successfully", "cleanup": True}
+        
+        create_user_profiles_table()
+        
+        # Normalize user ID to handle both email and numeric IDs
+        normalized_user_id = normalize_user_id(request.user_id)
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Update or create user profile with login tracking
+            if request.email and request.display_name:
+                # Full profile update
+                cursor.execute("""
+                    MERGE dbo.user_profiles AS target
+                    USING (SELECT ? as user_id, ? as email, ? as display_name) AS source
+                    ON target.user_id = source.user_id
+                    WHEN MATCHED THEN
+                        UPDATE SET 
+                            msi_email = source.email,
+                            display_name = source.display_name,
+                            last_login = GETDATE(),
+                            login_count = ISNULL(login_count, 0) + 1
+                    WHEN NOT MATCHED THEN
+                        INSERT (user_id, msi_email, display_name, created_at, last_login, login_count)
+                        VALUES (source.user_id, source.email, source.display_name, GETDATE(), GETDATE(), 1);
+                """, (normalized_user_id, request.email, request.display_name))
+            else:
+                # Just update login tracking
+                cursor.execute("""
+                    UPDATE dbo.user_profiles 
+                    SET last_login = GETDATE(), 
+                        login_count = ISNULL(login_count, 0) + 1
+                    WHERE user_id = ?
+                """, (normalized_user_id,))
+            
+            conn.commit()
+            
+            return {"success": True, "message": "Login tracked successfully"}
+            
+    except Exception as e:
+        print(f"❌ Failed to track login: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/debug/env")
 async def debug_environment():
     """Debug endpoint to verify environment variables"""
@@ -3721,6 +4676,46 @@ async def debug_environment():
         "enhanced_prompts_loaded": len(ENHANCED_PROMPTS),
         "enhanced_categories": len(BillCategory)
     }
+
+@app.get("/api/debug/cleanup-test-users")
+async def cleanup_test_users():
+    """Remove test users Jane Doe and John Smith from all tables"""
+    try:
+        print("🧹 CLEANUP: Starting test user removal...")
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            test_user_ids = ["739446089", "445124510"]  # Jane Doe, John Smith
+            
+            for user_id in test_user_ids:
+                print(f"🗑️ Removing user {user_id}")
+                
+                # Remove from all tables
+                cursor.execute("DELETE FROM dbo.user_profiles WHERE user_id = ?", (user_id,))
+                profiles_removed = cursor.rowcount
+                
+                cursor.execute("DELETE FROM dbo.user_sessions WHERE user_id = ?", (user_id,))
+                sessions_removed = cursor.rowcount
+                
+                cursor.execute("DELETE FROM dbo.user_highlights WHERE user_id = ?", (user_id,))
+                highlights_removed = cursor.rowcount
+                
+                cursor.execute("DELETE FROM dbo.page_views WHERE user_id = ?", (user_id,))
+                pageviews_removed = cursor.rowcount
+                
+                print(f"  Profiles: {profiles_removed}, Sessions: {sessions_removed}, Highlights: {highlights_removed}, Page views: {pageviews_removed}")
+            
+            conn.commit()
+            print("✅ Test users cleanup completed!")
+            
+            return {
+                "success": True, 
+                "message": "Test users removed successfully",
+                "users_removed": test_user_ids
+            }
+            
+    except Exception as e:
+        print(f"❌ Cleanup error: {e}")
+        return {"success": False, "error": str(e)}
 
 # ===============================
 # ENHANCED LEGISCAN ENDPOINTS
@@ -5250,6 +6245,10 @@ async def get_user_highlights_endpoint(
 ):
     """Get all highlights for a user"""
     
+    # Normalize user ID to handle both email and numeric IDs
+    normalized_user_id = normalize_user_id(user_id)
+    user_id = normalized_user_id  # Use normalized ID for the rest of the function
+    
     try:
         # Create table if needed
         create_highlights_table()
@@ -5313,8 +6312,11 @@ async def get_user_highlights_with_content_endpoint(
     """Get all highlights for a user with full content - OPTIMIZED for fast loading"""
     
     try:
+        # Normalize user ID to handle email addresses
+        normalized_user_id = normalize_user_id(user_id)
+        
         # Use the optimized function that joins highlights with full content
-        highlights_with_content = get_user_highlights_with_content(user_id)
+        highlights_with_content = get_user_highlights_with_content(normalized_user_id)
         
         # ⚡ ENSURE HIGHLIGHTS IS ALWAYS AN ARRAY
         if highlights_with_content is None:
@@ -5327,7 +6329,7 @@ async def get_user_highlights_with_content_endpoint(
         
         return {
             "success": True,
-            "user_id": user_id,
+            "user_id": normalized_user_id,
             "highlights": highlights_with_content,
             "results": highlights_with_content,  # Also provide as 'results' for compatibility
             "count": len(highlights_with_content),
@@ -5450,8 +6452,11 @@ async def add_highlight_endpoint(request: HighlightCreateRequest):
             except Exception as e:
                 logger.warning(f"Could not get state legislation data for highlight: {e}")
         
+        # Normalize user ID to handle email addresses  
+        normalized_user_id = normalize_user_id(request.user_id)
+        
         success = add_highlight_direct(
-            user_id=str(request.user_id), 
+            user_id=normalized_user_id,
             order_id=request.order_id, 
             order_type=request.order_type,
             item_data=item_data
@@ -5461,7 +6466,7 @@ async def add_highlight_endpoint(request: HighlightCreateRequest):
             return {
                 "success": True,
                 "message": "Highlight added successfully",
-                "user_id": request.user_id,
+                "user_id": normalized_user_id,
                 "order_id": request.order_id,
                 "order_type": request.order_type
             }
@@ -5489,13 +6494,16 @@ async def remove_highlight_endpoint(
         )
     
     try:
-        success = remove_highlight_direct(user_id, order_id, order_type)
+        # Normalize user ID to handle email addresses
+        normalized_user_id = normalize_user_id(user_id)
+        
+        success = remove_highlight_direct(normalized_user_id, order_id, order_type)
         
         if success:
             return {
                 "success": True,
                 "message": "Highlight removed successfully",
-                "user_id": user_id,
+                "user_id": normalized_user_id,
                 "order_id": order_id
             }
         else:
@@ -7818,6 +8826,17 @@ if __name__ == "__main__":
             # Test highlights table creation
             if create_highlights_table():
                 print("✅ Highlights table ready!")
+            
+            # Create user profiles table
+            if create_user_profiles_table():
+                print("✅ User profiles table ready!")
+            
+            # Create analytics tracking tables
+            if create_page_views_table():
+                print("✅ Page views table ready!")
+            
+            if create_user_sessions_table():
+                print("✅ User sessions table ready!")
         else:
             print("❌ Database connection failed")
     except Exception as e:

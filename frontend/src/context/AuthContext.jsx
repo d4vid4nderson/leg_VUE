@@ -250,8 +250,41 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Sync user profile with backend
+  const syncUserProfile = async (userData) => {
+    try {
+      console.log('🔄 Syncing user profile with backend...');
+      
+      const profileData = {
+        email: userData.username || userData.email,
+        display_name: userData.name || userData.displayName,
+        first_name: userData.givenName,
+        last_name: userData.surname,
+        department: userData.department
+      };
+      
+      const response = await fetch(`/api/user/sync-profile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userData.token || userData.access_token}`
+        },
+        body: JSON.stringify(profileData)
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ User profile synced:', result.display_name);
+      } else {
+        console.warn('⚠️ Failed to sync user profile:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error syncing user profile:', error);
+    }
+  };
+
   // Login with Azure AD data (called from redirect handler)
-  const loginWithAzureAD = (userData) => {
+  const loginWithAzureAD = async (userData) => {
     console.log('🔐 Setting Azure AD user data:', userData.username || userData.name);
     
     // Update state with the user data
@@ -261,6 +294,9 @@ export const AuthProvider = ({ children }) => {
     // Store in localStorage
     localStorage.setItem('auth_token', userData.token);
     localStorage.setItem('user', JSON.stringify(userData));
+    
+    // Sync user profile with backend
+    await syncUserProfile(userData);
     
     console.log('✅ Azure AD login complete');
     return { success: true, user: userData };

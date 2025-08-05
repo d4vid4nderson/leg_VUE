@@ -19,14 +19,25 @@ import {
     Save,
     AlertTriangle,
     Eye,
-    EyeOff
+    EyeOff,
+    BarChart3,
+    Users,
+    Activity,
+    TrendingUp,
+    User,
+    Lock,
+    MapPin
 } from 'lucide-react';
 
 import API_URL from '../config/api';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
+import { usePageTracking } from '../hooks/usePageTracking';
 
-// Password required for database clearing (change this to whatever you want)
-const REQUIRED_PASSWORD = "DELETE_DATABASE_2024";
+// Password required for database management (change this to whatever you want)
+const REQUIRED_PASSWORD = "database";
+
+// Password required for analytics access
+const ANALYTICS_PASSWORD = "analytics";
 
 const SettingsPage = ({
     federalDateRange,
@@ -37,16 +48,27 @@ const SettingsPage = ({
 }) => {
     const [showDatabaseSection, setShowDatabaseSection] = useState(false);
     const [showSystemSection, setShowSystemSection] = useState(true);
+    const [showTechnicalSection, setShowTechnicalSection] = useState(false);
+    const [showAdminAnalytics, setShowAdminAnalytics] = useState(false);
     const [clearingDatabase, setClearingDatabase] = useState(false);
     const [showClearWarning, setShowClearWarning] = useState(false);
     const [clearStatus, setClearStatus] = useState(null);
     const [databaseDebugInfo, setDatabaseDebugInfo] = useState({ logs: [], success: false, loading: false });
 
-    // Database modal states
-    const [showDatabaseModal, setShowDatabaseModal] = useState(false);
-    const [passwordInput, setPasswordInput] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [passwordError, setPasswordError] = useState('');
+    // Database password modal states  
+    const [showDatabasePasswordModal, setShowDatabasePasswordModal] = useState(false);
+    const [databasePasswordInput, setDatabasePasswordInput] = useState('');
+    const [databasePasswordError, setDatabasePasswordError] = useState('');
+    const [isDatabaseAuthenticated, setIsDatabaseAuthenticated] = useState(false);
+    
+    // Clear database confirmation states
+    const [showClearConfirmation, setShowClearConfirmation] = useState(false);
+    
+    // Analytics password modal states
+    const [showAnalyticsPasswordModal, setShowAnalyticsPasswordModal] = useState(false);
+    const [analyticsPasswordInput, setAnalyticsPasswordInput] = useState('');
+    const [analyticsPasswordError, setAnalyticsPasswordError] = useState('');
+    const [isAnalyticsAuthenticated, setIsAnalyticsAuthenticated] = useState(false);
 
     // Local editing state
     const [isEditingVersion, setIsEditingVersion] = useState(false);
@@ -63,6 +85,17 @@ const SettingsPage = ({
 
     const [lastHealthCheck, setLastHealthCheck] = useState(null);
     const [checkingHealth, setCheckingHealth] = useState(false);
+
+    // Admin Analytics state
+    const [analyticsData, setAnalyticsData] = useState({
+        loading: false,
+        data: null,
+        error: null,
+        lastUpdated: null
+    });
+
+    // Track page view
+    usePageTracking('Settings');
 
     // Update tempVersion when appVersion prop changes
     useEffect(() => {
@@ -91,6 +124,86 @@ const SettingsPage = ({
     const handleCancelVersionEdit = () => {
         setTempVersion(appVersion);
         setIsEditingVersion(false);
+    };
+
+    // Fetch analytics data with retry
+    const fetchAnalyticsData = async (retryCount = 0) => {
+        console.log('🚨 ANALYTICS FETCH CALLED - THIS SHOULD APPEAR IN CONSOLE');
+        console.log('🔍 Starting analytics fetch...');
+        console.log('API_URL:', API_URL);
+        
+        setAnalyticsData(prev => ({ ...prev, loading: true, error: null }));
+        
+        try {
+            // Force direct connection to Docker backend for testing
+            const apiUrl = API_URL || 'http://localhost:8000';
+            const url = `${apiUrl}/api/admin/analytics`;
+            console.log('🔍 Fetching from URL:', url);
+            console.log('🔍 Original API_URL:', API_URL);
+            console.log('🔍 Using apiUrl:', apiUrl);
+            
+            // Add timeout to the fetch request
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            const response = await fetch(url, { 
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            clearTimeout(timeoutId);
+            console.log('🔍 Response received!');
+            console.log('🔍 Response status:', response.status);
+            console.log('🔍 Response ok:', response.ok);
+            console.log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Response error:', errorText);
+                console.error('❌ Response content type:', response.headers.get('content-type'));
+                throw new Error(`Failed to fetch analytics: ${response.status} - ${errorText}`);
+            }
+            
+            const data = await response.json();
+            console.log('✅ Analytics data received:', data);
+            
+            setAnalyticsData({
+                loading: false,
+                data: data.success ? data.data : data,
+                error: null,
+                lastUpdated: new Date()
+            });
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error('❌ Request timed out after 30 seconds');
+                // Retry once if this is the first attempt
+                if (retryCount === 0) {
+                    console.log('🔄 Retrying analytics fetch...');
+                    return fetchAnalyticsData(1);
+                }
+                setAnalyticsData(prev => ({
+                    ...prev,
+                    loading: false,
+                    error: 'Request timed out. The server may be busy processing the request.'
+                }));
+                return;
+            }
+            console.error('❌ Failed to fetch analytics:', error);
+            // Retry once for other errors if this is the first attempt
+            if (retryCount === 0 && !error.message.includes('Failed to fetch')) {
+                console.log('🔄 Retrying analytics fetch after error...');
+                setTimeout(() => fetchAnalyticsData(1), 2000); // Wait 2 seconds before retry
+                return;
+            }
+            setAnalyticsData(prev => ({
+                ...prev,
+                loading: false,
+                error: error.message
+            }));
+        }
     };
 
     const debugDatabaseConnection = async () => {
@@ -138,19 +251,73 @@ const SettingsPage = ({
         }
     };
 
-    // Database modal functions
-    const openDatabaseModal = () => {
-        setShowDatabaseModal(true);
-        setPasswordInput('');
-        setPasswordError('');
-        setShowPassword(false);
+    // Database password handling functions
+    const handleDatabasePasswordSubmit = () => {
+        if (databasePasswordInput !== REQUIRED_PASSWORD) {
+            setDatabasePasswordError('Incorrect password. Please try again.');
+            return;
+        }
+        
+        // Password correct - close modal and show database management
+        setShowDatabasePasswordModal(false);
+        setIsDatabaseAuthenticated(true);
+        setDatabasePasswordInput('');
+        setDatabasePasswordError('');
+        setShowDatabaseSection(true);
     };
-
-    const closeDatabaseModal = () => {
-        setShowDatabaseModal(false);
-        setPasswordInput('');
-        setPasswordError('');
-        setShowPassword(false);
+    
+    const handleDatabaseExpand = () => {
+        if (showDatabaseSection) {
+            // Collapsing - reset authentication
+            setShowDatabaseSection(false);
+            setIsDatabaseAuthenticated(false);
+        } else {
+            // Expanding - show password modal
+            setShowDatabasePasswordModal(true);
+        }
+    };
+    
+    const closeDatabasePasswordModal = () => {
+        setShowDatabasePasswordModal(false);
+        setDatabasePasswordInput('');
+        setDatabasePasswordError('');
+    };
+    
+    // Analytics password handling functions
+    const handleAnalyticsPasswordSubmit = () => {
+        if (analyticsPasswordInput !== ANALYTICS_PASSWORD) {
+            setAnalyticsPasswordError('Incorrect password. Please try again.');
+            return;
+        }
+        
+        // Password correct - close modal and show analytics
+        console.log('✅ Analytics password correct, setting states...');
+        setShowAnalyticsPasswordModal(false);
+        setIsAnalyticsAuthenticated(true);
+        setAnalyticsPasswordInput('');
+        setAnalyticsPasswordError('');
+        setShowAdminAnalytics(true);
+        
+        console.log('📊 Manually triggering analytics fetch after authentication...');
+        // Auto-load analytics data when authenticated
+        fetchAnalyticsData();
+    };
+    
+    const handleAnalyticsExpand = () => {
+        if (showAdminAnalytics) {
+            // Collapsing - reset authentication
+            setShowAdminAnalytics(false);
+            setIsAnalyticsAuthenticated(false);
+        } else {
+            // Expanding - show password modal
+            setShowAnalyticsPasswordModal(true);
+        }
+    };
+    
+    const closeAnalyticsPasswordModal = () => {
+        setShowAnalyticsPasswordModal(false);
+        setAnalyticsPasswordInput('');
+        setAnalyticsPasswordError('');
     };
 
     // Status icon and color mapping
@@ -353,21 +520,37 @@ const SettingsPage = ({
         return () => clearInterval(interval);
     }, []);
 
-    // Database clear function with password validation
+    // Auto-load analytics when section is shown and authenticated
+    useEffect(() => {
+        console.log('🔍 Analytics useEffect triggered:', {
+            showAdminAnalytics,
+            isAnalyticsAuthenticated,
+            hasData: !!analyticsData.data,
+            isLoading: analyticsData.loading
+        });
+        
+        if (showAdminAnalytics && isAnalyticsAuthenticated && !analyticsData.data && !analyticsData.loading) {
+            console.log('📊 Auto-loading analytics data...');
+            fetchAnalyticsData();
+        }
+    }, [showAdminAnalytics, isAnalyticsAuthenticated, analyticsData.data, analyticsData.loading]);
+
+    // Clear database confirmation functions
+    const showClearDatabaseConfirmation = () => {
+        setShowClearConfirmation(true);
+    };
+    
+    const closeClearConfirmation = () => {
+        setShowClearConfirmation(false);
+    };
+
+    // Simplified database clear function - no password needed
     const handleClearDatabase = async () => {
         if (clearingDatabase) return;
 
-        // Check password
-        if (passwordInput !== REQUIRED_PASSWORD) {
-            setPasswordError('Incorrect password. Please try again.');
-            return;
-        }
-
         setClearingDatabase(true);
         setClearStatus('🗑️ Clearing database...');
-        setShowDatabaseModal(false); // Close modal
-        setPasswordInput(''); // Clear password
-        setPasswordError(''); // Clear any errors
+        setShowClearConfirmation(false); // Close confirmation dialog
 
         try {
             const response = await fetch(`${API_URL}/api/database/clear-all`, {
@@ -393,9 +576,10 @@ const SettingsPage = ({
         }
     };
 
-    // Database Clear Modal Component
-    const DatabaseClearModal = () => {
-        if (!showDatabaseModal) return null;
+
+    // Clear Database Confirmation Modal Component
+    const ClearConfirmationModal = () => {
+        if (!showClearConfirmation) return null;
 
         return (
             <div className="fixed inset-0 bg-black dark:bg-gray-900 bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
@@ -406,10 +590,70 @@ const SettingsPage = ({
                             <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
                                 <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
                             </div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Clear Database</h3>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Confirm Database Clear</h3>
                         </div>
                         <button
-                            onClick={closeDatabaseModal}
+                            onClick={closeClearConfirmation}
+                            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    {/* Modal Body */}
+                    <div className="p-6">
+                        <p className="text-gray-600 dark:text-gray-400 mb-4">
+                            Are you sure you want to clear the database? This will permanently delete all executive orders, state legislation, and related data.
+                        </p>
+                        <p className="text-sm text-red-600 dark:text-red-400 font-medium">
+                            This action cannot be undone.
+                        </p>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-3 justify-end mt-6">
+                            <button
+                                onClick={closeClearConfirmation}
+                                disabled={clearingDatabase}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                            >
+                                No, Cancel
+                            </button>
+                            <button
+                                onClick={handleClearDatabase}
+                                disabled={clearingDatabase}
+                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                                    clearingDatabase
+                                        ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                        : 'bg-red-600 dark:bg-red-500 text-white hover:bg-red-700 dark:hover:bg-red-400'
+                                }`}
+                            >
+                                <Trash2 size={14} />
+                                {clearingDatabase ? 'Clearing...' : 'Yes, Clear Database'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // Analytics Password Modal Component
+    const AnalyticsPasswordModal = () => {
+        if (!showAnalyticsPasswordModal) return null;
+
+        return (
+            <div className="fixed inset-0 bg-black dark:bg-gray-900 bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
+                <div className="bg-white dark:bg-dark-bg rounded-lg shadow-xl max-w-md w-full">
+                    {/* Modal Header */}
+                    <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-border">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                                <Lock size={20} className="text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Access Admin Analytics</h3>
+                        </div>
+                        <button
+                            onClick={closeAnalyticsPasswordModal}
                             className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                         >
                             <X size={20} />
@@ -419,70 +663,46 @@ const SettingsPage = ({
                     {/* Modal Body */}
                     <div className="p-6 bg-white dark:bg-dark-bg">
                         <div className="mb-4">
-                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-md p-4 mb-4">
-                                <h4 className="font-semibold text-red-800 dark:text-red-300 mb-2">⚠️ Warning: This action cannot be undone</h4>
-                                <p className="text-red-700 dark:text-red-300 text-sm mb-2">
-                                    Deleting the database will permanently remove:
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md p-4 mb-4">
+                                <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">🔒 Protected Content</h4>
+                                <p className="text-sm text-blue-700 dark:text-blue-400">
+                                    Admin analytics contains sensitive user data and requires authentication to access.
                                 </p>
-                                <ul className="text-red-700 dark:text-red-300 text-sm space-y-1 ml-4">
-                                    <li>• All executive orders and state legislation</li>
-                                    <li>• AI analysis and summaries</li>
-                                    <li>• Your highlighted items and bookmarks</li>
-                                    <li>• All cached data and preferences</li>
-                                </ul>
-                            </div>
-
-                            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-md p-4 mb-4">
-                                <h4 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-2">📊 Data Recovery Notice</h4>
-                                <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                                    When data is re-fetched from external APIs, the information you get back
-                                    might not be exactly the same as before due to:
-                                </p>
-                                <ul className="text-yellow-700 dark:text-yellow-300 text-sm space-y-1 ml-4 mt-2">
-                                    <li>• Updates to federal regulations</li>
-                                    <li>• Changes in state legislation</li>
-                                    <li>• API modifications or data source updates</li>
-                                    <li>• Different AI analysis results</li>
-                                </ul>
                             </div>
                         </div>
 
                         {/* Password Input */}
-                        <div className="mb-4">
-                            <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Enter password to confirm deletion:
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Enter Password
                             </label>
                             <div className="relative">
                                 <input
-                                    type={showPassword ? "text" : "password"}
-                                    id="password"
-                                    value={passwordInput}
+                                    type="password"
+                                    value={analyticsPasswordInput}
                                     onChange={(e) => {
-                                        setPasswordInput(e.target.value);
-                                        if (passwordError) setPasswordError(''); // Clear error when typing
+                                        setAnalyticsPasswordInput(e.target.value);
+                                        if (analyticsPasswordError) setAnalyticsPasswordError(''); // Clear error when typing
                                     }}
                                     onKeyPress={(e) => {
                                         if (e.key === 'Enter') {
-                                            handleClearDatabase();
+                                            handleAnalyticsPasswordSubmit();
                                         }
                                     }}
-                                    className={`w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 dark:focus:ring-red-400 ${passwordError ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-bg-secondary'
-                                        }`}
-                                    placeholder="Enter required password..."
+                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 ${
+                                        analyticsPasswordError 
+                                            ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' 
+                                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-bg-secondary'
+                                    }`}
+                                    placeholder="Enter analytics password..."
                                     autoComplete="off"
+                                    autoFocus
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-                                >
-                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
                             </div>
-                            {passwordError && (
+                            {analyticsPasswordError && (
                                 <p className="mt-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                                     <X size={14} />
-                                    {passwordError}
+                                    {analyticsPasswordError}
                                 </p>
                             )}
                         </div>
@@ -490,22 +710,22 @@ const SettingsPage = ({
                         {/* Action Buttons */}
                         <div className="flex gap-3 justify-end">
                             <button
-                                onClick={closeDatabaseModal}
-                                disabled={clearingDatabase}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                                onClick={closeAnalyticsPasswordModal}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
-                                onClick={handleClearDatabase}
-                                disabled={clearingDatabase || !passwordInput.trim()}
-                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${clearingDatabase || !passwordInput.trim()
+                                onClick={handleAnalyticsPasswordSubmit}
+                                disabled={!analyticsPasswordInput.trim()}
+                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                                    !analyticsPasswordInput.trim()
                                         ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                                        : 'bg-red-600 dark:bg-red-500 text-white hover:bg-red-700 dark:hover:bg-red-400'
-                                    }`}
+                                        : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
+                                }`}
                             >
-                                <Trash2 size={14} />
-                                {clearingDatabase ? 'Clearing...' : 'Clear Database'}
+                                <BarChart3 size={14} />
+                                Access Analytics
                             </button>
                         </div>
                     </div>
@@ -755,6 +975,253 @@ const SettingsPage = ({
                                 })()}
                             </div>
 
+                        </div>
+                    )}
+                </div>
+
+                {/* Admin Analytics Section */}
+                <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-sm p-6">
+                    <button
+                        onClick={handleAnalyticsExpand}
+                        className="w-full flex items-center justify-between text-left focus:outline-none hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-2 transition-colors"
+                    >
+                        <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                            <BarChart3 size={20} />
+                            <span>Admin Analytics</span>
+                        </h3>
+                        <ChevronDown
+                            size={20}
+                            className={`text-gray-500 dark:text-gray-400 transition-transform duration-200 ${showAdminAnalytics ? 'rotate-180' : ''}`}
+                        />
+                    </button>
+
+                    {showAdminAnalytics && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                            {/* Refresh Button */}
+                            <div className="flex justify-between items-center mb-4">
+                                <h4 className="text-lg font-medium text-gray-700 dark:text-gray-300">Dashboard Overview</h4>
+                                <button
+                                    onClick={fetchAnalyticsData}
+                                    disabled={analyticsData.loading}
+                                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                                        analyticsData.loading 
+                                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                            : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
+                                    }`}
+                                >
+                                    {analyticsData.loading ? (
+                                        <div className="flex items-center gap-1">
+                                            <RotateCw size={12} className="animate-spin" />
+                                            Loading...
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1">
+                                            <Activity size={12} />
+                                            Refresh Data
+                                        </div>
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* Last Updated */}
+                            {analyticsData.lastUpdated && (
+                                <div className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                                    Last updated: {analyticsData.lastUpdated.toLocaleString()}
+                                </div>
+                            )}
+
+                            {/* Error State */}
+                            {analyticsData.error && (
+                                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-md">
+                                    <p className="text-red-700 dark:text-red-300 text-sm">
+                                        Failed to load analytics: {analyticsData.error}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Analytics Content */}
+                            {analyticsData.loading ? (
+                                <div className="text-center py-8">
+                                    <RotateCw size={32} className="text-gray-400 dark:text-gray-500 animate-spin mx-auto mb-4" />
+                                    <p className="text-gray-500 dark:text-gray-400">
+                                        Loading analytics data...
+                                    </p>
+                                </div>
+                            ) : analyticsData.data ? (
+                                <div className="space-y-4">
+                                    {/* Summary Cards */}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-600/50">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm text-blue-600 dark:text-blue-300 mb-1 font-medium">Total Page Views</p>
+                                                    <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                                                        {analyticsData.data.totalPageViews || 0}
+                                                    </p>
+                                                    <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                                                        {analyticsData.data.totalPageViews === 0 ? 'No pages tracked yet' : 'Total page visits tracked'}
+                                                    </p>
+                                                </div>
+                                                <Activity size={24} className="text-blue-600 dark:text-blue-300" />
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-green-50 dark:bg-green-950/30 p-4 rounded-lg border border-green-200 dark:border-green-600/50">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm text-green-600 dark:text-green-300 mb-1 font-medium">Unique Sessions</p>
+                                                    <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                                                        {analyticsData.data.uniqueSessions || 0}
+                                                    </p>
+                                                    <p className="text-xs text-green-600 dark:text-green-300 mt-1">
+                                                        {analyticsData.data.uniqueSessions === 0 ? 'No sessions tracked yet' : 'Individual user sessions'}
+                                                    </p>
+                                                </div>
+                                                <Users size={24} className="text-green-600 dark:text-green-300" />
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-purple-50 dark:bg-purple-950/30 p-4 rounded-lg border border-purple-200 dark:border-purple-600/50">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm text-purple-600 dark:text-purple-300 mb-1 font-medium">Active Today</p>
+                                                    <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                                                        {analyticsData.data.activeToday || 0}
+                                                    </p>
+                                                    <p className="text-xs text-purple-600 dark:text-purple-300 mt-1">
+                                                        {analyticsData.data.activeToday === 0 ? 'No users active today' : 'Users who logged in today'}
+                                                    </p>
+                                                </div>
+                                                <TrendingUp size={24} className="text-purple-600 dark:text-purple-300" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Most Active Users */}
+                                    {analyticsData.data.topUsers && analyticsData.data.topUsers.length > 0 && (
+                                        <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-600/50 rounded-lg p-4">
+                                            <h5 className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Most Active Users</h5>
+                                            <p className="text-xs text-gray-500 dark:text-gray-300 mb-3">Based on highlighted items in the database</p>
+                                            <div className="space-y-2">
+                                                {analyticsData.data.topUsers.map((user, index) => (
+                                                    <div key={index} className="flex items-center justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30">
+                                                        <div className="flex items-center gap-3 flex-1">
+                                                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center border border-blue-200 dark:border-blue-600/50">
+                                                                <User size={16} className="text-blue-600 dark:text-blue-300" />
+                                                            </div>
+                                                            <div className="flex items-center gap-4 flex-1">
+                                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-100">
+                                                                    {user.displayName || user.userId || 'Anonymous'}
+                                                                </span>
+                                                                <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-300">
+                                                                    {user.loginCount !== undefined && user.loginCount > 0 && (
+                                                                        <span>{user.loginCount} logins</span>
+                                                                    )}
+                                                                    {user.highlightCount !== undefined && user.highlightCount > 0 && (
+                                                                        <span>•</span>
+                                                                    )}
+                                                                    {user.highlightCount !== undefined && user.highlightCount > 0 && (
+                                                                        <span>{user.highlightCount} highlights</span>
+                                                                    )}
+                                                                    {user.mostActivePage && (
+                                                                        <>
+                                                                            <span>•</span>
+                                                                            <span>Most active: {user.mostActivePage}</span>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {user.lastLogin && (
+                                                            <div className="text-xs text-gray-500 dark:text-gray-300 whitespace-nowrap">
+                                                                Last logged in: {new Date(user.lastLogin).toLocaleDateString()}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* State Analytics */}
+                                    {analyticsData.data.stateAnalytics && analyticsData.data.stateAnalytics.length > 0 && (
+                                        <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-600/50 rounded-lg p-4">
+                                            <h5 className="font-semibold text-gray-800 dark:text-gray-100 mb-3">State-Specific Activity</h5>
+                                            <div className="space-y-2">
+                                                {analyticsData.data.stateAnalytics.map((item, index) => (
+                                                    <div key={index} className="flex items-center justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg flex items-center justify-center border border-indigo-200 dark:border-indigo-600/50">
+                                                                <MapPin size={16} className="text-indigo-600 dark:text-indigo-300" />
+                                                            </div>
+                                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-100">
+                                                                {item.pageName}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-sm text-gray-500 dark:text-gray-300">
+                                                            {item.viewCount} views
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Page Performance */}
+                                    {analyticsData.data.topPages && analyticsData.data.topPages.length > 0 && (
+                                        <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-600/50 rounded-lg p-4">
+                                            <h5 className="font-semibold text-gray-800 dark:text-gray-100 mb-3">Most Visited Pages</h5>
+                                            <div className="space-y-2">
+                                                {analyticsData.data.topPages.map((page, index) => (
+                                                    <div key={index} className="flex items-center justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center border border-green-200 dark:border-green-600/50">
+                                                                <Globe size={16} className="text-green-600 dark:text-green-300" />
+                                                            </div>
+                                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-100">
+                                                                {page.pageName}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-sm text-gray-500 dark:text-gray-300">
+                                                            {page.viewCount} views
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8">
+                                    <BarChart3 size={48} className="text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                                    <p className="text-gray-500 dark:text-gray-400">
+                                        No analytics data available yet.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Technical Configuration Section */}
+                <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-sm p-6">
+                    <button
+                        onClick={() => setShowTechnicalSection(!showTechnicalSection)}
+                        className="w-full flex items-center justify-between text-left focus:outline-none hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-2 transition-colors"
+                    >
+                        <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                            <Monitor size={20} />
+                            <span>Technical Configuration</span>
+                        </h3>
+                        <ChevronDown
+                            size={20}
+                            className={`text-gray-500 dark:text-gray-400 transition-transform duration-200 ${showTechnicalSection ? 'rotate-180' : ''}`}
+                        />
+                    </button>
+
+                    {showTechnicalSection && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600 space-y-4">
+
                             {/* API Configuration */}
                             <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
                                 <h4 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">API Configuration</h4>
@@ -787,42 +1254,7 @@ const SettingsPage = ({
                                     <p>• <strong>Data Sources:</strong> Federal Register API, LegiScan API</p>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
 
-                {/* MSI Database Debug Section */}
-                <div className="mt-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
-                    <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-semibold text-gray-800 dark:text-gray-200">MSI Database Connection Debug</h4>
-                        <button
-                            onClick={debugDatabaseConnection}
-                            disabled={databaseDebugInfo.loading}
-                            className={`px-3 py-1 text-sm rounded-md ${databaseDebugInfo.loading ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300' : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'}`}
-                        >
-                            {databaseDebugInfo.loading ? 'Testing...' : 'Test MSI Connection'}
-                        </button>
-                    </div>
-
-                    {databaseDebugInfo.logs.length > 0 && (
-                        <div className={`mt-3 p-3 rounded border text-sm font-mono ${databaseDebugInfo.success ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700'}`}>
-                            <div className="mb-2 flex items-center justify-between">
-                                <span className={`font-medium ${databaseDebugInfo.success ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                                    {databaseDebugInfo.success ? '✅ Connection Successful' : '❌ Connection Failed'}
-                                </span>
-                                {databaseDebugInfo.timestamp && (
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-400">
-                                        {new Date(databaseDebugInfo.timestamp).toLocaleTimeString()}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="bg-black dark:bg-gray-900 bg-opacity-10 dark:bg-opacity-50 p-2 rounded max-h-64 overflow-y-auto">
-                                {databaseDebugInfo.logs.map((log, index) => (
-                                    <div key={index} className="whitespace-pre-wrap mb-1">
-                                        {log}
-                                    </div>
-                                ))}
-                            </div>
                         </div>
                     )}
                 </div>
@@ -830,7 +1262,7 @@ const SettingsPage = ({
                 {/* Database Management Section - SEPARATE CONTAINER */}
                 <div className="bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg shadow-sm p-6">
                     <button
-                        onClick={() => setShowDatabaseSection(!showDatabaseSection)}
+                        onClick={handleDatabaseExpand}
                         className="w-full flex items-center justify-between text-left focus:outline-none hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-2 transition-colors"
                     >
                         <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
@@ -852,11 +1284,11 @@ const SettingsPage = ({
                                 </h4>
                                 <p className="text-red-700 dark:text-red-300 text-sm mb-3">
                                     This will permanently delete all executive orders and legislation from the database.
-                                    This action cannot be undone and requires password confirmation.
+                                    This action cannot be undone.
                                 </p>
 
                                 <button
-                                    onClick={openDatabaseModal}
+                                    onClick={showClearDatabaseConfirmation}
                                     disabled={clearingDatabase}
                                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ${clearingDatabase
                                             ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
@@ -877,6 +1309,42 @@ const SettingsPage = ({
                                     <p>• Your highlighted items are stored separately but will also be cleared</p>
                                     <p>• Password required for security purposes</p>
                                 </div>
+                            </div>
+
+                            {/* MSI Database Connection Debug */}
+                            <div className="mt-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="font-semibold text-gray-800 dark:text-gray-200">MSI Database Connection Debug</h4>
+                                    <button
+                                        onClick={debugDatabaseConnection}
+                                        disabled={databaseDebugInfo.loading}
+                                        className={`px-3 py-1 text-sm rounded-md ${databaseDebugInfo.loading ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300' : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'}`}
+                                    >
+                                        {databaseDebugInfo.loading ? 'Testing...' : 'Test MSI Connection'}
+                                    </button>
+                                </div>
+
+                                {databaseDebugInfo.logs.length > 0 && (
+                                    <div className={`mt-3 p-3 rounded border text-sm font-mono ${databaseDebugInfo.success ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700'}`}>
+                                        <div className="mb-2 flex items-center justify-between">
+                                            <span className={`font-medium ${databaseDebugInfo.success ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
+                                                {databaseDebugInfo.success ? '✅ Connection Successful' : '❌ Connection Failed'}
+                                            </span>
+                                            {databaseDebugInfo.timestamp && (
+                                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                    {new Date(databaseDebugInfo.timestamp).toLocaleTimeString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="bg-black dark:bg-gray-900 bg-opacity-10 dark:bg-opacity-50 p-2 rounded max-h-64 overflow-y-auto">
+                                            {databaseDebugInfo.logs.map((log, index) => (
+                                                <div key={index} className="whitespace-pre-wrap mb-1">
+                                                    {log}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -912,8 +1380,105 @@ const SettingsPage = ({
                 </div>
             </div>
 
-            {/* Database Clear Modal */}
-                    <DatabaseClearModal />
+            {/* Database Password Modal */}
+            {showDatabasePasswordModal && (
+                <div className="fixed inset-0 bg-black dark:bg-gray-900 bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-dark-bg rounded-lg shadow-xl max-w-md w-full">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-border">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                                    <Lock size={20} className="text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Database Management Access</h3>
+                            </div>
+                            <button
+                                onClick={closeDatabasePasswordModal}
+                                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6">
+                            {/* Protected Content Notice */}
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Lock size={16} className="text-blue-600 dark:text-blue-400" />
+                                    <h4 className="font-semibold text-blue-800 dark:text-blue-300">Protected Content</h4>
+                                </div>
+                                <p className="text-blue-700 dark:text-blue-300 text-sm">
+                                    Database management contains sensitive administrative functions and requires authentication to access.
+                                </p>
+                            </div>
+
+                            {/* Password Input */}
+                            <div className="mb-6">
+                                <label htmlFor="database-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Enter Password
+                                </label>
+                                <input
+                                    type="password"
+                                    id="database-password"
+                                    value={databasePasswordInput}
+                                    onChange={(e) => {
+                                        setDatabasePasswordInput(e.target.value);
+                                        if (databasePasswordError) setDatabasePasswordError('');
+                                    }}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleDatabasePasswordSubmit();
+                                        }
+                                    }}
+                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 ${
+                                        databasePasswordError 
+                                            ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' 
+                                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-bg-secondary'
+                                    }`}
+                                    placeholder="Enter database password..."
+                                    autoComplete="off"
+                                    autoFocus
+                                />
+                                {databasePasswordError && (
+                                    <p className="mt-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                                        <X size={14} />
+                                        {databasePasswordError}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={closeDatabasePasswordModal}
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleDatabasePasswordSubmit}
+                                    disabled={!databasePasswordInput.trim()}
+                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                                        !databasePasswordInput.trim()
+                                            ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                            : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
+                                    }`}
+                                >
+                                    <Database size={14} />
+                                    Access Database Management
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Clear Database Confirmation Modal */}
+                    <ClearConfirmationModal />
+            
+            {/* Analytics Password Modal */}
+                    <AnalyticsPasswordModal />
                 </div>
             </section>
         </div>

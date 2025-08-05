@@ -24,10 +24,10 @@ export const getApiUrl = () => {
     return `https://${backendUrl}`;
   }
   
-  // If running on port 3000, use Vite dev server with proxy
+  // If running on port 3000, use direct connection to Docker backend
   if (port === '3000') {
-    console.log('✅ Vite development server detected on port 3000, using relative URLs for Vite proxy');
-    return '';
+    console.log('✅ Vite development server detected on port 3000, using direct connection to Docker backend');
+    return 'http://localhost:8000';
   }
   
   // For Docker development (port 80), use relative URLs for nginx proxy
@@ -35,6 +35,7 @@ export const getApiUrl = () => {
   return '';
 };
 
+// Use proper configuration based on environment
 const API_URL = getApiUrl();
 
 // Add more debugging for the final URL
