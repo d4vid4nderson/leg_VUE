@@ -5154,15 +5154,19 @@ async def check_and_update_bills_endpoint(request: dict):
                 "processed_bills": 0
             }
         
-        # Step 4: Process missing bills one by one with AI
+        # Step 4: Process missing bills - limit to prevent timeouts
         processed_count = 0
         processed_bills = []
         
-        print(f"🤖 Starting one-by-one AI processing...")
+        # Limit processing to prevent frontend timeout
+        max_process = min(len(missing_bills), 25)  # Process max 25 bills per request
+        bills_to_process = missing_bills[:max_process]
         
-        for i, bill in enumerate(missing_bills):
+        print(f"🤖 Processing {max_process} bills (out of {len(missing_bills)} total missing)")
+        
+        for i, bill in enumerate(bills_to_process):
             try:
-                print(f"🔄 Processing bill {i+1}/{len(missing_bills)}: {bill.get('bill_number', 'Unknown')}")
+                print(f"🔄 Processing bill {i+1}/{max_process}: {bill.get('bill_number', 'Unknown')}")
                 
                 # Process with AI (the search already includes AI analysis)
                 processed_bill = bill  # Bills from enhanced search already have AI analysis
@@ -5183,14 +5187,21 @@ async def check_and_update_bills_endpoint(request: dict):
                 print(f"❌ Error processing bill {bill.get('bill_number', 'Unknown')}: {bill_error}")
                 continue
         
+        # Create appropriate message
+        if len(missing_bills) > max_process:
+            message = f"Processed {processed_count} of {len(missing_bills)} missing bills for {state}. Run again to process more."
+        else:
+            message = f"Update completed for {state}. Processed {processed_count} bills."
+        
         return {
             "success": True,
-            "message": f"Update completed for {state}",
+            "message": message,
             "api_bills_found": len(api_bills),
             "existing_bills": len(existing_bills), 
             "missing_bills": len(missing_bills),
             "processed_bills": processed_count,
-            "results": processed_bills[:10] if processed_bills else []  # Return first 10 for preview
+            "remaining_bills": len(missing_bills) - max_process if len(missing_bills) > max_process else 0,
+            "results": processed_bills[:5] if processed_bills else []  # Return first 5 for preview
         }
         
     except HTTPException:
