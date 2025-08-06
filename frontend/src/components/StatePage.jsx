@@ -927,6 +927,7 @@ const StatePage = ({ stateName }) => {
         setFetchLoading(true);
         setError(null);
         setFetchSuccess(null);
+        setFetchProgress('🔍 Checking LegiScan API for new bills...');
         
         try {
             console.log(`🔄 Starting check for updates for ${stateName}`);
@@ -940,6 +941,7 @@ const StatePage = ({ stateName }) => {
             };
             
             console.log(`🚀 Making check and update API call...`);
+            setFetchProgress('🤖 Processing missing bills with AI analysis...');
             
             const response = await fetchWithTimeout(fetchUrl, {
                 method: 'POST',
@@ -948,7 +950,7 @@ const StatePage = ({ stateName }) => {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestBody)
-            }, 600000); // 10 minute timeout for comprehensive checking
+            }, 120000); // 2 minute timeout - allow larger batches to complete
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -969,13 +971,27 @@ const StatePage = ({ stateName }) => {
                 
                 // Show success message based on results
                 if (result.processed_bills > 0) {
-                    setFetchSuccess(
-                        `✅ Update completed! Found ${result.missing_bills} missing bills and processed ${result.processed_bills} new bills with AI analysis. ` +
-                        `Your database now includes the latest legislation for ${stateName}.`
-                    );
+                    const remainingBills = result.remaining_bills || 0;
                     
-                    // Refresh the page data to show new bills
-                    window.location.reload();
+                    if (remainingBills > 0) {
+                        setFetchSuccess(
+                            `✅ Batch completed! Processed ${result.processed_bills} of ${result.missing_bills} missing bills. ` +
+                            `${remainingBills} bills remaining. Click "Check for Updates" again to process more.`
+                        );
+                    } else {
+                        setFetchSuccess(
+                            `✅ Update completed! Found ${result.missing_bills} missing bills and processed ${result.processed_bills} new bills with AI analysis. ` +
+                            `Your database now includes the latest legislation for ${stateName}.`
+                        );
+                    }
+                    
+                    // Refresh data without page reload
+                    try {
+                        await fetchFromDatabase(1);
+                    } catch (refreshError) {
+                        console.warn('Failed to refresh data after update:', refreshError);
+                        // Don't let refresh errors break the success flow
+                    }
                     
                     // Clear success message after 8 seconds
                     setTimeout(() => setFetchSuccess(null), 8000);
@@ -1018,6 +1034,7 @@ const StatePage = ({ stateName }) => {
             setTimeout(() => setError(null), 10000);
         } finally {
             setFetchLoading(false);
+            setFetchProgress(null);
         }
     }, [stateName]);
     

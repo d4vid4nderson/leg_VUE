@@ -3424,10 +3424,10 @@ def save_bills_to_state_legislation_table(bills):
                         bill.get('legiscan_status', '')
                     )
                     
-                    # Use MERGE to avoid duplicates
+                    # Use MERGE to avoid duplicates - convert bill_id to string for comparison
                     merge_sql = """
                     MERGE dbo.state_legislation AS target
-                    USING (SELECT ? as bill_id) AS source
+                    USING (SELECT CAST(? as NVARCHAR(50)) as bill_id) AS source
                     ON (target.bill_id = source.bill_id)
                     WHEN MATCHED THEN
                         UPDATE SET 
@@ -5108,7 +5108,7 @@ async def check_and_update_bills_endpoint(request: dict):
             state=state,
             query="",  # Empty query to get all recent bills
             limit=100,  # Start with smaller limit for testing
-            year_filter=None  # No year filter to get broader results
+            year_filter='all'  # Get all years for broader results
         )
         
         if not api_search_result.get('success'):
@@ -5135,12 +5135,28 @@ async def check_and_update_bills_endpoint(request: dict):
         
         print(f"🗄️ Found {len(existing_bills)} existing bills in database")
         
+        # DEBUG: Show some existing bill_ids and their types
+        if existing_bills:
+            sample_existing = list(existing_bills.keys())[:3]
+            print(f"🔍 DEBUG: Sample existing bill_ids: {sample_existing} (types: {[type(x) for x in sample_existing]})")
+        
         # Step 3: Compare and find missing bills
         missing_bills = []
         for bill in api_bills:
             bill_id = bill.get('bill_id')
-            if bill_id and bill_id not in existing_bills:
+            if bill_id and str(bill_id) not in existing_bills:  # Convert to string for comparison
                 missing_bills.append(bill)
+        
+        # DEBUG: Show some API bill_ids and their types
+        if api_bills:
+            sample_api = [bill.get('bill_id') for bill in api_bills[:3]]
+            print(f"🔍 DEBUG: Sample API bill_ids: {sample_api} (types: {[type(x) for x in sample_api]})")
+            
+            # Check if any API bill_ids exist in database (after type conversion)
+            api_as_strings = [str(bill.get('bill_id')) for bill in api_bills[:10]]
+            matches = [x for x in api_as_strings if x in existing_bills]
+            print(f"🔍 DEBUG: First 10 API bill_ids as strings: {api_as_strings}")
+            print(f"🔍 DEBUG: Any matches found in database: {matches} (count: {len(matches)})")
         
         print(f"🔍 Found {len(missing_bills)} missing bills to process")
         
@@ -5154,15 +5170,25 @@ async def check_and_update_bills_endpoint(request: dict):
                 "processed_bills": 0
             }
         
-        # Step 4: Process missing bills - limit to prevent timeouts
+        # Step 4: Process missing bills with better batch management
         processed_count = 0
         processed_bills = []
         
-        # Limit processing to prevent frontend timeout
-        max_process = min(len(missing_bills), 25)  # Process max 25 bills per request
+        # Use reasonable batch size - all missing bills but with efficient processing
+        environment = os.getenv('ENVIRONMENT', '').lower()
+        container_name = os.getenv('CONTAINER_APP_NAME', '')
+        is_production = (environment == 'production' or 'azure' in container_name.lower() or container_name != '')
+        
+        # Process more bills at once for better UX - remove artificial small limits
+        if is_production:
+            max_process = min(len(missing_bills), 25)  # Reasonable batch for production
+        else:
+            max_process = min(len(missing_bills), 50)  # Larger batch for development
+        
         bills_to_process = missing_bills[:max_process]
         
-        print(f"🤖 Processing {max_process} bills (out of {len(missing_bills)} total missing)")
+        env_info = f"PRODUCTION (env={environment}, container={container_name})" if is_production else "DEVELOPMENT"
+        print(f"🤖 {env_info}: Processing {max_process} bills (out of {len(missing_bills)} total missing)")
         
         for i, bill in enumerate(bills_to_process):
             try:
@@ -5172,16 +5198,20 @@ async def check_and_update_bills_endpoint(request: dict):
                 processed_bill = bill  # Bills from enhanced search already have AI analysis
                 
                 # Save to database immediately after AI processing (use state_legislation table)
+                bill_id = processed_bill.get('bill_id')
+                bill_number = processed_bill.get('bill_number', 'Unknown')
+                print(f"🔍 DEBUG: About to save bill_id={bill_id} (type: {type(bill_id)}), bill_number={bill_number}")
+                
                 saved_count = save_state_legislation_to_db([processed_bill])
                 if saved_count > 0:
                     processed_bills.append(processed_bill)
                     processed_count += 1
-                    print(f"✅ Saved bill {processed_bill.get('bill_number', 'Unknown')} to database")
+                    print(f"✅ Saved bill {bill_number} (ID: {bill_id}) to database")
                 else:
-                    print(f"⚠️ Failed to save bill {processed_bill.get('bill_number', 'Unknown')}")
+                    print(f"⚠️ Failed to save bill {bill_number} (ID: {bill_id})")
                 
-                # Small delay to prevent overwhelming the system
-                await asyncio.sleep(0.1)
+                # Minimal delay to prevent overwhelming the system
+                await asyncio.sleep(0.05)  # Reduced delay for faster processing
                 
             except Exception as bill_error:
                 print(f"❌ Error processing bill {bill.get('bill_number', 'Unknown')}: {bill_error}")

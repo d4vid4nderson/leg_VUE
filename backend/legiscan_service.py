@@ -152,6 +152,8 @@ class EnhancedLegiScanClient:
                 year_param = 2  # Current year only
             elif year_filter == 'recent':
                 year_param = 4  # Recent years (current + prior)
+            elif year_filter == 'all':
+                year_param = 1  # All years for maximum coverage
             
             if session_id:
                 print(f"🔍 Enhanced search for {state} with session_id {session_id}")
