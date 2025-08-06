@@ -62,12 +62,12 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo, filteredCount = 0 })
   const updateCount = updateInfo?.update_count || 0;
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative">
+    <div className="flex items-center gap-3 w-full sm:w-auto">
+      <div className="relative flex-1 sm:flex-initial">
         <button
         onClick={handleFetch}
         disabled={isLoading}
-        className={`flex items-center justify-center gap-2 px-6 py-2.5 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap w-[180px] ${
+        className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-[180px] min-h-[48px] sm:min-h-[44px] ${
           isLoading 
             ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
             : hasUpdates
@@ -748,8 +748,8 @@ const PaginationControls = ({
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 dark:bg-dark-bg-tertiary border-t border-gray-200 dark:border-dark-border">
-      <div className="text-sm text-gray-700 dark:text-dark-text">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-3 sm:py-4 bg-gray-50 dark:bg-dark-bg-tertiary border-t border-gray-200 dark:border-dark-border">
+      <div className="text-xs sm:text-sm text-gray-700 dark:text-dark-text text-center sm:text-left">
         Showing <span className="font-medium">{startItem}</span> to{' '}
         <span className="font-medium">{endItem}</span> of{' '}
         <span className="font-medium">{totalItems}</span> {itemType}
@@ -759,7 +759,7 @@ const PaginationControls = ({
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+          className={`p-2.5 sm:p-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] flex items-center justify-center ${
             currentPage === 1
               ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
               : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
@@ -774,7 +774,7 @@ const PaginationControls = ({
               key={index}
               onClick={() => typeof page === 'number' && onPageChange(page)}
               disabled={page === '...'}
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
+              className={`px-2.5 sm:px-3 py-2.5 sm:py-2 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 min-w-[44px] sm:min-w-[40px] min-h-[44px] sm:min-h-[36px] flex items-center justify-center ${
                 page === currentPage
                   ? 'bg-blue-600 dark:bg-blue-700 text-white'
                   : page === '...'
@@ -790,7 +790,7 @@ const PaginationControls = ({
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+          className={`p-2.5 sm:p-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] flex items-center justify-center ${
             currentPage === totalPages
               ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
               : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
@@ -1756,16 +1756,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       <CountStatusComponent />
       
       {/* Header Section */}
-      <section className="relative overflow-hidden px-6 pt-12 pb-12">
+      <section className="relative overflow-hidden px-4 sm:px-6 pt-8 sm:pt-12 pb-8 sm:pb-12">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
             
-            <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-6 leading-tight')}>
+            <h1 className={getTextClasses('primary', 'text-3xl sm:text-4xl md:text-6xl font-bold mb-4 sm:mb-6 leading-tight')}>
               <span className="block">Executive Orders</span>
               <span className="block bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent py-2">Intelligence</span>
             </h1>
             
-            <p className={getTextClasses('secondary', 'text-xl mb-8 max-w-3xl mx-auto leading-relaxed')}>
+            <p className={getTextClasses('secondary', 'text-base sm:text-lg md:text-xl mb-6 sm:mb-8 max-w-3xl mx-auto leading-relaxed px-2 sm:px-0')}>
               Access the latest executive orders with comprehensive AI-powered analysis. Our advanced models provide executive summaries, key strategic insights, and business impact assessments to help you understand the implications of presidential directives.
             </p>
           </div>
@@ -1773,14 +1773,14 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       </section>
 
       {/* Results Section */}
-      <section className="py-8 px-6">
+      <section className="py-6 sm:py-8 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
           <div className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg shadow-sm overflow-visible">
             <div className="p-4 sm:p-6">
               {/* Controls Bar - Mobile Responsive */}
-              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
                 {/* Left side - FetchButtonGroup only */}
-            <div className="flex flex-col gap-3 xl:flex-row">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <FetchButtonGroup 
                 onFetch={(docType) => fetchExecutiveOrders(docType)} 
                 isLoading={fetchingData}
@@ -1789,12 +1789,12 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               />
             </div>
 
-            <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:gap-2 xl:items-center xl:justify-end pb-2 xl:pb-0" style={{overflow: 'visible'}}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-2 sm:items-center lg:justify-end pb-2 lg:pb-0" style={{overflow: 'visible'}}>
               {/* Highlight Filter Button */}
               <button
                 type="button"
                 onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
-                className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 min-h-[44px] w-full xl:w-[130px] ${
+                className={`flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
                   showHighlightsOnly
                     ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
                     : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
@@ -1808,7 +1808,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               <button
                 type="button"
                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[44px] w-full xl:w-[150px]"
+                className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[48px] sm:min-h-[44px] w-full sm:w-auto"
               >
                 {sortOrder === 'latest' ? (
                   <>
@@ -1828,7 +1828,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 <button
                   type="button"
                   onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                  className={`flex items-center justify-center xl:justify-between px-4 py-3 border border-gray-300 dark:border-dark-border rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-h-[44px] w-full xl:w-[224px] ${
+                  className={`flex items-center justify-center sm:justify-between px-4 py-3 sm:py-2.5 border border-gray-300 dark:border-dark-border rounded-lg text-sm sm:text-base font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
                     selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
                   }`}
                 >
@@ -1860,7 +1860,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
                 {/* Dropdown content - Match StatePage structure exactly */}
                 {showFilterDropdown && (
-                  <div className="absolute top-full mt-2 w-full sm:w-64 bg-white dark:bg-dark-bg-secondary rounded-lg shadow-xl border border-gray-200 dark:border-dark-border z-[95] left-0 sm:left-auto sm:right-0" style={{transform: 'translateZ(0)'}}>
+                  <div className="absolute top-full mt-2 w-full sm:w-72 bg-white dark:bg-dark-bg-secondary rounded-lg shadow-xl border border-gray-200 dark:border-dark-border z-[95] left-0 sm:left-auto sm:right-0 max-h-[60vh] sm:max-h-96 overflow-hidden flex flex-col" style={{transform: 'translateZ(0)'}}>
                     {/* Header */}
                     <div className="bg-gray-50 dark:bg-dark-bg-tertiary px-4 py-2 border-b border-gray-200 dark:border-dark-border">
                       <div className="flex items-center justify-between">
@@ -2024,16 +2024,16 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 
                 return (
                   <div key={`order-${orderId}-${index}`} className="bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg transition-all duration-300 hover:shadow-md relative" style={{ zIndex: 50 - index }}>
-                    <div className="p-6">
+                    <div className="p-4 sm:p-6">
 
                       {/* Header with Title and Star */}
-                      <div className="flex items-start justify-between gap-4 mb-4">
-                        <h3 className={getTextClasses('primary', 'text-lg font-semibold leading-relaxed flex-1')}>
+                      <div className="flex items-start justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+                        <h3 className={getTextClasses('primary', 'text-base sm:text-lg font-semibold leading-relaxed flex-1')}>
                           {cleanOrderTitle(order.title)}
                         </h3>
                         <button
                           type="button"
-                          className={`p-2 rounded-md transition-all duration-300 flex-shrink-0 ${
+                          className={`p-2.5 sm:p-2 rounded-md transition-all duration-300 flex-shrink-0 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] flex items-center justify-center ${
                             isOrderHighlighted(orderWithIndex)
                               ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
                               : 'text-gray-400 dark:text-gray-500 hover:text-yellow-500 dark:hover:text-yellow-400 hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
@@ -2066,7 +2066,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                       </div>
                       
                       {/* Metadata Row */}
-                      <div className="flex flex-wrap items-center gap-4 text-sm mb-4">
+                      <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm mb-3 sm:mb-4">
                         <div className={getTextClasses('secondary', 'flex items-center gap-2')}>
                           <Hash size={14} className="text-blue-600 dark:text-blue-400" />
                           <span className="font-medium">{getExecutiveOrderNumber(order)}</span>
@@ -2104,14 +2104,14 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           <div className="border-b border-gray-200 dark:border-dark-border mt-4"></div>
                           
                           {/* Source and PDF Links with Read More Button */}
-                          <div className="flex items-center justify-between mt-4">
-                            <div className="flex items-center gap-6">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-4">
+                            <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                               {order.html_url && (
                                 <a
                                   href={order.html_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View Source Page</span>
@@ -2124,7 +2124,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   href={order.pdf_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View PDF Document</span>
@@ -2148,7 +2148,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   return newSet;
                                 });
                               }}
-                              className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm flex items-center gap-1"
+                              className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm sm:text-base flex items-center gap-1 px-3 py-2 -mx-3 -my-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 min-h-[44px]"
                             >
                               {isExpanded ? 'Read Less' : 'Read More'}
                               <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -2242,13 +2242,13 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
                           {/* Action Buttons Section */}
                           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-dark-border">
-                            <div className="flex items-center gap-6">
+                            <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                               {order.html_url && (
                                 <a
                                   href={order.html_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View Source Page</span>
@@ -2261,7 +2261,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   href={order.pdf_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View PDF Document</span>
@@ -2286,7 +2286,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                     return newSet;
                                   });
                                 }}
-                                className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm flex items-center gap-1"
+                                className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm sm:text-base flex items-center gap-1 px-3 py-2 -mx-3 -my-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 min-h-[44px]"
                               >
                                 {isExpanded ? 'Read Less' : 'Read More'}
                                 <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />

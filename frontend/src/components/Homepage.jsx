@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import HR1PolicyBanner from './HR1PolicyBanner';
 import { getPageContainerClasses, getCardClasses, getTextClasses } from '../utils/darkModeClasses';
@@ -34,8 +34,79 @@ import {
   Hash,
   Calendar,
   ChevronDown,
-  LayoutGrid
+  LayoutGrid,
+  X
 } from 'lucide-react';
+
+// Mobile Availability Sticker Component
+const MobileSticker = () => {
+    const [isVisible, setIsVisible] = useState(true);
+    
+    // Check localStorage to see if user has dismissed the sticker
+    useEffect(() => {
+        const dismissed = localStorage.getItem('mobileStickerDismissed');
+        if (dismissed === 'true') {
+            setIsVisible(false);
+        }
+    }, []);
+    
+    const handleDismiss = () => {
+        setIsVisible(false);
+        localStorage.setItem('mobileStickerDismissed', 'true');
+    };
+    
+    if (!isVisible) return null;
+    
+    return (
+        <div className="flex justify-center py-6 px-4">
+            <div className="relative inline-block group">
+                <style jsx>{`
+                    @keyframes shine {
+                        0% {
+                            left: -100%;
+                        }
+                        100% {
+                            left: 100%;
+                        }
+                    }
+                    .shine-effect {
+                        position: absolute;
+                        top: 0;
+                        left: -100%;
+                        width: 100%;
+                        height: 100%;
+                        background: linear-gradient(
+                            90deg,
+                            transparent,
+                            rgba(255, 255, 255, 0.4),
+                            transparent
+                        );
+                        border-radius: 9999px;
+                        animation: shine 1.5s ease-in-out;
+                        pointer-events: none;
+                    }
+                `}</style>
+                <div className="relative bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 text-white px-4 py-2 rounded-full text-xs sm:text-sm font-semibold shadow-lg flex items-center gap-2 border-2 border-white/80 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-105">
+                    <div className="shine-effect group-hover:animate-none group-hover:left-[-100%]"></div>
+                    <div className="shine-effect hidden group-hover:block group-hover:animate-[shine_1.5s_ease-in-out]"></div>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10">
+                        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                        <line x1="12" y1="18" x2="12" y2="18"></line>
+                    </svg>
+                    <span className="relative z-10">Now available on mobile devices</span>
+                    <button 
+                        onClick={handleDismiss}
+                        className="ml-1 hover:bg-white/20 rounded-full p-2 -m-1 transition-colors relative z-10 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                        title="Dismiss"
+                        aria-label="Dismiss mobile notification"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const Homepage = () => {
   const navigate = useNavigate();
@@ -126,31 +197,34 @@ const Homepage = () => {
         }
       `}</style>
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 pb-16 px-6">
+      <section className="relative overflow-hidden pt-12 pb-20 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
+          {/* Mobile Sticker - Below HR1 Banner, Above Title */}
+          <MobileSticker />
+          
+          <div className="text-center mb-12 mt-8">
             
-            <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-8 leading-tight')}>
+            <h1 className={getTextClasses('primary', 'text-3xl sm:text-4xl md:text-6xl font-bold mb-6 sm:mb-8 leading-tight')}>
               <span className="block">Track Policy &</span>
               <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent py-2">Legislative Changes</span>
             </h1>
             
-            <p className={getTextClasses('secondary', 'text-lg mb-10 max-w-2xl mx-auto leading-relaxed')}>
+            <p className={getTextClasses('secondary', 'text-base sm:text-lg mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4 sm:px-0')}>
               LegislationVUE automatically tracks Executive Orders and State Legislation, 
               then uses advanced AI to deliver instant summaries and business impact analysis.
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center px-4 sm:px-0">
               <button 
                 onClick={() => navigate('/executive-orders')}
-                className="gradient-button border-2 border-gray-300 dark:border-dark-border text-gray-700 dark:text-dark-text px-6 py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
+                className="gradient-button border-2 border-gray-300 dark:border-dark-border text-gray-700 dark:text-dark-text px-6 py-4 sm:py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2 w-full sm:w-auto justify-center text-sm sm:text-base"
               >
                 <ScrollText size={18} />
                 Get Started with Executive Orders
               </button>
               <button 
                 onClick={() => navigate('/state-legislation')}
-                className="gradient-button border-2 border-gray-300 dark:border-dark-border text-gray-700 dark:text-dark-text px-6 py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
+                className="gradient-button border-2 border-gray-300 dark:border-dark-border text-gray-700 dark:text-dark-text px-6 py-4 sm:py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2 w-full sm:w-auto justify-center text-sm sm:text-base"
               >
                 <FileText size={18} />
                 Get Started with State Legislation
@@ -171,7 +245,7 @@ const Homepage = () => {
               </div>
               
               <div className="p-8">
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   {/* Executive Order Preview */}
                   <div className="bg-gray-50 dark:bg-dark-bg-secondary border-2 border-gray-200 dark:border-dark-border rounded-lg p-2">
                     <div className={getCardClasses('rounded-lg p-4')}>
@@ -237,7 +311,7 @@ const Homepage = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-6 bg-white dark:bg-dark-bg">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-white dark:bg-dark-bg">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
@@ -249,7 +323,7 @@ const Homepage = () => {
             </p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
             {[
               {
                 icon: Download,
@@ -322,7 +396,7 @@ const Homepage = () => {
       </section>
 
       {/* Coverage Section */}
-      <section className="py-20 px-6 bg-gradient-to-br from-gray-50 to-blue-50 dark:from-dark-bg-secondary dark:to-dark-bg">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-br from-gray-50 to-blue-50 dark:from-dark-bg-secondary dark:to-dark-bg">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
@@ -334,7 +408,7 @@ const Homepage = () => {
             </p>
           </div>
           
-          <div className="grid md:grid-cols-2 gap-12 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 items-start">
             {/* Federal Coverage */}
             <div className={getCardClasses('rounded-2xl p-8 shadow-lg h-full')}>
               <div className="flex items-center gap-4 mb-6">
@@ -393,9 +467,9 @@ const Homepage = () => {
       </section>
 
       {/* Highlights Feature Section */}
-      <section className="py-20 px-6 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20">
         <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 items-center">
             <div>
               
               <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-6')}>
@@ -535,7 +609,7 @@ const Homepage = () => {
       </section>
 
       {/* Practice Areas */}
-      <section className="py-20 px-6 bg-white dark:bg-dark-bg">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-white dark:bg-dark-bg">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
@@ -547,7 +621,7 @@ const Homepage = () => {
             </p>
           </div>
           
-          <div className="grid md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
             {[
               {
                 icon: Building,
@@ -599,7 +673,7 @@ const Homepage = () => {
       </section>
 
       {/* AI Features Deep Dive */}
-      <section className="py-20 px-6 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
@@ -611,7 +685,7 @@ const Homepage = () => {
             </p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
             <div className={getCardClasses('rounded-xl p-8 shadow-lg')}>
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center mb-6">
                 <FileText size={32} className="text-white" />
@@ -676,7 +750,7 @@ const Homepage = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 px-6 bg-gradient-to-r from-blue-600 to-purple-600">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-r from-blue-600 to-purple-600">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-4xl font-bold text-white mb-6">
             Ready to Transform Your Legislative Intelligence?

@@ -329,6 +329,9 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user');
       
+      // Reset mobile sticker so it shows again on next login
+      localStorage.removeItem('mobileStickerDismissed');
+      
       console.log('✅ Logout complete');
     }
   };

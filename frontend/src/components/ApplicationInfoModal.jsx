@@ -77,20 +77,22 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
   const OverviewTab = () => (
     <div className="space-y-8">
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-900/20 dark:via-indigo-900/20 dark:to-purple-900/20 rounded-xl p-8 border border-blue-200 dark:border-blue-700 shadow-lg">
-        <div className="flex items-center gap-6 mb-6">
-          <div className="w-20 h-20 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-            <img src="/logo.png" alt="LegislationVUE" className="w-12 h-12" />
+      <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-900/20 dark:via-indigo-900/20 dark:to-purple-900/20 rounded-xl p-4 sm:p-6 md:p-8 border border-blue-200 dark:border-blue-700 shadow-lg">
+        <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 mb-4 sm:mb-6 text-center sm:text-left">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+            <img src="/logo.png" alt="LegislationVUE" className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12" />
           </div>
           <div>
-            <h3 className="text-3xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">LegislationVUE</h3>
-            <p className="text-lg text-indigo-700 dark:text-indigo-300 font-medium">AI-Powered Legislative Intelligence Platform</p>
+            <h3 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-700 to-purple-700 bg-clip-text text-transparent">LegislationVUE</h3>
+            <p className="text-base sm:text-lg text-indigo-700 dark:text-indigo-300 font-medium">AI-Powered Legislative Intelligence Platform</p>
           </div>
         </div>
-        <p className="text-gray-700 dark:text-dark-text-secondary dark:text-dark-text-secondary text-xl leading-relaxed">
-          Your comprehensive solution for tracking, analyzing, and understanding federal executive orders 
-          and state legislation with advanced AI insights and business impact analysis.
-        </p>
+        <div className="px-2 sm:px-4 md:px-6">
+          <p className="text-gray-700 dark:text-dark-text-secondary text-base sm:text-lg md:text-xl leading-relaxed">
+            Your comprehensive solution for tracking, analyzing, and understanding federal executive orders 
+            and state legislation with advanced AI insights and business impact analysis.
+          </p>
+        </div>
       </div>
 
       {/* Key Features */}

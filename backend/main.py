@@ -3949,7 +3949,7 @@ async def get_admin_analytics_optimized(cleanup_test_users: bool = False):
         print(f"🔍 cleanup_test_users type = {type(cleanup_test_users)}")
         
         # CLEANUP FUNCTIONALITY - if cleanup_test_users parameter is True  
-        if cleanup_test_users or True:  # FORCE CLEANUP FOR NOW
+        if cleanup_test_users:  # Only cleanup when explicitly requested
             print("🧹 CLEANUP MODE ACTIVATED - Removing test users...")
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -4467,6 +4467,7 @@ def create_user_sessions_table():
                 id INT IDENTITY(1,1) PRIMARY KEY,
                 session_id NVARCHAR(100) UNIQUE NOT NULL,
                 user_id NVARCHAR(100) NOT NULL,
+                display_name NVARCHAR(255),
                 ip_address NVARCHAR(45),
                 user_agent NVARCHAR(500),
                 started_at DATETIME2 DEFAULT GETDATE(),
@@ -4486,6 +4487,82 @@ def create_user_sessions_table():
         print(f"❌ Failed to create user sessions table: {e}")
         return False
 
+def migrate_user_sessions_add_display_name():
+    """Add display_name column to existing user_sessions table if it doesn't exist"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if display_name column exists
+            cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_sessions' 
+                AND COLUMN_NAME = 'display_name'
+            """)
+            
+            if not cursor.fetchone():
+                # Add display_name column
+                cursor.execute("ALTER TABLE dbo.user_sessions ADD display_name NVARCHAR(255)")
+                conn.commit()
+                print("✅ Added display_name column to user_sessions table")
+                return True
+            else:
+                print("✅ display_name column already exists in user_sessions table")
+                return True
+                
+    except Exception as e:
+        print(f"❌ Failed to migrate user_sessions table: {e}")
+        return False
+
+@app.get("/api/admin/recent-sessions")
+async def get_recent_sessions(limit: int = 20):
+    """Get recent user sessions with display names for analytics"""
+    try:
+        # Ensure the display_name column exists
+        migrate_user_sessions_add_display_name()
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT TOP (?) 
+                    s.session_id,
+                    s.user_id,
+                    COALESCE(s.display_name, p.display_name, 'Unknown User') as display_name,
+                    s.started_at,
+                    s.last_activity,
+                    s.ended_at,
+                    s.is_active,
+                    DATEDIFF(MINUTE, s.started_at, COALESCE(s.ended_at, s.last_activity)) as duration_minutes
+                FROM dbo.user_sessions s
+                LEFT JOIN dbo.user_profiles p ON s.user_id = p.user_id
+                ORDER BY s.started_at DESC
+            """, (limit,))
+            
+            sessions = []
+            for row in cursor.fetchall():
+                session_dict = {
+                    "sessionId": row[0],
+                    "userId": row[1],
+                    "displayName": row[2],
+                    "startedAt": row[3].isoformat() if row[3] else None,
+                    "lastActivity": row[4].isoformat() if row[4] else None,
+                    "endedAt": row[5].isoformat() if row[5] else None,
+                    "isActive": bool(row[6]),
+                    "durationMinutes": row[7] or 0
+                }
+                sessions.append(session_dict)
+            
+            return {
+                "success": True,
+                "sessions": sessions,
+                "total": len(sessions)
+            }
+            
+    except Exception as e:
+        print(f"❌ Failed to get recent sessions: {e}")
+        return {"success": False, "error": str(e), "sessions": []}
+
 # ===============================
 # ANALYTICS TRACKING ENDPOINTS
 # ===============================
@@ -4499,6 +4576,7 @@ class PageViewRequest(BaseModel):
 class SessionStartRequest(BaseModel):
     session_id: str
     user_id: str
+    display_name: Optional[str] = None
 
 @app.post("/api/analytics/track-page-view")
 async def track_page_view(request: PageViewRequest):
@@ -4530,6 +4608,7 @@ async def start_session(request: SessionStartRequest):
     """Start or update a user session"""
     try:
         create_user_sessions_table()
+        migrate_user_sessions_add_display_name()
         
         # Normalize user ID to handle both email and numeric IDs
         normalized_user_id = normalize_user_id(request.user_id)
@@ -4537,17 +4616,25 @@ async def start_session(request: SessionStartRequest):
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
+            # Get display_name from user_profiles if not provided
+            display_name = request.display_name
+            if not display_name:
+                cursor.execute("SELECT display_name FROM dbo.user_profiles WHERE user_id = ?", (normalized_user_id,))
+                result = cursor.fetchone()
+                if result:
+                    display_name = result[0]
+            
             # Use MERGE to handle race conditions atomically (SQL Server UPSERT)
             cursor.execute("""
                 MERGE dbo.user_sessions AS target
-                USING (SELECT ? AS session_id, ? AS user_id) AS source
+                USING (SELECT ? AS session_id, ? AS user_id, ? AS display_name) AS source
                 ON target.session_id = source.session_id
                 WHEN MATCHED THEN
-                    UPDATE SET last_activity = GETDATE(), user_id = source.user_id
+                    UPDATE SET last_activity = GETDATE(), user_id = source.user_id, display_name = source.display_name
                 WHEN NOT MATCHED THEN
-                    INSERT (session_id, user_id, started_at, last_activity, is_active)
-                    VALUES (source.session_id, source.user_id, GETDATE(), GETDATE(), 1);
-            """, (request.session_id, normalized_user_id))
+                    INSERT (session_id, user_id, display_name, started_at, last_activity, is_active)
+                    VALUES (source.session_id, source.user_id, source.display_name, GETDATE(), GETDATE(), 1);
+            """, (request.session_id, normalized_user_id, display_name))
             
             conn.commit()
             
@@ -8837,6 +8924,8 @@ if __name__ == "__main__":
             
             if create_user_sessions_table():
                 print("✅ User sessions table ready!")
+                # Run migration to add display_name column
+                migrate_user_sessions_add_display_name()
         else:
             print("❌ Database connection failed")
     except Exception as e:

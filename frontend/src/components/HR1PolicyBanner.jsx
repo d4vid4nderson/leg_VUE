@@ -20,14 +20,13 @@ const HR1PolicyBanner = ({ onClick, expirationDate }) => {
 
   return (
     <div className="bg-gradient-to-r from-red-600 via-red-500 to-orange-400 text-white shadow-lg mb-4 rounded-lg overflow-hidden">
-      <div className="px-4 py-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+      <div className="px-4 sm:px-6 py-3 sm:py-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-start space-x-3 flex-1">
             {/* Content */}
             <div className="flex-1">
-              <h3 className="text-sm font-bold flex items-center">
+              <h3 className="text-sm sm:text-base font-bold leading-tight">
                 URGENT: H.R. 1 Policy Changes Analysis
-                <span className="ml-2 text-xs bg-white/20 px-2 py-1 rounded-full">NEW</span>
               </h3>
             </div>
           </div>
@@ -35,12 +34,12 @@ const HR1PolicyBanner = ({ onClick, expirationDate }) => {
           {/* Action Button */}
           <button
             onClick={onClick}
-            className="bg-white text-orange-600 hover:bg-red-50 px-4 py-2 rounded-lg font-medium 
-                     transition-all duration-200 flex items-center space-x-2 text-sm"
+            className="bg-white text-orange-600 hover:bg-red-50 px-4 py-2.5 sm:py-2 rounded-lg font-medium 
+                     transition-all duration-200 flex items-center justify-center space-x-2 text-sm sm:text-base w-full sm:w-auto min-h-[44px] sm:min-h-[36px]"
           >
-            <TrendingUp className="h-3 w-3" />
+            <TrendingUp className="h-4 w-4 sm:h-3 sm:w-3" />
             <span className="whitespace-nowrap">View Analysis</span>
-            <ArrowRight className="h-3 w-3" />
+            <ArrowRight className="h-4 w-4 sm:h-3 sm:w-3" />
           </button>
         </div>
       </div>

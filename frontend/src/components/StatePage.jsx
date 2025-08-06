@@ -357,31 +357,31 @@ const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage,
     };
     
     return (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 dark:bg-dark-bg-tertiary border-t border-gray-200 dark:border-dark-border">
-            <div className="text-sm text-gray-700 dark:text-dark-text">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 sm:px-6 py-4 bg-gray-50 dark:bg-dark-bg-tertiary border-t border-gray-200 dark:border-dark-border">
+            <div className="text-xs sm:text-sm text-gray-700 dark:text-dark-text text-center sm:text-left">
                 Showing <span className="font-medium">{startItem}</span> to{' '}
                 <span className="font-medium">{endItem}</span> of{' '}
                 <span className="font-medium">{totalItems}</span> {itemType}
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
                     <button
                         onClick={() => onPageChange(currentPage - 1)}
                         disabled={currentPage === 1}
-                        className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                        className={`p-2 sm:p-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] flex items-center justify-center ${
                             currentPage === 1 ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
                         }`}
                     >
                         <ChevronLeft size={16} />
                     </button>
                     
-                    <div className="flex items-center gap-1">
+                    <div className="hidden sm:flex items-center gap-1">
                         {getPageNumbers().map((page, index) => (
                             <button
                                 key={index}
                                 onClick={() => typeof page === 'number' && onPageChange(page)}
                                 disabled={page === '...'}
-                                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] ${
+                                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[40px] min-h-[36px] flex items-center justify-center ${
                                     page === currentPage
                                         ? 'bg-blue-600 dark:bg-blue-700 text-white'
                                         : page === '...'
@@ -394,10 +394,17 @@ const PaginationControls = ({ currentPage, totalPages, totalItems, itemsPerPage,
                         ))}
                     </div>
                     
+                    {/* Mobile: Simple Page Indicator */}
+                    <div className="flex sm:hidden items-center gap-2 px-3 py-2 bg-white dark:bg-dark-bg-secondary rounded-md border border-gray-300 dark:border-gray-600">
+                        <span className="text-sm font-medium text-gray-700 dark:text-dark-text">
+                            {currentPage} of {totalPages}
+                        </span>
+                    </div>
+                    
                     <button
                         onClick={() => onPageChange(currentPage + 1)}
                         disabled={currentPage === totalPages}
-                        className={`p-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                        className={`p-2 sm:p-2 rounded-md text-sm font-medium transition-all duration-200 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] flex items-center justify-center ${
                             currentPage === totalPages ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed' : 'text-gray-700 dark:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary'
                         }`}
                     >
@@ -1607,19 +1614,19 @@ const StatePage = ({ stateName }) => {
             </div>
             
             {/* Results Section */}
-            <section className="py-8 px-6">
+            <section className="py-6 sm:py-8 px-4 sm:px-6">
                 <div className="max-w-7xl mx-auto">
                     <div className={getCardClasses('rounded-lg shadow-sm')}>
-                        <div className="p-6">
+                        <div className="p-4 sm:p-6">
                         {/* Controls Bar - Fetch button left, filters right */}
-                        <div className="flex flex-col xl:flex-row xl:justify-between xl:items-center gap-4 mb-6 w-full">
+                        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-6 w-full">
                             {/* Fetch Button with Session Options - Left side */}
                             <div className="flex items-center gap-3 justify-start">
                                 <div className="relative fetch-dropdown-container">
                                     <button
                                         onClick={() => setShowFetchDropdown(!showFetchDropdown)}
                                         disabled={fetchLoading || loading}
-                                        className={`flex items-center justify-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap ${
+                                        className={`flex items-center justify-center gap-2 px-4 py-3 sm:py-2 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-auto min-h-[48px] sm:min-h-[44px] ${
                                             fetchLoading || loading
                                                 ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
                                                 : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
@@ -1638,9 +1645,9 @@ const StatePage = ({ stateName }) => {
                                     
                                     {/* Session Fetch Dropdown */}
                                     {showFetchDropdown && !fetchLoading && !loading && (
-                                        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[320px] max-h-[400px] overflow-hidden left-0 sm:left-0">
-                                            <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                                                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[320px] max-h-[400px] overflow-hidden left-0 right-0 sm:left-0 sm:right-auto">
+                                            <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-3 sm:py-2 border-b border-gray-200 dark:border-gray-700">
+                                                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
                                                     Fetch Legislation Options
                                                 </span>
                                             </div>
@@ -1733,7 +1740,7 @@ const StatePage = ({ stateName }) => {
                                         setIsHighlightFilterActive(newValue);
                                         localStorage.setItem('highlightFilterActive', newValue.toString());
                                     }}
-                                    className={`hidden xl:flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 min-h-[44px] w-full xl:w-[130px] ${
+                                    className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 min-h-[44px] w-full xl:w-[130px] ${
                                         isHighlightFilterActive
                                             ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
                                             : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
@@ -1829,7 +1836,7 @@ const StatePage = ({ stateName }) => {
                                     <button
                                         type="button"
                                         onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                                        className={`flex items-center justify-center xl:justify-between px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 w-full xl:w-auto min-h-[44px] ${
+                                        className={`flex items-center justify-center sm:justify-between px-4 py-3 sm:py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base font-medium bg-white dark:bg-dark-bg-secondary text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 w-full sm:w-auto min-h-[48px] sm:min-h-[44px] ${
                                             selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
                                         }`}
                                     >
@@ -1861,9 +1868,9 @@ const StatePage = ({ stateName }) => {
 
                                     {/* Dropdown content - Match HighlightsPage structure exactly */}
                                     {showFilterDropdown && (
-                                        <div className={`absolute top-full mt-2 w-full xl:w-64 ${getCardClasses('')} rounded-lg shadow-lg overflow-hidden z-[120] left-0 xl:left-auto xl:right-0`}>
+                                        <div className={`absolute top-full mt-2 w-full sm:w-80 xl:w-64 ${getCardClasses('')} rounded-lg shadow-lg overflow-hidden z-[120] left-0 right-0 sm:left-0 sm:right-auto xl:left-auto xl:right-0`}>
                                             {/* Header */}
-                                            <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-2 border-b border-gray-200 dark:border-dark-border">
+                                            <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-3 sm:py-2 border-b border-gray-200 dark:border-dark-border">
                                                 <div className="flex items-center justify-between">
                                                     <span className={getTextClasses('secondary', 'text-xs font-medium')}>
                                                         Filter by Practice Area
@@ -1981,18 +1988,18 @@ const StatePage = ({ stateName }) => {
                                                 </button>
                                             </div>
                                             
-                                            <div className="p-6">
+                                            <div className="p-4 sm:p-6">
                                                 {/* Card Header - Mobile Responsive */}
-                                                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-4 gap-4">
-                                                    <div className="flex-1 min-w-0 pr-10 lg:pr-4">
-                                                        <h3 className={`text-lg sm:text-xl font-bold mb-3 leading-tight pr-2 ${getTextClasses('primary')}`}>
+                                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-4">
+                                                    <div className="flex-1 min-w-0 pr-4 sm:pr-2">
+                                                        <h3 className={`text-base sm:text-lg md:text-xl font-bold mb-3 leading-tight pr-2 ${getTextClasses('primary')}`}>
                                                             {cleanBillTitle(bill.title)}
                                                         </h3>
                                                         
                                                         {/* Metadata Row - Mobile Optimized */}
                                                         <div className="space-y-3 mb-0">
                                                             {/* Top Row - Bill Number, Date, and Category */}
-                                                            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 text-sm">
+                                                            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                                                                 <div className={`flex items-center gap-1.5 ${getTextClasses('secondary')}`}>
                                                                     <Hash size={16} className="text-blue-600 dark:text-blue-400" />
                                                                     <span className="font-medium">{bill.bill_number || 'Unknown'}</span>

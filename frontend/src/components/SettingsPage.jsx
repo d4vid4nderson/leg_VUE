@@ -60,6 +60,7 @@ const SettingsPage = ({
     const [databasePasswordInput, setDatabasePasswordInput] = useState('');
     const [databasePasswordError, setDatabasePasswordError] = useState('');
     const [isDatabaseAuthenticated, setIsDatabaseAuthenticated] = useState(false);
+    const [showDatabasePassword, setShowDatabasePassword] = useState(false);
     
     // Clear database confirmation states
     const [showClearConfirmation, setShowClearConfirmation] = useState(false);
@@ -69,6 +70,7 @@ const SettingsPage = ({
     const [analyticsPasswordInput, setAnalyticsPasswordInput] = useState('');
     const [analyticsPasswordError, setAnalyticsPasswordError] = useState('');
     const [isAnalyticsAuthenticated, setIsAnalyticsAuthenticated] = useState(false);
+    const [showAnalyticsPassword, setShowAnalyticsPassword] = useState(false);
 
     // Local editing state
     const [isEditingVersion, setIsEditingVersion] = useState(false);
@@ -281,6 +283,7 @@ const SettingsPage = ({
         setShowDatabasePasswordModal(false);
         setDatabasePasswordInput('');
         setDatabasePasswordError('');
+        setShowDatabasePassword(false);
     };
     
     // Analytics password handling functions
@@ -318,6 +321,7 @@ const SettingsPage = ({
         setShowAnalyticsPasswordModal(false);
         setAnalyticsPasswordInput('');
         setAnalyticsPasswordError('');
+        setShowAnalyticsPassword(false);
     };
 
     // Status icon and color mapping
@@ -583,9 +587,9 @@ const SettingsPage = ({
 
         return (
             <div className="fixed inset-0 bg-black dark:bg-gray-900 bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
-                <div className="bg-white dark:bg-dark-bg rounded-lg shadow-xl max-w-md w-full">
+                <div className="bg-white dark:bg-dark-bg rounded-lg shadow-xl max-w-md w-full mx-4">
                     {/* Modal Header */}
-                    <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-border">
+                    <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-dark-border">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
                                 <AlertTriangle size={20} className="text-red-600 dark:text-red-400" />
@@ -601,7 +605,7 @@ const SettingsPage = ({
                     </div>
 
                     {/* Modal Body */}
-                    <div className="p-6">
+                    <div className="p-4 sm:p-6">
                         <p className="text-gray-600 dark:text-gray-400 mb-4">
                             Are you sure you want to clear the database? This will permanently delete all executive orders, state legislation, and related data.
                         </p>
@@ -610,18 +614,18 @@ const SettingsPage = ({
                         </p>
 
                         {/* Action Buttons */}
-                        <div className="flex gap-3 justify-end mt-6">
+                        <div className="flex flex-col sm:flex-row gap-3 justify-end mt-6">
                             <button
                                 onClick={closeClearConfirmation}
                                 disabled={clearingDatabase}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 min-h-[44px] w-full sm:w-auto"
                             >
                                 No, Cancel
                             </button>
                             <button
                                 onClick={handleClearDatabase}
                                 disabled={clearingDatabase}
-                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 min-h-[44px] w-full sm:w-auto ${
                                     clearingDatabase
                                         ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                                         : 'bg-red-600 dark:bg-red-500 text-white hover:bg-red-700 dark:hover:bg-red-400'
@@ -643,9 +647,9 @@ const SettingsPage = ({
 
         return (
             <div className="fixed inset-0 bg-black dark:bg-gray-900 bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
-                <div className="bg-white dark:bg-dark-bg rounded-lg shadow-xl max-w-md w-full">
+                <div className="bg-white dark:bg-dark-bg rounded-lg shadow-xl max-w-md w-full mx-4">
                     {/* Modal Header */}
-                    <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-border">
+                    <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-dark-border">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
                                 <Lock size={20} className="text-blue-600 dark:text-blue-400" />
@@ -678,7 +682,7 @@ const SettingsPage = ({
                             </label>
                             <div className="relative">
                                 <input
-                                    type="password"
+                                    type={showAnalyticsPassword ? "text" : "password"}
                                     value={analyticsPasswordInput}
                                     onChange={(e) => {
                                         setAnalyticsPasswordInput(e.target.value);
@@ -689,7 +693,7 @@ const SettingsPage = ({
                                             handleAnalyticsPasswordSubmit();
                                         }
                                     }}
-                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 ${
+                                    className={`w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 ${
                                         analyticsPasswordError 
                                             ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' 
                                             : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-bg-secondary'
@@ -698,6 +702,14 @@ const SettingsPage = ({
                                     autoComplete="off"
                                     autoFocus
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAnalyticsPassword(!showAnalyticsPassword)}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none"
+                                    tabIndex={-1}
+                                >
+                                    {showAnalyticsPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
                             </div>
                             {analyticsPasswordError && (
                                 <p className="mt-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
@@ -711,14 +723,14 @@ const SettingsPage = ({
                         <div className="flex gap-3 justify-end">
                             <button
                                 onClick={closeAnalyticsPasswordModal}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-[44px] w-full sm:w-auto"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleAnalyticsPasswordSubmit}
                                 disabled={!analyticsPasswordInput.trim()}
-                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 min-h-[44px] w-full sm:w-auto ${
                                     !analyticsPasswordInput.trim()
                                         ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                                         : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
@@ -737,15 +749,15 @@ const SettingsPage = ({
     return (
         <div className="bg-gradient-to-br from-gray-50 via-white to-blue-50 dark:from-dark-bg dark:via-dark-bg-secondary dark:to-dark-bg-tertiary min-h-screen">
             {/* Header Section */}
-            <section className="relative overflow-hidden px-6 pt-12 pb-8">
+            <section className="relative overflow-hidden px-4 sm:px-6 pt-8 sm:pt-12 pb-6 sm:pb-8">
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-8">
                         
-                        <h1 className={getTextClasses('primary', 'text-4xl md:text-6xl font-bold mb-6 leading-tight')}>
+                        <h1 className={getTextClasses('primary', 'text-3xl sm:text-4xl md:text-6xl font-bold mb-4 sm:mb-6 leading-tight')}>
                             <span className="block bg-gradient-to-r from-gray-500 to-black dark:from-gray-300 dark:to-white bg-clip-text text-transparent py-2">Settings</span>
                         </h1>
                         
-                        <p className={getTextClasses('secondary', 'text-xl mb-8 max-w-3xl mx-auto leading-relaxed')}>
+                        <p className={getTextClasses('secondary', 'text-base sm:text-lg md:text-xl mb-6 sm:mb-8 max-w-3xl mx-auto leading-relaxed px-2 sm:px-0')}>
                             Monitor your system status and manage your database. Configure application settings and view system information.
                         </p>
                     </div>
@@ -753,7 +765,7 @@ const SettingsPage = ({
             </section>
 
             {/* Settings Content Section */}
-            <section className="py-8 px-6">
+            <section className="py-6 sm:py-8 px-4 sm:px-6">
                 <div className="max-w-7xl mx-auto">
                     {/* Clear Status */}
                     {clearStatus && (
@@ -800,7 +812,7 @@ const SettingsPage = ({
                                         </p>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                     {Object.entries({
                                         'LegiScan API': 'legiscan',
                                         'Azure AI': 'azureAI',
@@ -850,7 +862,7 @@ const SettingsPage = ({
                             </div>
 
                             {/* System Information Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
                                 {/* Application Version */}
                                 <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-700">
@@ -859,7 +871,7 @@ const SettingsPage = ({
                                         {!isEditingVersion && (
                                             <button
                                                 onClick={() => setIsEditingVersion(true)}
-                                                className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors"
+                                                className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                                                 title="Edit version"
                                             >
                                                 <Edit3 size={14} />
@@ -880,17 +892,17 @@ const SettingsPage = ({
                                                     if (e.key === 'Escape') handleCancelVersionEdit();
                                                 }}
                                             />
-                                            <div className="flex gap-2">
+                                            <div className="flex flex-col sm:flex-row gap-2">
                                                 <button
                                                     onClick={handleVersionUpdate}
-                                                    className="flex items-center gap-1 px-3 py-1 bg-blue-600 dark:bg-blue-500 text-white text-sm rounded hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors"
+                                                    className="flex items-center justify-center gap-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm rounded hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors min-h-[44px] w-full sm:w-auto"
                                                 >
                                                     <Save size={12} />
                                                     Save
                                                 </button>
                                                 <button
                                                     onClick={handleCancelVersionEdit}
-                                                    className="px-3 py-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
+                                                    className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors min-h-[44px] w-full sm:w-auto"
                                                 >
                                                     Cancel
                                                 </button>
@@ -997,13 +1009,13 @@ const SettingsPage = ({
 
                     {showAdminAnalytics && (
                         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                            {/* Refresh Button */}
-                            <div className="flex justify-between items-center mb-4">
-                                <h4 className="text-lg font-medium text-gray-700 dark:text-gray-300">Dashboard Overview</h4>
+                            {/* Dashboard Header */}
+                            <div className="mb-4">
+                                <h4 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-3">Dashboard Overview</h4>
                                 <button
                                     onClick={fetchAnalyticsData}
                                     disabled={analyticsData.loading}
-                                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                                    className={`w-full px-4 py-2 sm:px-3 sm:py-1 text-sm rounded-md transition-colors min-h-[44px] sm:min-h-[auto] flex items-center justify-center ${
                                         analyticsData.loading 
                                             ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                                             : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
@@ -1050,8 +1062,8 @@ const SettingsPage = ({
                             ) : analyticsData.data ? (
                                 <div className="space-y-4">
                                     {/* Summary Cards */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-600/50">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div className="bg-blue-50 dark:bg-blue-950/30 p-4 sm:p-6 rounded-lg border border-blue-200 dark:border-blue-600/50">
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <p className="text-sm text-blue-600 dark:text-blue-300 mb-1 font-medium">Total Page Views</p>
@@ -1066,7 +1078,7 @@ const SettingsPage = ({
                                             </div>
                                         </div>
 
-                                        <div className="bg-green-50 dark:bg-green-950/30 p-4 rounded-lg border border-green-200 dark:border-green-600/50">
+                                        <div className="bg-green-50 dark:bg-green-950/30 p-4 sm:p-6 rounded-lg border border-green-200 dark:border-green-600/50">
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <p className="text-sm text-green-600 dark:text-green-300 mb-1 font-medium">Unique Sessions</p>
@@ -1081,7 +1093,7 @@ const SettingsPage = ({
                                             </div>
                                         </div>
 
-                                        <div className="bg-purple-50 dark:bg-purple-950/30 p-4 rounded-lg border border-purple-200 dark:border-purple-600/50">
+                                        <div className="bg-purple-50 dark:bg-purple-950/30 p-4 sm:p-6 rounded-lg border border-purple-200 dark:border-purple-600/50">
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <p className="text-sm text-purple-600 dark:text-purple-300 mb-1 font-medium">Active Today</p>
@@ -1104,37 +1116,31 @@ const SettingsPage = ({
                                             <p className="text-xs text-gray-500 dark:text-gray-300 mb-3">Based on highlighted items in the database</p>
                                             <div className="space-y-2">
                                                 {analyticsData.data.topUsers.map((user, index) => (
-                                                    <div key={index} className="flex items-center justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30">
-                                                        <div className="flex items-center gap-3 flex-1">
-                                                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center border border-blue-200 dark:border-blue-600/50">
+                                                    <div key={index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30 gap-3 sm:gap-0">
+                                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center border border-blue-200 dark:border-blue-600/50 flex-shrink-0">
                                                                 <User size={16} className="text-blue-600 dark:text-blue-300" />
                                                             </div>
-                                                            <div className="flex items-center gap-4 flex-1">
-                                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-100">
+                                                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 flex-1 min-w-0">
+                                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-100 truncate">
                                                                     {user.displayName || user.userId || 'Anonymous'}
                                                                 </span>
-                                                                <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-300">
+                                                                <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-gray-500 dark:text-gray-300">
                                                                     {user.loginCount !== undefined && user.loginCount > 0 && (
-                                                                        <span>{user.loginCount} logins</span>
+                                                                        <span className="bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{user.loginCount} logins</span>
                                                                     )}
                                                                     {user.highlightCount !== undefined && user.highlightCount > 0 && (
-                                                                        <span>•</span>
-                                                                    )}
-                                                                    {user.highlightCount !== undefined && user.highlightCount > 0 && (
-                                                                        <span>{user.highlightCount} highlights</span>
+                                                                        <span className="bg-yellow-100 dark:bg-yellow-900/30 px-2 py-1 rounded">{user.highlightCount} highlights</span>
                                                                     )}
                                                                     {user.mostActivePage && (
-                                                                        <>
-                                                                            <span>•</span>
-                                                                            <span>Most active: {user.mostActivePage}</span>
-                                                                        </>
+                                                                        <span className="bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded">Most active: {user.mostActivePage}</span>
                                                                     )}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         {user.lastLogin && (
-                                                            <div className="text-xs text-gray-500 dark:text-gray-300 whitespace-nowrap">
-                                                                Last logged in: {new Date(user.lastLogin).toLocaleDateString()}
+                                                            <div className="text-xs text-gray-500 dark:text-gray-300 whitespace-nowrap sm:text-right">
+                                                                Last: {new Date(user.lastLogin).toLocaleDateString()}
                                                             </div>
                                                         )}
                                                     </div>
@@ -1149,16 +1155,16 @@ const SettingsPage = ({
                                             <h5 className="font-semibold text-gray-800 dark:text-gray-100 mb-3">State-Specific Activity</h5>
                                             <div className="space-y-2">
                                                 {analyticsData.data.stateAnalytics.map((item, index) => (
-                                                    <div key={index} className="flex items-center justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30">
-                                                        <div className="flex items-center gap-3">
+                                                    <div key={index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30 gap-2 sm:gap-0">
+                                                        <div className="flex items-center gap-3 min-w-0">
                                                             <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg flex items-center justify-center border border-indigo-200 dark:border-indigo-600/50">
                                                                 <MapPin size={16} className="text-indigo-600 dark:text-indigo-300" />
                                                             </div>
-                                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-100">
+                                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-100 truncate">
                                                                 {item.pageName}
                                                             </span>
                                                         </div>
-                                                        <div className="text-sm text-gray-500 dark:text-gray-300">
+                                                        <div className="text-sm text-gray-500 dark:text-gray-300 sm:text-right whitespace-nowrap">
                                                             {item.viewCount} views
                                                         </div>
                                                     </div>
@@ -1173,16 +1179,16 @@ const SettingsPage = ({
                                             <h5 className="font-semibold text-gray-800 dark:text-gray-100 mb-3">Most Visited Pages</h5>
                                             <div className="space-y-2">
                                                 {analyticsData.data.topPages.map((page, index) => (
-                                                    <div key={index} className="flex items-center justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30">
-                                                        <div className="flex items-center gap-3">
+                                                    <div key={index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30 gap-2 sm:gap-0">
+                                                        <div className="flex items-center gap-3 min-w-0">
                                                             <div className="w-8 h-8 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center border border-green-200 dark:border-green-600/50">
                                                                 <Globe size={16} className="text-green-600 dark:text-green-300" />
                                                             </div>
-                                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-100">
+                                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-100 truncate">
                                                                 {page.pageName}
                                                             </span>
                                                         </div>
-                                                        <div className="text-sm text-gray-500 dark:text-gray-300">
+                                                        <div className="text-sm text-gray-500 dark:text-gray-300 sm:text-right whitespace-nowrap">
                                                             {page.viewCount} views
                                                         </div>
                                                     </div>
@@ -1290,7 +1296,7 @@ const SettingsPage = ({
                                 <button
                                     onClick={showClearDatabaseConfirmation}
                                     disabled={clearingDatabase}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 ${clearingDatabase
+                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 min-h-[44px] flex items-center justify-center ${clearingDatabase
                                             ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                                             : 'bg-red-600 dark:bg-red-500 text-white hover:bg-red-700 dark:hover:bg-red-400'
                                         }`}
@@ -1318,7 +1324,7 @@ const SettingsPage = ({
                                     <button
                                         onClick={debugDatabaseConnection}
                                         disabled={databaseDebugInfo.loading}
-                                        className={`px-3 py-1 text-sm rounded-md ${databaseDebugInfo.loading ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300' : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'}`}
+                                        className={`px-4 py-2 sm:px-3 sm:py-1 text-sm rounded-md min-h-[44px] sm:min-h-[auto] flex items-center justify-center ${databaseDebugInfo.loading ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300' : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'}`}
                                     >
                                         {databaseDebugInfo.loading ? 'Testing...' : 'Test MSI Connection'}
                                     </button>
@@ -1418,28 +1424,38 @@ const SettingsPage = ({
                                 <label htmlFor="database-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Enter Password
                                 </label>
-                                <input
-                                    type="password"
-                                    id="database-password"
-                                    value={databasePasswordInput}
-                                    onChange={(e) => {
-                                        setDatabasePasswordInput(e.target.value);
-                                        if (databasePasswordError) setDatabasePasswordError('');
-                                    }}
-                                    onKeyPress={(e) => {
-                                        if (e.key === 'Enter') {
-                                            handleDatabasePasswordSubmit();
-                                        }
-                                    }}
-                                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 ${
-                                        databasePasswordError 
-                                            ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' 
-                                            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-bg-secondary'
-                                    }`}
-                                    placeholder="Enter database password..."
-                                    autoComplete="off"
-                                    autoFocus
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showDatabasePassword ? "text" : "password"}
+                                        id="database-password"
+                                        value={databasePasswordInput}
+                                        onChange={(e) => {
+                                            setDatabasePasswordInput(e.target.value);
+                                            if (databasePasswordError) setDatabasePasswordError('');
+                                        }}
+                                        onKeyPress={(e) => {
+                                            if (e.key === 'Enter') {
+                                                handleDatabasePasswordSubmit();
+                                            }
+                                        }}
+                                        className={`w-full px-3 py-2 pr-10 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 ${
+                                            databasePasswordError 
+                                                ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20' 
+                                                : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-dark-bg-secondary'
+                                        }`}
+                                        placeholder="Enter database password..."
+                                        autoComplete="off"
+                                        autoFocus
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDatabasePassword(!showDatabasePassword)}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none"
+                                        tabIndex={-1}
+                                    >
+                                        {showDatabasePassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
                                 {databasePasswordError && (
                                     <p className="mt-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                                         <X size={14} />
@@ -1452,14 +1468,14 @@ const SettingsPage = ({
                             <div className="flex gap-3 justify-end">
                                 <button
                                     onClick={closeDatabasePasswordModal}
-                                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors min-h-[44px] w-full sm:w-auto"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleDatabasePasswordSubmit}
                                     disabled={!databasePasswordInput.trim()}
-                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 min-h-[44px] w-full sm:w-auto ${
                                         !databasePasswordInput.trim()
                                             ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                                             : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
