@@ -19,7 +19,6 @@ import {
     CalendarDays,
     Hash,
     X,
-    Clock,
     LayoutGrid,
     Users,
     Vote,
@@ -812,83 +811,41 @@ const StatePage = ({ stateName }) => {
     };
     
 
-    // New fetch handler for time periods - fetches fresh bills from LegiScan API
-    // TODO: This function is unused - consider removing or connecting to UI
+    // New fetch handler for time periods - uses incremental fetch with streaming
     const handleFetch = useCallback(async (period) => {
         setFetchLoading(true);
         setError(null); // Clear any existing errors
         setFetchSuccess(null); // Clear any existing success messages
         
         try {
-            // Calculate date range based on period
-            const now = new Date();
-            const daysAgo = period === '7days' ? 7 : period === '30days' ? 30 : 90;
-            const startDate = new Date(now.getTime() - (daysAgo * 24 * 60 * 60 * 1000));
-            
-            console.log(`🔍 Fetching fresh bills from LegiScan for ${period} (last ${daysAgo} days)`);
-            console.log(`📅 Date range: ${startDate.toISOString()} to ${now.toISOString()}`);
-            console.log(`🎯 Target: Find bills from July 14, 2025 (HB47, HB36, HB69, etc.)`);
+            console.log(`🔄 Starting incremental fetch for ${period} in state ${stateName}`);
             
             const stateAbbr = SUPPORTED_STATES[stateName];
             
-            // Determine search parameters based on period
-            let limit = 100; // Increased default to get more bills
-            let yearFilter = 'current'; // Default to current year for recent bills
-            let maxPages = 10; // Increased to get more comprehensive results
+            // Use the new incremental fetch endpoint
+            const fetchUrl = `${API_URL}/api/legiscan/fetch-recent`;
             
-            if (period === '7days') {
-                limit = 50;
-                yearFilter = 'current'; // Recent bills likely to be in current year
-                maxPages = 5; // Should be enough for recent bills with smart query
-            } else if (period === '30days') {
-                limit = 100;
-                yearFilter = 'current';
-                maxPages = 8;
-            } else { // 90days
-                limit = 150;
-                yearFilter = 'all'; // Wider search for longer periods
-                maxPages = 12;
-            }
+            // Determine limit based on period
+            let limit = 50; // Start smaller for recent fetches
+            if (period === '30days') limit = 100;
+            else if (period === '90days') limit = 150;
             
-            // FORCE USE OF ENHANCED SEARCH WITH SMART DATE QUERY FOR ALL PERIODS
-            // This ensures we get the July 14, 2025 bills
-            let fetchUrl, requestBody;
-            
-            // Use the enhanced search endpoint with specific date queries to get July 14 bills
-            fetchUrl = `${API_URL}/api/legiscan/enhanced-search-and-analyze`;
-            
-            // Smart query strategy based on period
-            let smartQuery;
-            if (period === '7days') {
-                smartQuery = '2025-07-14'; // Specific date for July 14 bills
-            } else if (period === '30days') {
-                smartQuery = '2025-07'; // July 2025 bills
-            } else {
-                smartQuery = 'introduced'; // Broader search for 90 days
-            }
-            
-            requestBody = {
-                query: smartQuery,
+            const requestBody = {
                 state: stateAbbr,
-                limit: limit,
-                save_to_db: true,
-                process_one_by_one: false,
-                with_ai_analysis: true,
                 enhanced_ai: true,
-                year_filter: yearFilter,
-                max_pages: maxPages
+                limit: limit
             };
             
-            console.log(`🎯 Using smart query '${smartQuery}' for ${period} to find July 14 bills`);
+            console.log(`🚀 Making incremental fetch API call...`);
             
-            const response = await fetch(fetchUrl, {
+            const response = await fetchWithTimeout(fetchUrl, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestBody)
-            });
+            }, 300000); // 5 minute timeout for large requests
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -905,46 +862,160 @@ const StatePage = ({ stateName }) => {
             const result = await response.json();
             
             if (result.success) {
-                // Handle different response formats
-                let newBills = [];
-                if (result.bills) {
-                    newBills = result.bills;
-                } else if (result.results && Array.isArray(result.results)) {
-                    // Bulk fetch format - flatten results from all states
-                    newBills = result.results.reduce((acc, stateResult) => {
-                        if (stateResult.bills) {
-                            acc.push(...stateResult.bills);
-                        }
-                        return acc;
-                    }, []);
-                } else if (result.data && Array.isArray(result.data)) {
-                    newBills = result.data;
-                }
+                console.log(`✅ Incremental fetch completed:`, result);
+                console.log(`📊 Bills found: ${result.bills_found}, Bills processed: ${result.bills_processed}`);
+                console.log(`📅 Most recent date before: ${result.most_recent_date_before}`);
+                console.log(`🔍 Search query used: ${result.search_query_used}`);
                 
-                console.log(`✅ Successfully fetched ${newBills.length} fresh bills from LegiScan`);
-                
-                // Show success message
-                if (newBills.length > 0) {
-                    console.log(`📊 Added ${newBills.length} new bills to the database`);
-                    setFetchSuccess(`Successfully fetched ${newBills.length} fresh bills from LegiScan! These include the most recent bills available.`);
+                // Show success message based on results
+                if (result.bills_processed > 0) {
+                    setFetchSuccess(
+                        `Successfully fetched ${result.bills_processed} new bills! ` +
+                        `Found ${result.bills_found} total bills, processed ${result.bills_processed} new ones. ` +
+                        `Database now includes the latest bills since ${result.most_recent_date_before || 'the beginning'}.`
+                    );
                     
                     // Refresh the page data to show new bills
                     await fetchFromDatabase(1);
                     
-                    // Clear success message after 5 seconds
-                    setTimeout(() => setFetchSuccess(null), 5000);
+                    // Clear success message after 7 seconds (longer for more detailed message)
+                    setTimeout(() => setFetchSuccess(null), 7000);
+                } else if (result.bills_found === 0) {
+                    setFetchSuccess('No new bills found - the database is already up to date with the latest legislation.');
+                    setTimeout(() => setFetchSuccess(null), 4000);
                 } else {
-                    console.log('ℹ️ No new bills found for the selected period');
-                    setFetchSuccess('No new bills found for the selected period. Database is up to date.');
-                    setTimeout(() => setFetchSuccess(null), 3000);
+                    setFetchSuccess(
+                        `Found ${result.bills_found} bills but they were already in the database. ` +
+                        `Your database is current with the latest legislation.`
+                    );
+                    setTimeout(() => setFetchSuccess(null), 5000);
                 }
             } else {
-                throw new Error(result.error || 'Failed to fetch bills from LegiScan');
+                throw new Error(result.error || result.detail || 'Failed to fetch bills from LegiScan');
             }
             
         } catch (error) {
             console.error('❌ Error fetching fresh bills:', error);
-            setError(`Failed to fetch fresh bills for ${period}: ${error.message}`);
+            
+            // Handle different error types
+            if (error.message.includes('timeout') || error.message.includes('504')) {
+                setError(
+                    `LegiScan API timeout - The service is slow or temporarily unavailable. ` +
+                    `Please try again in a few minutes or use a smaller search window.`
+                );
+            } else if (error.message.includes('503') || error.message.includes('connection')) {
+                setError(
+                    `LegiScan API connection failed - The service may be down. ` +
+                    `Please check back later or contact support if the issue persists.`
+                );
+            } else if (error.message.includes('abort')) {
+                setError(`Request was cancelled due to timeout. Try fetching fewer bills at once.`);
+            } else {
+                setError(`Failed to fetch fresh bills: ${error.message}`);
+            }
+            
+            // Clear error after 10 seconds for timeout/connection errors (they need more time to read)
+            setTimeout(() => setError(null), 10000);
+        } finally {
+            setFetchLoading(false);
+        }
+    }, [stateName]);
+
+    // Check for updates handler - compares API data with database and processes missing bills one-by-one
+    const handleCheckForUpdates = useCallback(async () => {
+        setShowFetchDropdown(false);
+        setFetchLoading(true);
+        setError(null);
+        setFetchSuccess(null);
+        
+        try {
+            console.log(`🔄 Starting check for updates for ${stateName}`);
+            
+            const stateAbbr = SUPPORTED_STATES[stateName];
+            
+            const fetchUrl = `${API_URL}/api/legiscan/check-and-update`;
+            
+            const requestBody = {
+                state: stateAbbr
+            };
+            
+            console.log(`🚀 Making check and update API call...`);
+            
+            const response = await fetchWithTimeout(fetchUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            }, 600000); // 10 minute timeout for comprehensive checking
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                console.log(`✅ Check for updates completed:`, result);
+                console.log(`📊 API Bills: ${result.api_bills_found}, Existing: ${result.existing_bills}, Missing: ${result.missing_bills}, Processed: ${result.processed_bills}`);
+                
+                // Show success message based on results
+                if (result.processed_bills > 0) {
+                    setFetchSuccess(
+                        `✅ Update completed! Found ${result.missing_bills} missing bills and processed ${result.processed_bills} new bills with AI analysis. ` +
+                        `Your database now includes the latest legislation for ${stateName}.`
+                    );
+                    
+                    // Refresh the page data to show new bills
+                    window.location.reload();
+                    
+                    // Clear success message after 8 seconds
+                    setTimeout(() => setFetchSuccess(null), 8000);
+                } else if (result.missing_bills === 0) {
+                    setFetchSuccess(
+                        `✅ Database is up to date! Found ${result.api_bills_found} bills in API, all ${result.existing_bills} are already in your database. ` +
+                        `No new bills to process for ${stateName}.`
+                    );
+                    setTimeout(() => setFetchSuccess(null), 6000);
+                } else {
+                    setFetchSuccess(
+                        `⚠️ Found ${result.missing_bills} missing bills but processed ${result.processed_bills}. ` +
+                        `Some bills may have had processing issues - check logs for details.`
+                    );
+                    setTimeout(() => setFetchSuccess(null), 6000);
+                }
+            } else {
+                throw new Error(result.error || result.detail || 'Failed to check for updates');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error checking for updates:', error);
+            
+            // Handle different error types
+            if (error.message.includes('timeout') || error.message.includes('504')) {
+                setError(
+                    `Update check timed out - This can happen with large datasets. ` +
+                    `The process may still be running in the background. Please try again in a few minutes.`
+                );
+            } else if (error.message.includes('503') || error.message.includes('connection')) {
+                setError(
+                    `API connection failed - The LegiScan service may be temporarily unavailable. ` +
+                    `Please try again later.`
+                );
+            } else {
+                setError(`Failed to check for updates: ${error.message}`);
+            }
+            
+            // Clear error after 10 seconds for timeout/connection errors
+            setTimeout(() => setError(null), 10000);
         } finally {
             setFetchLoading(false);
         }
@@ -1045,164 +1116,6 @@ const StatePage = ({ stateName }) => {
     }, [stateName, getStateBillId]);
     
     // Session fetch handler - fetches bills from specific sessions
-    const handleSessionFetch = useCallback(async (sessionType) => {
-        setShowFetchDropdown(false);
-        setFetchLoading(true);
-        setError(null);
-        setFetchSuccess(null);
-        setFetchProgress('Checking existing data...');
-        
-        try {
-            const stateAbbr = SUPPORTED_STATES[stateName];
-            // Fetching bills from LegiScan API
-            
-            // First, check existing bills in the database
-            // Checking existing bills in database
-            const checkResponse = await fetchWithTimeout(`${API_URL}/api/state-legislation/check-existing?state=${stateAbbr}&session_type=${sessionType}`, {}, 60000); // 1 minute for check
-            
-            if (checkResponse.ok) {
-                const checkResult = await checkResponse.json();
-                // Database check completed
-                
-                if (checkResult.success && checkResult.recommendation === 'skip') {
-                    setFetchSuccess(`${checkResult.message}. Database is already up to date!`);
-                    setTimeout(() => setFetchSuccess(null), 5000);
-                    setFetchLoading(false);
-                    setFetchProgress(null);
-                    return;
-                }
-            } else {
-                // Database check failed, proceeding with fetch
-            }
-            
-            let requestBody = {
-                state: stateAbbr,
-                save_to_db: true,
-                process_one_by_one: false,
-                with_ai_analysis: true,
-                enhanced_ai: true
-            };
-            
-            // Configure fetch parameters based on session type - Use backend's full capacity
-            switch (sessionType) {
-                case 'current':
-                    requestBody = {
-                        ...requestBody,
-                        query: 'current session',
-                        year_filter: 'current',
-                        limit: 500,  // More reasonable limit for faster processing
-                        max_pages: 10  // Reduced for better user experience
-                    };
-                    break;
-                case 'all':
-                    requestBody = {
-                        ...requestBody,
-                        query: 'all sessions',
-                        year_filter: 'all',
-                        limit: 300,  // Reduced for all sessions (larger dataset)
-                        max_pages: 5   // Much lower for all sessions to prevent timeouts
-                    };
-                    break;
-                case 'recent':
-                    requestBody = {
-                        ...requestBody,
-                        query: '2025-07',
-                        year_filter: 'current',
-                        limit: 2000,  // Increased from 150 to backend max
-                        max_pages: 50  // Increased from 10 to backend max
-                    };
-                    break;
-                default:
-                    requestBody = {
-                        ...requestBody,
-                        query: 'current session',
-                        year_filter: 'current',
-                        limit: 2000,  // Increased from 200 to backend max
-                        max_pages: 50  // Increased from 15 to backend max
-                    };
-            }
-            
-            // Show progress message with more specific information
-            const estimatedTime = sessionType === 'all' ? '3-5 minutes' : 
-                                 sessionType === 'current' ? '1-3 minutes' : '1-2 minutes';
-            setFetchProgress(`Fetching ${sessionType} bills for ${stateName} from LegiScan... Estimated time: ${estimatedTime}`);
-            
-            // Use extended timeout for large dataset imports (10 minutes)
-            const response = await fetchWithTimeout(`${API_URL}/api/legiscan/enhanced-search-and-analyze`, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            }, 600000); // 10 minutes for large bill imports
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            // Update progress message during response processing
-            setFetchProgress('Processing response and saving to database...');
-            
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                const textResponse = await response.text();
-                console.error('❌ Expected JSON but got:', contentType);
-                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON`);
-            }
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                let newBills = [];
-                if (result.bills) {
-                    newBills = result.bills;
-                } else if (result.results && Array.isArray(result.results)) {
-                    newBills = result.results.reduce((acc, stateResult) => {
-                        if (stateResult.bills) {
-                            acc.push(...stateResult.bills);
-                        }
-                        return acc;
-                    }, []);
-                } else if (result.data && Array.isArray(result.data)) {
-                    newBills = result.data;
-                }
-                
-                // Bills fetched successfully
-                
-                if (newBills.length > 0) {
-                    const sessionLabel = sessionType === 'current' ? 'current session' : 
-                                        sessionType === 'all' ? 'all sessions' : 
-                                        'recent bills';
-                    setFetchSuccess(`Successfully fetched ${newBills.length} bills from ${sessionLabel}!`);
-                    await fetchFromDatabase(1);
-                    setTimeout(() => setFetchSuccess(null), 5000);
-                } else {
-                    setFetchSuccess(`No new bills found for ${sessionType} session(s).`);
-                    setTimeout(() => setFetchSuccess(null), 3000);
-                }
-            } else {
-                throw new Error(result.error || 'Failed to fetch bills from LegiScan');
-            }
-            
-        } catch (error) {
-            console.error('❌ Error fetching bills:', error);
-            
-            // Provide more helpful error messages for timeout and network issues
-            let errorMessage = error.message;
-            if (error.message.includes('timed out')) {
-                errorMessage = `Request timed out while fetching ${sessionType} bills. Large datasets may require multiple attempts. Please try again or contact support if the issue persists.`;
-            } else if (error.message.includes('fetch')) {
-                errorMessage = `Network error while fetching ${sessionType} bills. Please check your connection and try again.`;
-            }
-            
-            setError(`Failed to fetch bills from ${sessionType} session(s): ${errorMessage}`);
-        } finally {
-            setFetchLoading(false);
-            setFetchProgress(null);
-        }
-    }, [stateName, fetchFromDatabase]);
-    
     // Add browser warning for long operations
     useEffect(() => {
         const handleBeforeUnload = (e) => {
@@ -1654,49 +1567,19 @@ const StatePage = ({ stateName }) => {
                                             
                                             <div className="overflow-y-auto max-h-[320px]">
                                                 <div className="py-1">
-                                                    {/* Current Session Option */}
+                                                    {/* Check for Updates */}
                                                     <button
-                                                        onClick={() => handleSessionFetch('current')}
-                                                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group"
+                                                        onClick={() => handleCheckForUpdates()}
+                                                        className="w-full text-left px-6 py-3 pr-8 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors duration-150 flex items-center justify-between group"
                                                     >
                                                         <div className="flex items-center gap-3">
-                                                            <Calendar size={16} className="text-blue-600 dark:text-blue-400" />
+                                                            <RefreshIcon size={16} className="text-green-600 dark:text-green-400" />
                                                             <div>
-                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Current Session</span>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Active legislative session</div>
+                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Check for Updates</span>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Compare API vs DB, process missing bills one-by-one</div>
                                                             </div>
                                                         </div>
-                                                        <span className="text-xs text-gray-400 dark:text-gray-500">~30-60s</span>
-                                                    </button>
-                                                    
-                                                    {/* All Sessions Option */}
-                                                    <button
-                                                        onClick={() => handleSessionFetch('all')}
-                                                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <CalendarDays size={16} className="text-green-600 dark:text-green-400" />
-                                                            <div>
-                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">All Sessions</span>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Fetch from all available sessions</div>
-                                                            </div>
-                                                        </div>
-                                                        <span className="text-xs text-gray-400 dark:text-gray-500">~3-5m</span>
-                                                    </button>
-                                                    
-                                                    {/* Recent Bills Option */}
-                                                    <button
-                                                        onClick={() => handleSessionFetch('recent')}
-                                                        className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 flex items-center justify-between group"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <Clock size={16} className="text-purple-600 dark:text-purple-400" />
-                                                            <div>
-                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Recent Bills</span>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Last 30 days activity</div>
-                                                            </div>
-                                                        </div>
-                                                        <span className="text-xs text-gray-400 dark:text-gray-500">~15-30s</span>
+                                                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">Smart</span>
                                                     </button>
                                                 </div>
                                             </div>

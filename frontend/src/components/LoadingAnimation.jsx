@@ -120,8 +120,7 @@ const LoadingAnimation = ({ type = "Executive Orders", onComplete }) => {
               <img
                 src="/favicon.png"
                 alt="Loading"
-                className="w-12 h-12 object-contain rounded-md drop-shadow-lg"
-                style={{ background: 'white' }}
+                className="w-12 h-12 object-contain rounded-md drop-shadow-lg mix-blend-multiply"
               />
             </div>
 

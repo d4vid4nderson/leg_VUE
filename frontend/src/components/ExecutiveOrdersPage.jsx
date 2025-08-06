@@ -67,7 +67,7 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo, filteredCount = 0 })
         <button
         onClick={handleFetch}
         disabled={isLoading}
-        className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-[180px] min-h-[48px] sm:min-h-[44px] ${
+        className={`flex items-center justify-center gap-2 px-5 sm:px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-auto min-h-[48px] sm:min-h-[44px] ${
           isLoading 
             ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
             : hasUpdates
@@ -1794,7 +1794,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               <button
                 type="button"
                 onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
-                className={`flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
+                className={`flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
                   showHighlightsOnly
                     ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
                     : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
@@ -1808,7 +1808,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
               <button
                 type="button"
                 onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[48px] sm:min-h-[44px] w-full sm:w-auto"
+                className="flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[48px] sm:min-h-[44px] w-full sm:w-auto"
               >
                 {sortOrder === 'latest' ? (
                   <>
@@ -1828,7 +1828,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 <button
                   type="button"
                   onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                  className={`flex items-center justify-center sm:justify-between px-4 py-3 sm:py-2.5 border border-gray-300 dark:border-dark-border rounded-lg text-sm sm:text-base font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
+                  className={`flex items-center justify-center sm:justify-between px-6 py-3 sm:py-2.5 border border-gray-300 dark:border-dark-border rounded-lg text-sm sm:text-base font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
                     selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
                   }`}
                 >

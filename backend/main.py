@@ -352,6 +352,56 @@ def save_legislation_to_azure_sql(bills: List[Dict]) -> int:
         print(f"❌ Failed to save legislation to Azure SQL: {e}")
         return 0
 
+def get_most_recent_bill_date(state_abbr: str = None) -> Optional[str]:
+    """Get the most recent bill date from database for incremental fetching"""
+    try:
+        from database_config import get_database_config
+        config = get_database_config()
+        is_postgresql = config['type'] == 'postgresql'
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Build query to find most recent bill
+            if state_abbr:
+                if is_postgresql:
+                    query = """
+                    SELECT MAX(last_action_date) as most_recent_date
+                    FROM legislation 
+                    WHERE state_name = %s OR state_id = (
+                        SELECT id FROM states WHERE abbreviation = %s LIMIT 1
+                    )
+                    """
+                    cursor.execute(query, (state_abbr, state_abbr))
+                else:
+                    query = """
+                    SELECT MAX(last_action_date) as most_recent_date
+                    FROM legislation 
+                    WHERE state_name = ? OR state_id IN (
+                        SELECT TOP 1 id FROM states WHERE abbreviation = ?
+                    )
+                    """
+                    cursor.execute(query, (state_abbr, state_abbr))
+            else:
+                # Get most recent across all states
+                query = "SELECT MAX(last_action_date) as most_recent_date FROM legislation"
+                cursor.execute(query)
+            
+            result = cursor.fetchone()
+            if result and result[0]:
+                most_recent_date = result[0]
+                # Convert to ISO format string for API use
+                if hasattr(most_recent_date, 'isoformat'):
+                    return most_recent_date.isoformat()
+                else:
+                    return str(most_recent_date)
+            
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error getting most recent bill date: {e}")
+        return None
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1425,20 +1475,35 @@ AZURE_SQL_AVAILABLE = True  # We're using direct connection now
 HIGHLIGHTS_DB_AVAILABLE = True
 EXECUTIVE_ORDERS_AVAILABLE = True
 
-# 4. Update simple executive orders import
-# Replace:
-# from simple_executive_orders import ...
-# With:
-try:
-    from simple_executive_orders import \
-        fetch_executive_orders_simple_integration, \
-        SimpleProclamations, \
-        SimpleExecutiveOrders
-    SIMPLE_EO_AVAILABLE = True
-    print("✅ Simple Executive Orders API available")
-except ImportError as e:
-    print(f"⚠️ Simple Executive Orders API not available: {e}")
-    SIMPLE_EO_AVAILABLE = False
+# 4. LAZY LOADING: Don't import executive orders at startup - only when needed
+# This prevents executive orders logic from running when state legislation is fetched
+SIMPLE_EO_AVAILABLE = False
+fetch_executive_orders_simple_integration = None
+SimpleProclamations = None  
+SimpleExecutiveOrders = None
+
+def load_executive_orders_module():
+    """Lazy load executive orders module only when explicitly needed"""
+    global SIMPLE_EO_AVAILABLE, fetch_executive_orders_simple_integration, SimpleProclamations, SimpleExecutiveOrders
+    
+    if SIMPLE_EO_AVAILABLE:
+        return True  # Already loaded
+        
+    try:
+        from simple_executive_orders import \
+            fetch_executive_orders_simple_integration as _fetch, \
+            SimpleProclamations as _proc, \
+            SimpleExecutiveOrders as _eo
+        
+        fetch_executive_orders_simple_integration = _fetch
+        SimpleProclamations = _proc
+        SimpleExecutiveOrders = _eo
+        SIMPLE_EO_AVAILABLE = True
+        print("✅ Executive Orders module loaded on demand")
+        return True
+    except ImportError as e:
+        print(f"⚠️ Simple Executive Orders API not available: {e}")
+        return False
 
 
 # Import Azure SQL database functions
@@ -2479,7 +2544,10 @@ def save_executive_orders_to_db(orders):
             cleaned_orders.append(cleaned_order)
         
         print(f"🔍 Saving {len(cleaned_orders)} executive orders (cleaned data)")
-        return save_legislation_to_azure_sql(cleaned_orders)
+        # Executive orders should NOT use save_legislation_to_azure_sql as it saves to wrong table
+        # They should use their own executive orders save function
+        from executive_orders_db import save_executive_orders_to_db as eo_save_func
+        return eo_save_func(cleaned_orders)
         
     except Exception as e:
         print(f"❌ Error saving executive orders: {e}")
@@ -2635,10 +2703,11 @@ async def run_executive_orders_pipeline():
     try:
         logger.info("🚀 Starting Executive Orders Pipeline")
         
-        if not SIMPLE_EO_AVAILABLE:
+        # Lazy load executive orders module only when needed
+        if not load_executive_orders_module():
             return {
                 "success": False,
-                "message": "Simple Executive Orders API not available"
+                "message": "Executive Orders API not available"
             }
         
         # Use the updated integration function
@@ -2703,10 +2772,11 @@ async def quick_executive_orders_pipeline():
     try:
         logger.info("⚡ Starting Quick Executive Orders Pipeline")
         
-        if not SIMPLE_EO_AVAILABLE:
+        # Lazy load executive orders module only when needed
+        if not load_executive_orders_module():
             return {
                 "success": False,
-                "message": "Simple Executive Orders API not available"
+                "message": "Executive Orders API not available"
             }
         
         # Quick fetch with limit
@@ -3313,6 +3383,105 @@ def get_state_legislation_from_db(limit=100, offset=0, filters=None):
             'count': 0
         }
 
+def save_bills_to_state_legislation_table(bills):
+    """Save bills to the state_legislation table (not the legislation/executive_orders table)"""
+    try:
+        if not bills:
+            return 0
+            
+        from database_config import get_db_connection
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            saved_count = 0
+            
+            for bill in bills:
+                try:
+                    # Map bill data to state_legislation table columns
+                    params = (
+                        bill.get('bill_id', ''),
+                        bill.get('bill_number', ''),
+                        bill.get('title', ''),
+                        bill.get('description', ''),
+                        bill.get('state', ''),
+                        bill.get('state_abbr', ''),
+                        bill.get('status', ''),
+                        bill.get('category', 'not-applicable'),
+                        bill.get('introduced_date', ''),
+                        bill.get('last_action_date', ''),
+                        bill.get('session_id', ''),
+                        bill.get('session_name', ''),
+                        bill.get('bill_type', ''),
+                        bill.get('body', ''),
+                        bill.get('legiscan_url', ''),
+                        bill.get('pdf_url', ''),
+                        bill.get('ai_summary', ''),
+                        bill.get('ai_executive_summary', ''),
+                        bill.get('ai_talking_points', ''),
+                        bill.get('ai_key_points', ''),
+                        bill.get('ai_business_impact', ''),
+                        bill.get('ai_potential_impact', ''),
+                        bill.get('ai_version', ''),
+                        bill.get('legiscan_status', '')
+                    )
+                    
+                    # Use MERGE to avoid duplicates
+                    merge_sql = """
+                    MERGE dbo.state_legislation AS target
+                    USING (SELECT ? as bill_id) AS source
+                    ON (target.bill_id = source.bill_id)
+                    WHEN MATCHED THEN
+                        UPDATE SET 
+                            bill_number = ?,
+                            title = ?,
+                            description = ?,
+                            state = ?,
+                            state_abbr = ?,
+                            status = ?,
+                            category = ?,
+                            introduced_date = ?,
+                            last_action_date = ?,
+                            session_id = ?,
+                            session_name = ?,
+                            bill_type = ?,
+                            body = ?,
+                            legiscan_url = ?,
+                            pdf_url = ?,
+                            ai_summary = ?,
+                            ai_executive_summary = ?,
+                            ai_talking_points = ?,
+                            ai_key_points = ?,
+                            ai_business_impact = ?,
+                            ai_potential_impact = ?,
+                            ai_version = ?,
+                            legiscan_status = ?,
+                            last_updated = GETDATE()
+                    WHEN NOT MATCHED THEN
+                        INSERT (bill_id, bill_number, title, description, state, state_abbr, status, category, 
+                               introduced_date, last_action_date, session_id, session_name, bill_type, body,
+                               legiscan_url, pdf_url, ai_summary, ai_executive_summary, ai_talking_points, 
+                               ai_key_points, ai_business_impact, ai_potential_impact, ai_version, 
+                               legiscan_status, created_at, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE());
+                    """
+                    
+                    # Duplicate params for both MATCHED and NOT MATCHED clauses
+                    all_params = (bill.get('bill_id', ''),) + params[1:] + params
+                    
+                    cursor.execute(merge_sql, all_params)
+                    saved_count += 1
+                    
+                except Exception as e:
+                    print(f"❌ Failed to save bill {bill.get('bill_id', 'unknown')}: {e}")
+                    continue
+            
+            conn.commit()
+            print(f"✅ Saved {saved_count} bills to state_legislation table")
+            return saved_count
+            
+    except Exception as e:
+        print(f"❌ Error saving to state_legislation table: {e}")
+        return 0
+
 def save_state_legislation_to_db(bills):
     """Save state legislation to database using existing save_legislation_to_db"""
     try:
@@ -3331,8 +3500,8 @@ def save_state_legislation_to_db(bills):
                 del cleaned_bill['session']
             cleaned_bills.append(cleaned_bill)
         
-        print(f"🔍 Saving {len(cleaned_bills)} state bills to database")
-        return save_legislation_to_azure_sql(cleaned_bills)
+        print(f"🔍 Saving {len(cleaned_bills)} state bills to state_legislation table")
+        return save_bills_to_state_legislation_table(cleaned_bills)
         
     except Exception as e:
         print(f"❌ Error saving state legislation: {e}")
@@ -3627,7 +3796,7 @@ async def get_status():
         },
         "integrations": {
             # Your existing integrations
-            "simple_executive_orders": "available" if SIMPLE_EO_AVAILABLE else "not_available",
+            "simple_executive_orders": "lazy_load" if not SIMPLE_EO_AVAILABLE else "loaded",
             "azure_sql": "connected" if azure_sql_working else "not_configured",
             "highlights": "available" if HIGHLIGHTS_DB_AVAILABLE else "table_needed",
             "executive_orders_integration": "azure_sql_based" if EXECUTIVE_ORDERS_AVAILABLE else "not_available",
@@ -4917,6 +5086,317 @@ async def enhanced_search_and_analyze_endpoint(request: LegiScanSearchRequest):
             detail=f"Enhanced search and analyze failed: {str(e)}"
         )
 
+@app.post("/api/legiscan/check-and-update")
+async def check_and_update_bills_endpoint(request: dict):
+    """
+    Check for updates: Compare LegiScan API data with database, 
+    then process missing bills one-by-one with AI and save to database
+    """
+    try:
+        state = request.get('state')
+        if not state:
+            raise HTTPException(status_code=400, detail="State parameter is required")
+        
+        print(f"🔄 CHECK & UPDATE: Starting for state {state}")
+        
+        # Initialize clients
+        enhanced_client = EnhancedLegiScanClient()
+        
+        # Step 1: Get recent bills from LegiScan API for the state (use broader search)
+        print(f"📡 Fetching recent bills from LegiScan API for {state}...")
+        api_search_result = await enhanced_client.search_bills_enhanced(
+            state=state,
+            query="",  # Empty query to get all recent bills
+            limit=100,  # Start with smaller limit for testing
+            year_filter=None  # No year filter to get broader results
+        )
+        
+        if not api_search_result.get('success'):
+            raise HTTPException(status_code=500, detail="Failed to fetch bills from LegiScan API")
+        
+        api_bills = api_search_result.get('results', [])
+        print(f"📊 Found {len(api_bills)} bills in LegiScan API")
+        
+        # Step 2: Get all existing bills from database for comparison
+        print(f"🗃️ Fetching existing bills from database for {state}...")
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT bill_id, bill_number 
+                FROM dbo.state_legislation 
+                WHERE state_abbr = ? OR state = ?
+            """, (state, state))
+            
+            existing_bills = {}
+            for row in cursor.fetchall():
+                bill_id = row[0]
+                bill_number = row[1]
+                existing_bills[bill_id] = bill_number
+        
+        print(f"🗄️ Found {len(existing_bills)} existing bills in database")
+        
+        # Step 3: Compare and find missing bills
+        missing_bills = []
+        for bill in api_bills:
+            bill_id = bill.get('bill_id')
+            if bill_id and bill_id not in existing_bills:
+                missing_bills.append(bill)
+        
+        print(f"🔍 Found {len(missing_bills)} missing bills to process")
+        
+        if len(missing_bills) == 0:
+            return {
+                "success": True,
+                "message": f"Database is up to date for {state}",
+                "api_bills_found": len(api_bills),
+                "existing_bills": len(existing_bills),
+                "missing_bills": 0,
+                "processed_bills": 0
+            }
+        
+        # Step 4: Process missing bills one by one with AI
+        processed_count = 0
+        processed_bills = []
+        
+        print(f"🤖 Starting one-by-one AI processing...")
+        
+        for i, bill in enumerate(missing_bills):
+            try:
+                print(f"🔄 Processing bill {i+1}/{len(missing_bills)}: {bill.get('bill_number', 'Unknown')}")
+                
+                # Process with AI (the search already includes AI analysis)
+                processed_bill = bill  # Bills from enhanced search already have AI analysis
+                
+                # Save to database immediately after AI processing (use state_legislation table)
+                saved_count = save_state_legislation_to_db([processed_bill])
+                if saved_count > 0:
+                    processed_bills.append(processed_bill)
+                    processed_count += 1
+                    print(f"✅ Saved bill {processed_bill.get('bill_number', 'Unknown')} to database")
+                else:
+                    print(f"⚠️ Failed to save bill {processed_bill.get('bill_number', 'Unknown')}")
+                
+                # Small delay to prevent overwhelming the system
+                await asyncio.sleep(0.1)
+                
+            except Exception as bill_error:
+                print(f"❌ Error processing bill {bill.get('bill_number', 'Unknown')}: {bill_error}")
+                continue
+        
+        return {
+            "success": True,
+            "message": f"Update completed for {state}",
+            "api_bills_found": len(api_bills),
+            "existing_bills": len(existing_bills), 
+            "missing_bills": len(missing_bills),
+            "processed_bills": processed_count,
+            "results": processed_bills[:10] if processed_bills else []  # Return first 10 for preview
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ CHECK & UPDATE: Error: {e}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Check and update failed: {str(e)}"
+        )
+
+# Temporarily disabled for debugging
+# @app.post("/api/legiscan/fetch-recent")
+async def fetch_recent_bills_endpoint_disabled(request: dict):
+    """
+    Incremental fetch: Check DB for most recent bill, then fetch only newer bills from API
+    """
+    try:
+        state = request.get('state')
+        if not state:
+            raise HTTPException(status_code=400, detail="State parameter is required")
+        
+        print(f"🔄 INCREMENTAL FETCH: Starting for state {state}")
+        
+        # Step 1: Get most recent bill date from database
+        most_recent_date = get_most_recent_bill_date(state)
+        print(f"📅 Most recent bill date in DB: {most_recent_date}")
+        
+        # Step 2: Prepare search parameters based on most recent date
+        enhanced_ai = request.get('enhanced_ai', True)
+        limit = request.get('limit', 100)
+        
+        if most_recent_date:
+            # Use the date to filter API results
+            try:
+                from datetime import datetime, timedelta
+                if isinstance(most_recent_date, str):
+                    cutoff_date = datetime.fromisoformat(most_recent_date.replace('Z', '+00:00'))
+                else:
+                    cutoff_date = most_recent_date
+                
+                # Add 1 day buffer to ensure we don't miss any bills
+                search_from_date = cutoff_date - timedelta(days=1)
+                date_query = search_from_date.strftime('%Y-%m-%d')
+                print(f"📅 Searching for bills newer than: {date_query}")
+                
+            except Exception as date_error:
+                print(f"⚠️ Date parsing error: {date_error}, falling back to recent search")
+                date_query = "recent"
+        else:
+            print("📅 No existing bills found, fetching all recent bills")
+            date_query = "recent"
+        
+        # Step 3: Make async API call with date filtering and streaming
+        print(f"🚀 Making incremental API call with streaming enabled...")
+        
+        # Use the existing enhanced client for streaming
+        if not enhanced_ai_client:
+            raise HTTPException(
+                status_code=503, 
+                detail="Enhanced AI client not available"
+            )
+        
+        # Initialize clients for streaming
+        enhanced_client = EnhancedLegiScanClient()
+        
+        # Step 4: Process with chunking/streaming to handle large responses
+        results = []
+        processed_count = 0
+        
+        async def stream_process_bills():
+            nonlocal processed_count
+            try:
+                # Search bills with the date filter - with timeout handling
+                try:
+                    search_result = await asyncio.wait_for(
+                        enhanced_client.search_bills_enhanced(
+                            state=state,
+                            query=date_query,
+                            limit=limit,
+                            year_filter="current"
+                        ),
+                        timeout=60.0  # 60 second timeout for API call
+                    )
+                    bills = search_result.get('results', []) if isinstance(search_result, dict) else []
+                except asyncio.TimeoutError:
+                    print(f"⚠️ LegiScan API timeout after 60 seconds, retrying with smaller limit...")
+                    # Retry with smaller limit
+                    search_result = await asyncio.wait_for(
+                        enhanced_client.search_bills_enhanced(
+                            state=state,
+                            query=date_query,
+                            limit=min(limit, 25),  # Reduce limit
+                            year_filter="current"
+                        ),
+                        timeout=30.0  # 30 second timeout for retry
+                    )
+                    bills = search_result.get('results', []) if isinstance(search_result, dict) else []
+                
+                print(f"📊 Found {len(bills)} potentially new bills")
+                
+                # Process bills in chunks to avoid timeouts
+                chunk_size = 10
+                for i in range(0, len(bills), chunk_size):
+                    chunk = bills[i:i+chunk_size]
+                    print(f"🔄 Processing chunk {i//chunk_size + 1} ({len(chunk)} bills)")
+                    
+                    chunk_results = []
+                    
+                    # Process each bill in the chunk
+                    for bill in chunk:
+                        try:
+                            # Check if bill already exists to avoid duplicates
+                            with get_db_connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute("SELECT COUNT(*) FROM legislation WHERE bill_id = ?", (bill.get('bill_id', ''),))
+                                if cursor.fetchone()[0] > 0:
+                                    print(f"⏭️ Bill {bill.get('bill_number', '')} already exists, skipping")
+                                    continue
+                            
+                            # Process new bill - bills already have AI analysis from search
+                            chunk_results.append(bill)
+                                
+                            processed_count += 1
+                            
+                            # Small delay to prevent overwhelming the API/DB
+                            await asyncio.sleep(0.1)
+                            
+                        except Exception as bill_error:
+                            print(f"⚠️ Error processing bill {bill.get('bill_number', '')}: {bill_error}")
+                            continue
+                    
+                    # Save chunk to database
+                    if chunk_results:
+                        saved_count = save_state_legislation_to_db(chunk_results)
+                        print(f"✅ Saved chunk: {saved_count} bills")
+                        results.extend(chunk_results)
+                
+                return results
+                
+            except asyncio.TimeoutError as timeout_error:
+                print(f"⚠️ API timeout during processing: {timeout_error}")
+                # Return partial results if any
+                if results:
+                    print(f"📊 Returning {len(results)} partial results before timeout")
+                    return results
+                raise HTTPException(
+                    status_code=504,
+                    detail="LegiScan API is not responding. The service may be temporarily unavailable. Please try again later."
+                )
+            except Exception as stream_error:
+                print(f"❌ Streaming error: {stream_error}")
+                # Check if it's a connection error
+                if "Connection timeout" in str(stream_error) or "ConnectionResetError" in str(stream_error):
+                    raise HTTPException(
+                        status_code=503,
+                        detail="LegiScan API connection failed. The service may be experiencing issues. Please try again in a few minutes."
+                    )
+                raise
+        
+        # Execute the streaming process with overall timeout
+        try:
+            final_results = await asyncio.wait_for(
+                stream_process_bills(),
+                timeout=300.0  # 5 minute overall timeout
+            )
+        except asyncio.TimeoutError:
+            print(f"⚠️ Overall operation timeout after 5 minutes")
+            # Return any partial results
+            if results:
+                return {
+                    "success": True,
+                    "message": f"Partial incremental fetch completed for {state} (timeout)",
+                    "bills_found": len(results),
+                    "bills_processed": processed_count,
+                    "most_recent_date_before": most_recent_date,
+                    "search_query_used": date_query,
+                    "results": results[:10] if results else [],
+                    "warning": "Operation timed out but some bills were processed"
+                }
+            raise HTTPException(
+                status_code=504,
+                detail="Operation timed out after 5 minutes. LegiScan API may be slow or unavailable."
+            )
+        
+        return {
+            "success": True,
+            "message": f"Incremental fetch completed for {state}",
+            "bills_found": len(final_results),
+            "bills_processed": processed_count,
+            "most_recent_date_before": most_recent_date,
+            "search_query_used": date_query,
+            "results": final_results[:10] if final_results else []  # Return first 10 for preview
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ INCREMENTAL FETCH: Error: {e}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Incremental fetch failed: {str(e)}"
+        )
+
 @app.get("/api/test-enhanced-ai")
 async def test_enhanced_ai():
     """Test endpoint for enhanced AI integration"""
@@ -4978,10 +5458,11 @@ async def check_for_executive_order_updates():
     try:
         logger.info("🔍 Checking for executive order updates...")
         
-        if not SIMPLE_EO_AVAILABLE:
+        # Lazy load executive orders module only when needed
+        if not load_executive_orders_module():
             return {
                 "success": False,
-                "error": "Simple Executive Orders API not available",
+                "error": "Executive Orders API not available",
                 "has_updates": False,
                 "federal_count": 0,
                 "database_count": 0
@@ -5323,10 +5804,11 @@ async def fetch_executive_orders_simple_endpoint(request: ExecutiveOrderFetchReq
         logger.info(f"🚀 Starting executive orders fetch via Federal Register API")
         logger.info(f"📋 Request: {request.model_dump()}")
         
-        if not SIMPLE_EO_AVAILABLE:
+        # Lazy load executive orders module only when needed
+        if not load_executive_orders_module():
             raise HTTPException(
                 status_code=503,
-                detail="Simple Executive Orders API not available"
+                detail="Executive Orders API not available"
             )
         
         # First check what's new
@@ -7593,80 +8075,69 @@ async def check_existing_bills(
                 "recommendation": "fetch"
             }
         
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {
-                "success": False, 
-                "message": "Database connection failed",
-                "existing_count": 0,
-                "recommendation": "fetch"
-            }
-        
-        cursor = conn.cursor()
-        
-        # Build query based on session type
-        current_year = datetime.now().year
-        
-        if session_type == "current":
-            # Count bills from current year sessions
-            query = """
-            SELECT COUNT(*) 
-            FROM dbo.state_legislation 
-            WHERE state_abbr = ? 
-            AND (
-                session LIKE ? 
-                OR session LIKE ?
-                OR YEAR(last_updated) = ?
-            )
-            """
-            params = [state, f"%{current_year}%", f"%{current_year-1}%", current_year]
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
             
-        elif session_type == "recent":
-            # Count bills from last 30 days
-            query = """
-            SELECT COUNT(*) 
-            FROM dbo.state_legislation 
-            WHERE state_abbr = ? 
-            AND last_updated >= DATEADD(day, -30, GETDATE())
-            """
-            params = [state]
+            # Build query based on session type
+            current_year = datetime.now().year
             
-        else:  # session_type == "all"
-            # Count all bills for the state
-            query = """
-            SELECT COUNT(*) 
-            FROM dbo.state_legislation 
-            WHERE state_abbr = ?
-            """
-            params = [state]
-        
-        cursor.execute(query, params)
-        existing_count = cursor.fetchone()[0]
-        
-        # Also get total count for context
-        cursor.execute("SELECT COUNT(*) FROM dbo.state_legislation WHERE state_abbr = ?", [state])
-        total_count = cursor.fetchone()[0]
-        
-        # Get most recent update for this state
-        cursor.execute("""
-            SELECT TOP 1 last_updated 
-            FROM dbo.state_legislation 
-            WHERE state_abbr = ? 
-            ORDER BY last_updated DESC
-        """, [state])
-        last_update_row = cursor.fetchone()
-        if last_update_row and last_update_row[0]:
-            # Handle both datetime objects and string dates
-            last_update_value = last_update_row[0]
-            if hasattr(last_update_value, 'isoformat'):
-                last_updated = last_update_value.isoformat()
+            if session_type == "current":
+                # Count bills from current year sessions
+                query = """
+                SELECT COUNT(*) 
+                FROM dbo.state_legislation 
+                WHERE state_abbr = ? 
+                AND (
+                    session LIKE ? 
+                    OR session LIKE ?
+                    OR YEAR(last_updated) = ?
+                )
+                """
+                params = [state, f"%{current_year}%", f"%{current_year-1}%", current_year]
+                
+            elif session_type == "recent":
+                # Count bills from last 30 days
+                query = """
+                SELECT COUNT(*) 
+                FROM dbo.state_legislation 
+                WHERE state_abbr = ? 
+                AND last_updated >= DATEADD(day, -30, GETDATE())
+                """
+                params = [state]
+                
+            else:  # session_type == "all"
+                # Count all bills for the state
+                query = """
+                SELECT COUNT(*) 
+                FROM dbo.state_legislation 
+                WHERE state_abbr = ?
+                """
+                params = [state]
+            
+            cursor.execute(query, params)
+            existing_count = cursor.fetchone()[0]
+            
+            # Also get total count for context
+            cursor.execute("SELECT COUNT(*) FROM dbo.state_legislation WHERE state_abbr = ?", [state])
+            total_count = cursor.fetchone()[0]
+            
+            # Get most recent update for this state
+            cursor.execute("""
+                SELECT TOP 1 last_updated 
+                FROM dbo.state_legislation 
+                WHERE state_abbr = ? 
+                ORDER BY last_updated DESC
+            """, [state])
+            last_update_row = cursor.fetchone()
+            if last_update_row and last_update_row[0]:
+                # Handle both datetime objects and string dates
+                last_update_value = last_update_row[0]
+                if hasattr(last_update_value, 'isoformat'):
+                    last_updated = last_update_value.isoformat()
+                else:
+                    last_updated = str(last_update_value)
             else:
-                last_updated = str(last_update_value)
-        else:
-            last_updated = None
-        
-        cursor.close()
-        conn.close()
+                last_updated = None
         
         # Determine recommendation based on existing data
         if session_type == "current" and existing_count > 50:

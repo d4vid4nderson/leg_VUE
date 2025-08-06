@@ -1010,12 +1010,12 @@ const SettingsPage = ({
                     {showAdminAnalytics && (
                         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                             {/* Dashboard Header */}
-                            <div className="mb-4">
-                                <h4 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-3">Dashboard Overview</h4>
+                            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <h4 className="text-lg font-medium text-gray-700 dark:text-gray-300">Dashboard Overview</h4>
                                 <button
                                     onClick={fetchAnalyticsData}
                                     disabled={analyticsData.loading}
-                                    className={`w-full px-4 py-2 sm:px-3 sm:py-1 text-sm rounded-md transition-colors min-h-[44px] sm:min-h-[auto] flex items-center justify-center ${
+                                    className={`px-4 py-2 text-sm rounded-md transition-colors min-h-[44px] flex items-center justify-center w-full sm:w-auto ${
                                         analyticsData.loading 
                                             ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                                             : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
