@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import HR1PolicyBanner from './HR1PolicyBanner';
+import PWAInstallModal from './PWAInstallModal';
 import { getPageContainerClasses, getCardClasses, getTextClasses } from '../utils/darkModeClasses';
 import { usePageTracking } from '../hooks/usePageTracking';
 import {
@@ -39,7 +40,7 @@ import {
 } from 'lucide-react';
 
 // Mobile Availability Sticker Component
-const MobileSticker = () => {
+const MobileSticker = ({ onShowModal }) => {
     const [isVisible, setIsVisible] = useState(true);
     
     // Check localStorage to see if user has dismissed the sticker
@@ -50,9 +51,14 @@ const MobileSticker = () => {
         }
     }, []);
     
-    const handleDismiss = () => {
+    const handleDismiss = (e) => {
+        e.stopPropagation();
         setIsVisible(false);
         localStorage.setItem('mobileStickerDismissed', 'true');
+    };
+
+    const handleStickerClick = () => {
+        onShowModal();
     };
     
     if (!isVisible) return null;
@@ -86,17 +92,20 @@ const MobileSticker = () => {
                         pointer-events: none;
                     }
                 `}</style>
-                <div className="relative bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 text-white px-4 py-2 rounded-full text-xs sm:text-sm font-semibold shadow-lg flex items-center gap-2 border-2 border-white/80 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-105">
-                    <div className="shine-effect group-hover:animate-none group-hover:left-[-100%]"></div>
-                    <div className="shine-effect hidden group-hover:block group-hover:animate-[shine_1.5s_ease-in-out]"></div>
+                <div 
+                    onClick={handleStickerClick} 
+                    className="relative bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 text-white px-4 py-2 rounded-full text-xs sm:text-sm font-semibold shadow-lg flex items-center gap-2 border-2 border-white/80 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-105"
+                >
+                    <div className="shine-effect group-hover:animate-none group-hover:left-[-100%]" style={{zIndex: 1}}></div>
+                    <div className="shine-effect hidden group-hover:block group-hover:animate-[shine_1.5s_ease-in-out]" style={{zIndex: 1}}></div>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10">
                         <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
                         <line x1="12" y1="18" x2="12" y2="18"></line>
                     </svg>
-                    <span className="relative z-10">Now available on mobile devices</span>
+                    <span className="relative z-20">Now available on mobile devices</span>
                     <button 
                         onClick={handleDismiss}
-                        className="ml-1 hover:bg-white/20 rounded-full p-2 -m-1 transition-colors relative z-10 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                        className="ml-1 hover:bg-white/20 rounded-full p-2 -m-1 transition-colors relative z-30 min-w-[44px] min-h-[44px] flex items-center justify-center"
                         title="Dismiss"
                         aria-label="Dismiss mobile notification"
                     >
@@ -112,6 +121,8 @@ const Homepage = () => {
   const navigate = useNavigate();
   const [hoveredFeature, setHoveredFeature] = useState(null);
   const [hoveredButton, setHoveredButton] = useState(null);
+  const [showPWAModal, setShowPWAModal] = useState(false);
+  
 
   // Track page view
   usePageTracking('Homepage');
@@ -200,7 +211,7 @@ const Homepage = () => {
       <section className="relative overflow-hidden pt-12 pb-20 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
           {/* Mobile Sticker - Below HR1 Banner, Above Title */}
-          <MobileSticker />
+          <MobileSticker onShowModal={() => setShowPWAModal(true)} />
           
           <div className="text-center mb-12 mt-8">
             
@@ -763,6 +774,12 @@ const Homepage = () => {
           
         </div>
       </section>
+
+      {/* PWA Installation Modal */}
+      <PWAInstallModal 
+        isOpen={showPWAModal}
+        onClose={() => setShowPWAModal(false)}
+      />
     </div>
   );
 };

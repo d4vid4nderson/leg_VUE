@@ -83,19 +83,30 @@ const MobileMenuItem = ({ icon: Icon, label, badge, onClick, active = false, cla
     );
 };
 
-const MobileFederalSubmenu = ({ onNavigate }) => {
+const MobileFederalSubmenu = ({ onNavigate, isExpanded, setIsExpanded }) => {
     const location = useLocation();
     const navigate = useNavigate();
     
     return (
         <div>
             {/* Federal Legislation Header */}
-            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 dark:text-dark-text font-bold">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-800 dark:text-dark-text font-bold hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+            >
                 <ScrollText size={20} className="flex-shrink-0 text-gray-600 dark:text-dark-text-secondary" />
-                <span className="flex-1">Federal Legislation</span>
-            </div>
+                <span className="flex-1 text-left">Federal Legislation</span>
+                <ChevronRight 
+                    size={16} 
+                    className={
+                        "transition-transform duration-200 " + 
+                        (isExpanded ? 'rotate-90' : 'rotate-180')
+                    }
+                />
+            </button>
             
-            <div className="ml-8 space-y-1">
+            {isExpanded && (
+                <div className="ml-8 space-y-1">
                 {/* Executive Orders */}
                 <button
                     onClick={() => {
@@ -136,23 +147,35 @@ const MobileFederalSubmenu = ({ onNavigate }) => {
                     HR1 Policy Analysis
                 </button>
             </div>
+            )}
         </div>
     );
 };
 
-const MobileStateSubmenu = ({ onNavigate }) => {
+const MobileStateSubmenu = ({ onNavigate, isExpanded, setIsExpanded }) => {
     const location = useLocation();
     const navigate = useNavigate();
     
     return (
         <div>
             {/* State Legislation Header */}
-            <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 dark:text-dark-text font-bold">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-800 dark:text-dark-text font-bold hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+            >
                 <FileText size={20} className="flex-shrink-0 text-gray-600 dark:text-dark-text-secondary" />
-                <span className="flex-1">State Legislation</span>
-            </div>
+                <span className="flex-1 text-left">State Legislation</span>
+                <ChevronRight 
+                    size={16} 
+                    className={
+                        "transition-transform duration-200 " + 
+                        (isExpanded ? 'rotate-90' : 'rotate-180')
+                    }
+                />
+            </button>
             
-            <div className="ml-8 space-y-1">
+            {isExpanded && (
+                <div className="ml-8 space-y-1">
                 {/* All States Overview */}
                 <button
                     onClick={() => {
@@ -200,11 +223,12 @@ const MobileStateSubmenu = ({ onNavigate }) => {
                     );
                 })}
             </div>
+            )}
         </div>
     );
 };
 
-const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, highlightedCount, onLogout, onLogin }) => {
+const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, highlightedCount, onLogout, onLogin, mobileFederalExpanded, setMobileFederalExpanded, mobileStateExpanded, setMobileStateExpanded }) => {
     const navigate = useNavigate();
     const location = useLocation();
     
@@ -310,12 +334,20 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
                     {/* Separator */}
                     <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
                     
-                    <MobileFederalSubmenu onNavigate={onClose} />
+                    <MobileFederalSubmenu 
+                        onNavigate={onClose}
+                        isExpanded={mobileFederalExpanded}
+                        setIsExpanded={setMobileFederalExpanded}
+                    />
                     
                     {/* Separator */}
                     <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
-                    <MobileStateSubmenu onNavigate={onClose} />
+                    <MobileStateSubmenu 
+                        onNavigate={onClose}
+                        isExpanded={mobileStateExpanded}
+                        setIsExpanded={setMobileStateExpanded}
+                    />
                     
                     {/* Separator */}
                     <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
@@ -358,6 +390,10 @@ const MobileNavigationMenu = ({ isOpen, onClose, currentUser, isAuthenticated, h
 const Header = ({
     showDropdown,
     setShowDropdown,
+    desktopFederalExpanded,
+    setDesktopFederalExpanded,
+    desktopStateExpanded,
+    setDesktopStateExpanded,
     dropdownRef,
     isAuthenticated,
     currentUser,
@@ -373,6 +409,8 @@ const Header = ({
     const [showInfoModal, setShowInfoModal] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+    const [mobileFederalExpanded, setMobileFederalExpanded] = useState(false);
+    const [mobileStateExpanded, setMobileStateExpanded] = useState(false);
 
     const handleMenuItemClick = (action) => {
         action();
@@ -519,14 +557,25 @@ const Header = ({
 
                                         {/* Federal Legislation Header */}
                                         <div className="px-6 py-2">
-                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-dark-text">
+                                            <button
+                                                onClick={() => setDesktopFederalExpanded(!desktopFederalExpanded)}
+                                                className="w-full flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-dark-text hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+                                            >
                                                 <ScrollText size={16} className="text-gray-800 dark:text-dark-text" />
-                                                <span>Federal Legislation</span>
-                                            </div>
+                                                <span className="flex-1 text-left">Federal Legislation</span>
+                                                <ChevronRight 
+                                                    size={14} 
+                                                    className={
+                                                        "transition-transform duration-200 " + 
+                                                        (desktopFederalExpanded ? 'rotate-90' : 'rotate-180')
+                                                    }
+                                                />
+                                            </button>
                                         </div>
 
                                         {/* Federal Submenu Items */}
-                                        <div className="mb-2">
+                                        {desktopFederalExpanded && (
+                                            <div className="mb-2">
                                             {/* Executive Orders - Sub-item under Federal Legislation */}
                                             <button
                                                 onClick={() => handleMenuItemClick(() => navigate('/executive-orders'))}
@@ -553,20 +602,32 @@ const Header = ({
                                                 HR1 Policy Analysis
                                             </button>
                                         </div>
+                                        )}
 
                                         {/* Separator */}
                                         <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
 
                                         {/* State Legislation Header */}
                                         <div className="px-6 py-2">
-                                            <div className="flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-dark-text">
+                                            <button
+                                                onClick={() => setDesktopStateExpanded(!desktopStateExpanded)}
+                                                className="w-full flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-dark-text hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200"
+                                            >
                                                 <FileText size={16} className="text-gray-800 dark:text-dark-text" />
-                                                <span>State Legislation</span>
-                                            </div>
+                                                <span className="flex-1 text-left">State Legislation</span>
+                                                <ChevronRight 
+                                                    size={14} 
+                                                    className={
+                                                        "transition-transform duration-200 " + 
+                                                        (desktopStateExpanded ? 'rotate-90' : 'rotate-180')
+                                                    }
+                                                />
+                                            </button>
                                         </div>
 
                                         {/* State Submenu Items */}
-                                        <div className="mb-2">
+                                        {desktopStateExpanded && (
+                                            <div className="mb-2">
                                             {/* State Overview Page */}
                                             <button
                                                 onClick={() => handleMenuItemClick(() => navigate('/state-legislation'))}
@@ -599,6 +660,7 @@ const Header = ({
                                                 );
                                             })}
                                         </div>
+                                        )}
 
                                         {/* Separator */}
                                         <div className="border-t border-gray-200 dark:border-dark-border my-2"></div>
@@ -656,6 +718,10 @@ const Header = ({
                 highlightedCount={highlightedCount}
                 onLogout={onLogout}
                 onLogin={onLogin}
+                mobileFederalExpanded={mobileFederalExpanded}
+                setMobileFederalExpanded={setMobileFederalExpanded}
+                mobileStateExpanded={mobileStateExpanded}
+                setMobileStateExpanded={setMobileStateExpanded}
             />
 
             {/* Information Modal */}
