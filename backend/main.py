@@ -9451,7 +9451,7 @@ async def global_search(
                     SELECT TOP 50 eo_number, title, category, 
                            ai_summary, ai_executive_summary, summary,
                            ai_talking_points, ai_business_impact, ai_potential_impact,
-                           signing_date, publication_date, html_url, pdf_url
+                           signing_date, publication_date, html_url, pdf_url, ai_key_points
                     FROM dbo.executive_orders
                     WHERE (
                         LOWER(eo_number) LIKE ? OR
@@ -9462,11 +9462,12 @@ async def global_search(
                         LOWER(category) LIKE ? OR
                         LOWER(ai_talking_points) LIKE ? OR
                         LOWER(ai_business_impact) LIKE ? OR
-                        LOWER(ai_potential_impact) LIKE ?
+                        LOWER(ai_potential_impact) LIKE ? OR
+                        LOWER(ai_key_points) LIKE ?
                     )
                     """
                     
-                    params = [f"%{search_term}%"] * 9
+                    params = [f"%{search_term}%"] * 10
                     
                     if category:
                         eo_query += " AND LOWER(category) = ?"
@@ -9499,7 +9500,8 @@ async def global_search(
                             "signing_date": str(row[9]) if row[9] else None,
                             "publication_date": str(row[10]) if row[10] else None,
                             "url": row[11] or "",
-                            "pdf_url": row[12] or ""
+                            "pdf_url": row[12] or "",
+                            "ai_key_points": row[13] or ""
                         })
                     
                     cursor.close()

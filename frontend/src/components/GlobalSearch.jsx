@@ -500,23 +500,23 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
       />
 
       {/* Search Modal */}
-      <div className="relative min-h-screen flex items-start justify-center pt-8 px-4 z-[302]">
-        <div className={`relative w-full ${showDetailView ? 'max-w-7xl' : 'max-w-4xl'} ${getCardClasses()} rounded-xl shadow-2xl animate-bounce-in overflow-hidden transition-all duration-300`}>
-          <div className="flex">
+      <div className="relative min-h-screen flex items-start justify-center pt-4 md:pt-8 px-2 md:px-4 z-[302]">
+        <div className={`relative w-full ${showDetailView ? 'max-w-7xl' : 'max-w-4xl'} ${getCardClasses()} rounded-lg md:rounded-xl shadow-2xl animate-bounce-in overflow-hidden transition-all duration-300`}>
+          <div className="flex flex-col md:flex-row">
             
             {/* Search Results Panel */}
-            <div className={`${showDetailView ? 'w-1/2' : 'w-full'} flex-shrink-0 transition-all duration-300`}>
+            <div className={`${showDetailView ? 'hidden md:block md:w-1/2' : 'w-full'} flex-shrink-0 transition-all duration-300`}>
               {/* Header */}
-              <div className="border-b border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex items-center gap-3">
-              <Search size={20} className="text-gray-400 dark:text-gray-500" />
+              <div className="border-b border-gray-200 dark:border-gray-700 p-3 md:p-4">
+            <div className="flex items-center gap-2 md:gap-3">
+              <Search size={20} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search bills, orders by number, title, text, or practice area..."
-                className="flex-1 bg-transparent outline-none text-lg placeholder-gray-400 dark:placeholder-gray-500"
+                placeholder="Search bills, orders..."
+                className="flex-1 bg-transparent outline-none text-base md:text-lg placeholder-gray-400 dark:placeholder-gray-500 min-w-0"
               />
               {isLoading && (
                 <Loader2 size={20} className="animate-spin text-blue-500" />
@@ -541,12 +541,12 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-3 mt-4 flex-wrap">
+            <div className="flex flex-col space-y-3 mt-3 md:mt-4 md:flex-row md:space-y-0 md:space-x-3">
               {/* Type Filter */}
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 touch-manipulation"
               >
                 <option value="all">All Types</option>
                 <option value="executive_orders">Executive Orders</option>
@@ -557,7 +557,7 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 touch-manipulation"
               >
                 <option value="all">All Practice Areas</option>
                 <option value="civic">Civic</option>
@@ -572,7 +572,7 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
                 <select
                   value={selectedState}
                   onChange={(e) => setSelectedState(e.target.value)}
-                  className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 touch-manipulation"
                 >
                   <option value="all">All States</option>
                   {Object.entries(SUPPORTED_STATES).map(([stateName, stateCode]) => (
@@ -616,7 +616,7 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
                   <button
                     key={`${item.type}-${item.id}`}
                     onClick={() => handleItemClick(item)}
-                    className="w-full p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                    className="w-full p-4 md:p-4 hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 transition-colors text-left touch-manipulation"
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
@@ -700,43 +700,45 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
 
             {/* Detail View Panel */}
             {showDetailView && (
-            <div className={`w-1/2 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 transition-all duration-300 ${showDetailView ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}>
+            <div className={`w-full md:w-1/2 flex-shrink-0 md:border-l border-gray-200 dark:border-gray-700 transition-all duration-300 ${showDetailView ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}>
               {selectedItem ? (
                 <div className="h-full">
                   {/* Detail Header */}
-                  <div className="border-b border-gray-200 dark:border-gray-700 p-4">
+                  <div className="border-b border-gray-200 dark:border-gray-700 p-3 md:p-4">
                     <div className="flex items-center gap-3">
                       <button
                         onClick={handleBackToResults}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        className="p-3 md:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation"
+                        title="Back to search results"
                       >
-                        <ChevronLeft size={20} />
+                        <ChevronLeft size={24} className="md:w-5 md:h-5" />
                       </button>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
                         {getTypeIcon(selectedItem.type)}
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                        <span className="font-medium text-gray-900 dark:text-gray-100 truncate text-sm md:text-base">
                           {getTypeLabel(selectedItem.type)}
                         </span>
                       </div>
                       <button
                         onClick={onClose}
-                        className="ml-auto p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        className="p-3 md:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation md:hidden"
+                        title="Close search"
                       >
-                        <X size={20} />
+                        <X size={24} />
                       </button>
                     </div>
                   </div>
 
                   {/* Detail Content */}
-                  <div className="max-h-[70vh] overflow-y-auto p-6">
+                  <div className="flex-1 overflow-y-auto p-4 md:p-6 max-h-[calc(100vh-8rem)] md:max-h-[70vh]">
                     {selectedItem.type === 'executive_order' ? (
                       /* Executive Order Detail */
                       <div className="space-y-6">
                         <div>
-                          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+                          <h2 className="text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100 mb-3 md:mb-2 leading-tight">
                             {selectedItem.title}
                           </h2>
-                          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm mb-3 sm:mb-4">
+                          <div className="flex flex-wrap items-center gap-2 md:gap-3 text-sm mb-4">
                             <div className="text-gray-600 dark:text-gray-400 flex items-center gap-2">
                               <Hash size={14} className="text-blue-600 dark:text-blue-400" />
                               <span className="font-medium">{selectedItem.executive_order_number || selectedItem.eo_number}</span>
@@ -851,12 +853,12 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
                       /* State Legislation Detail */
                       <div className="space-y-6">
                         <div>
-                          <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 mb-4 leading-tight">
+                          <h2 className="text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100 mb-4 leading-tight">
                             {selectedItem.title}
                           </h2>
                           
                           {/* Metadata Row */}
-                          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 text-xs sm:text-sm mb-4">
+                          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 md:gap-2 text-sm mb-4">
                             <div className="text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
                               <Hash size={16} className="text-blue-600 dark:text-blue-400" />
                               <span className="font-medium">{selectedItem.bill_number || 'Unknown'}</span>
