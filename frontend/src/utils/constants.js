@@ -8,7 +8,15 @@ import {
   Ban,
   ScrollText,
   FileText,
-  LayoutGrid      
+  LayoutGrid,
+  Shield,
+  Zap,
+  Leaf,
+  DollarSign,
+  Cpu,
+  TrendingUp,
+  Globe,
+  HelpCircle
 } from 'lucide-react';
 
 // Filter configuration
@@ -55,9 +63,49 @@ export const getCategoryTagClass = (filterKey) => {
     'education': 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300',
     'engineering': 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
     'healthcare': 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
+    'defense': 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300',
+    'energy': 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300',
+    'environment': 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300',
+    'finance': 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300',
+    'technology': 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-300',
+    'trade': 'bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-300',
+    'international': 'bg-violet-100 dark:bg-violet-900/30 text-violet-800 dark:text-violet-300',
+    'other': 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300',
     'not-applicable': 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300',
   };
   return styles[filterKey] || 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300';
+};
+
+// Get category icon component (returns the component, not JSX)
+export const getCategoryIcon = (category) => {
+  switch (category?.toLowerCase()) {
+    case 'civic':
+      return Building;
+    case 'education':
+      return GraduationCap;
+    case 'engineering':
+      return Wrench;
+    case 'healthcare':
+      return HeartPulse;
+    case 'defense':
+      return Shield;
+    case 'energy':
+      return Zap;
+    case 'environment':
+      return Leaf;
+    case 'finance':
+      return DollarSign;
+    case 'technology':
+      return Cpu;
+    case 'trade':
+      return TrendingUp;
+    case 'international':
+      return Globe;
+    case 'not-applicable':
+      return Ban;
+    default:
+      return HelpCircle;
+  }
 };
 
 export const filterStyles = {

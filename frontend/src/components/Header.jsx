@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ApplicationInfoModal from './ApplicationInfoModal';
 import DarkModeToggle from './DarkModeToggle';
+import GlobalSearch from './GlobalSearch';
 import {
     Building,
     GraduationCap,
@@ -147,7 +148,7 @@ const MobileStateSubmenu = ({ onNavigate }) => {
         <div>
             {/* State Legislation Header */}
             <div className="flex items-center gap-3 px-3 py-2.5 text-gray-800 dark:text-dark-text font-bold">
-                <MapIcon size={20} className="flex-shrink-0 text-gray-600 dark:text-dark-text-secondary" />
+                <FileText size={20} className="flex-shrink-0 text-gray-600 dark:text-dark-text-secondary" />
                 <span className="flex-1">State Legislation</span>
             </div>
             
@@ -371,11 +372,25 @@ const Header = ({
     // State management
     const [showInfoModal, setShowInfoModal] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [showGlobalSearch, setShowGlobalSearch] = useState(false);
 
     const handleMenuItemClick = (action) => {
         action();
         setShowDropdown(false);
     };
+
+    // Keyboard shortcut for search (Cmd/Ctrl + K)
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                setShowGlobalSearch(true);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     return (
         <>
@@ -411,6 +426,14 @@ const Header = ({
                         {/* Right Side Navigation */}
                         <div className="flex items-center gap-2">
                             
+                            {/* Global Search Button */}
+                            <button
+                                onClick={() => setShowGlobalSearch(true)}
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-dark-text-secondary hover:text-gray-800 dark:hover:text-dark-text hover:bg-gray-100 dark:hover:bg-dark-bg-tertiary transition-all duration-300 border border-gray-200 dark:border-dark-border"
+                                title="Search (Ctrl+K)"
+                            >
+                                <Search size={18} />
+                            </button>
 
                             {/* Dark Mode Toggle */}
                             <DarkModeToggle />
@@ -639,6 +662,12 @@ const Header = ({
             <ApplicationInfoModal
                 isOpen={showInfoModal}
                 onClose={() => setShowInfoModal(false)}
+            />
+
+            {/* Global Search Modal */}
+            <GlobalSearch
+                isOpen={showGlobalSearch}
+                onClose={() => setShowGlobalSearch(false)}
             />
         </>
     );

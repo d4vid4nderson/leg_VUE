@@ -46,7 +46,7 @@ from executive_orders_db import (add_highlight_direct, create_highlights_table,
                                  remove_highlight_direct)
 # FastAPI imports
 from fastapi import (BackgroundTasks, FastAPI, HTTPException, Path, Query,
-                     Request)
+                     Request, Response)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
@@ -1951,6 +1951,11 @@ app.add_middleware(
 # Add response compression middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+# Serve favicon to avoid 404 errors
+@app.get("/favicon.ico")
+async def favicon():
+    """Return a simple redirect or empty response for favicon requests"""
+    return Response(status_code=204)  # No Content
 
 # Handle OPTIONS requests explicitly
 # @app.options("/{path:path}")
@@ -9397,23 +9402,254 @@ if __name__ == "__main__":
     
     if AZURE_SQL_AVAILABLE and enhanced_ai_client:
         print(f"🚀 FULL ENHANCED INTEGRATION READY!")
-        print(f"   • Enhanced AI Processing ✅")
-        print(f"   • State Legislation API integration ✅")
-        print(f"   • Federal Register API integration ✅")
-        print(f"   • Azure SQL database integration ✅") 
-        print(f"   • Highlights system working ✅")
-        print(f"   • Frontend endpoint /api/state-legislation ✅")
-        print(f"   • Enhanced one-by-one processing workflow ✅")
-        print(f"   • 12-category bill classification ✅")
-        print(f"   • Professional HTML formatting ✅")
-    elif AZURE_SQL_AVAILABLE:
-        print(f"🔶 PARTIAL INTEGRATION READY!")
-        print(f"   • Basic functionality available")
-        print(f"   • Enhanced AI not configured")
-    else:
-        print(f"⚠️  Some integrations not available")
+
+# =====================================
+# GLOBAL SEARCH ENDPOINT
+# =====================================
+@app.get("/api/search")
+async def global_search(
+    q: str,
+    type: str = None,
+    state: str = None,
+    category: str = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """
+    Global fuzzy search endpoint that searches across all data types.
     
-    print("")
+    Parameters:
+    - q: Search query (bill number, title, text, practice area)  
+    - type: Filter by type (executive_orders, state_legislation, proclamations)
+    - state: Filter by state (for state legislation)
+    - category: Filter by category
+    - limit: Maximum results per type
+    - offset: Pagination offset
+    """
+    try:
+        if not q or len(q.strip()) < 2:
+            return {"results": [], "message": "Search query must be at least 2 characters"}
+        
+        search_term = q.strip().lower()
+        results = {
+            "executive_orders": [],
+            "state_legislation": [],
+            "proclamations": [],
+            "total_count": 0,
+            "search_term": q
+        }
+        
+        # Search Executive Orders if type is not specified or includes executive_orders  
+        if not type or type == "executive_orders":
+            try:
+                conn = get_azure_sql_connection()
+                if conn:
+                    cursor = conn.cursor()
+                    
+                    # Build search query for executive orders (from executive_orders table)
+                    eo_query = """
+                    SELECT TOP 50 eo_number, title, category, 
+                           ai_summary, ai_executive_summary, summary,
+                           ai_talking_points, ai_business_impact, ai_potential_impact,
+                           signing_date, publication_date, html_url, pdf_url
+                    FROM dbo.executive_orders
+                    WHERE (
+                        LOWER(eo_number) LIKE ? OR
+                        LOWER(title) LIKE ? OR
+                        LOWER(ai_summary) LIKE ? OR
+                        LOWER(ai_executive_summary) LIKE ? OR
+                        LOWER(summary) LIKE ? OR
+                        LOWER(category) LIKE ? OR
+                        LOWER(ai_talking_points) LIKE ? OR
+                        LOWER(ai_business_impact) LIKE ? OR
+                        LOWER(ai_potential_impact) LIKE ?
+                    )
+                    """
+                    
+                    params = [f"%{search_term}%"] * 9
+                    
+                    if category:
+                        eo_query += " AND LOWER(category) = ?"
+                        params.append(category.lower())
+                    
+                    eo_query += " ORDER BY signing_date DESC"
+                    
+                    cursor.execute(eo_query, params)
+                    rows = cursor.fetchall()
+                    
+                    for row in rows:
+                        # Debug: Check if AI fields are present
+                        logger.info(f"DEBUG: Processing EO {row[0]}")
+                        logger.info(f"DEBUG: ai_talking_points present: {bool(row[6])}")
+                        logger.info(f"DEBUG: ai_business_impact present: {bool(row[7])}")
+                        logger.info(f"DEBUG: ai_potential_impact present: {bool(row[8])}")
+                        results["executive_orders"].append({
+                            "id": f"eo_{row[0]}",
+                            "type": "executive_order", 
+                            "executive_order_number": row[0],
+                            "eo_number": row[0],
+                            "title": row[1] or "",
+                            "category": row[2] or "",
+                            "ai_summary": row[3] or "",
+                            "ai_executive_summary": row[4] or "",
+                            "description": row[5] or "",
+                            "ai_talking_points": row[6] or "",
+                            "ai_business_impact": row[7] or "",
+                            "ai_potential_impact": row[8] or "",
+                            "signing_date": str(row[9]) if row[9] else None,
+                            "publication_date": str(row[10]) if row[10] else None,
+                            "url": row[11] or "",
+                            "pdf_url": row[12] or ""
+                        })
+                    
+                    cursor.close()
+                    conn.close()
+            except Exception as e:
+                logger.error(f"Error searching executive orders: {e}")
+        
+        # Search State Legislation if type is not specified or includes state_legislation
+        if not type or type == "state_legislation":
+            try:
+                conn = get_azure_sql_connection()
+                if conn:
+                    cursor = conn.cursor()
+                    
+                    # Build search query for state legislation
+                    sl_query = """
+                    SELECT id, bill_id, bill_number, title, description, state, state_abbr,
+                           status, category, session_name, bill_type, introduced_date,
+                           last_action_date, legiscan_url, ai_summary, ai_talking_points,
+                           ai_business_impact, ai_potential_impact
+                    FROM dbo.state_legislation
+                    WHERE (
+                        LOWER(bill_number) LIKE ? OR
+                        LOWER(title) LIKE ? OR
+                        LOWER(description) LIKE ? OR
+                        LOWER(ai_summary) LIKE ? OR
+                        LOWER(ai_talking_points) LIKE ? OR
+                        LOWER(ai_business_impact) LIKE ? OR
+                        LOWER(ai_potential_impact) LIKE ? OR
+                        LOWER(category) LIKE ? OR
+                        LOWER(state) LIKE ? OR
+                        LOWER(state_abbr) LIKE ?
+                    )
+                    """
+                    
+                    params = [f"%{search_term}%"] * 10
+                    
+                    if state:
+                        sl_query += " AND (LOWER(state) = ? OR LOWER(state_abbr) = ?)"
+                        params.extend([state.lower(), state.upper()])
+                    
+                    if category:
+                        sl_query += " AND LOWER(category) = ?"
+                        params.append(category.lower())
+                    
+                    sl_query += " ORDER BY last_action_date DESC"
+                    sl_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+                    
+                    cursor.execute(sl_query, params)
+                    rows = cursor.fetchall()
+                    
+                    for row in rows:
+                        results["state_legislation"].append({
+                            "id": row[0],
+                            "type": "state_legislation",
+                            "bill_id": row[1],
+                            "bill_number": row[2],
+                            "title": row[3],
+                            "description": row[4],
+                            "state": row[5],
+                            "state_abbr": row[6],
+                            "status": row[7],
+                            "category": row[8],
+                            "session_name": row[9],
+                            "bill_type": row[10],
+                            "introduced_date": str(row[11]) if row[11] else None,
+                            "last_action_date": str(row[12]) if row[12] else None,
+                            "legiscan_url": row[13],
+                            "ai_summary": row[14],
+                            "ai_talking_points": row[15],
+                            "ai_business_impact": row[16],
+                            "ai_potential_impact": row[17]
+                        })
+                    
+                    cursor.close()
+                    conn.close()
+            except Exception as e:
+                logger.error(f"Error searching state legislation: {e}")
+        
+        # Search Proclamations if type is not specified or includes proclamations
+        if not type or type == "proclamations":
+            try:
+                conn = get_azure_sql_connection()
+                if conn:
+                    cursor = conn.cursor()
+                    
+                    # Check if proclamations table exists
+                    cursor.execute("""
+                        SELECT COUNT(*) 
+                        FROM INFORMATION_SCHEMA.TABLES 
+                        WHERE TABLE_NAME = 'proclamations' AND TABLE_SCHEMA = 'dbo'
+                    """)
+                    
+                    if cursor.fetchone()[0] > 0:
+                        # Build search query for proclamations
+                        proc_query = """
+                        SELECT id, proclamation_number, title, president, category,
+                               ai_summary, date_signed, url
+                        FROM dbo.proclamations
+                        WHERE (
+                            LOWER(proclamation_number) LIKE ? OR
+                            LOWER(title) LIKE ? OR
+                            LOWER(ai_summary) LIKE ? OR
+                            LOWER(category) LIKE ? OR
+                            LOWER(president) LIKE ?
+                        )
+                        """
+                        
+                        params = [f"%{search_term}%"] * 5
+                        
+                        if category:
+                            proc_query += " AND LOWER(category) = ?"
+                            params.append(category.lower())
+                        
+                        proc_query += " ORDER BY date_signed DESC"
+                        proc_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+                        
+                        cursor.execute(proc_query, params)
+                        rows = cursor.fetchall()
+                        
+                        for row in rows:
+                            results["proclamations"].append({
+                                "id": row[0],
+                                "type": "proclamation",
+                                "proclamation_number": row[1],
+                                "title": row[2],
+                                "president": row[3],
+                                "category": row[4],
+                                "ai_summary": row[5],
+                                "date_signed": row[6].isoformat() if row[6] else None,
+                                "url": row[7]
+                            })
+                    
+                    cursor.close()
+                    conn.close()
+            except Exception as e:
+                logger.error(f"Error searching proclamations: {e}")
+        
+        # Calculate total count
+        results["total_count"] = (
+            len(results["executive_orders"]) + 
+            len(results["state_legislation"]) + 
+            len(results["proclamations"])
+        )
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"❌ Error in global search: {e}")
+        return {"error": str(e), "results": {}}
     
     # Test database connection on startup
     print("🔍 Testing database connection...")
