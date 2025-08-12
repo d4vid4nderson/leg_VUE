@@ -1,0 +1,14 @@
+[Unit]
+Description=Nightly Bill Update Service
+After=network.target
+
+[Service]
+Type=oneshot
+User=david.anderson
+WorkingDirectory=/Users/david.anderson/Downloads/PoliticalVue/backend
+ExecStart=/Users/david.anderson/Downloads/PoliticalVue/backend/scripts/run_nightly_update.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

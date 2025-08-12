@@ -462,7 +462,7 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
               <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Zap className="w-4 h-4 text-white" />
               </div>
-              <span className="text-gray-700 dark:text-dark-text-secondary">Click "Check for Updates" to fetch new orders with AI analysis</span>
+              <span className="text-gray-700 dark:text-dark-text-secondary">Click "Fetch" to fetch new orders with AI analysis</span>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -669,8 +669,8 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                   <div>
-                    <strong className="text-gray-900 dark:text-dark-text">Use "Check for Updates" for Executive Orders</strong>
-                    <p className="text-gray-600 dark:text-dark-text-secondary">Click "Check for Updates" to see if new Executive Orders are available</p>
+                    <strong className="text-gray-900 dark:text-dark-text">Use "Fetch" for Executive Orders</strong>
+                    <p className="text-gray-600 dark:text-dark-text-secondary">Click "Fetch" to see if new Executive Orders are available</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">

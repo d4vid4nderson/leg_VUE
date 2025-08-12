@@ -29,14 +29,16 @@ class LegiScanService(EnhancedLegiScanClient):
     async def get_updated_bills(self, 
                               session_id: str, 
                               since: Optional[datetime] = None,
-                              state_code: Optional[str] = None) -> List[Dict]:
+                              state_code: Optional[str] = None,
+                              force_check_all: bool = False) -> List[Dict]:
         """
-        Get bills updated since a specific timestamp
+        Get bills updated since a specific timestamp with enhanced status tracking
         
         Args:
             session_id: Legislative session ID
             since: Only get bills updated after this timestamp
             state_code: State code for filtering
+            force_check_all: If True, check all bills regardless of timestamp (for status updates)
             
         Returns:
             List of updated bills
@@ -54,18 +56,23 @@ class LegiScanService(EnhancedLegiScanClient):
             # Get bill list for session
             bills = await self.get_session_bills(session_id, state_code)
             
-            # Filter bills updated since timestamp
+            # Process bills - check for updates or status changes
             updated_bills = []
             for bill in bills:
-                if await self.is_bill_updated_since(bill, since):
+                should_include = force_check_all or await self.is_bill_updated_since(bill, since)
+                
+                if should_include:
                     # Get detailed bill information
                     detailed_bill = await self.get_bill_detailed(bill['bill_id'])
                     if detailed_bill:
-                        updated_bills.append(detailed_bill)
+                        # Enhance bill data with status information
+                        enhanced_bill = await self.enhance_bill_data_with_status(detailed_bill)
+                        updated_bills.append(enhanced_bill)
                         
                     # Rate limiting
                     await self.rate_limiter.wait_if_needed()
                     
+            print(f"Found {len(updated_bills)} bills to process for session {session_id}")
             return updated_bills
             
         except Exception as e:
@@ -169,6 +176,46 @@ class LegiScanService(EnhancedLegiScanClient):
         except Exception as e:
             print(f"Error checking bill update timestamp: {str(e)}")
             return False
+    
+    async def enhance_bill_data_with_status(self, bill_data: Dict) -> Dict:
+        """
+        Enhance bill data with normalized status information for comparison
+        
+        Args:
+            bill_data: Raw bill data from LegiScan API
+            
+        Returns:
+            Enhanced bill data with normalized status
+        """
+        try:
+            enhanced = bill_data.copy()
+            
+            # Extract and normalize status information
+            status = bill_data.get('status', {})
+            if isinstance(status, dict):
+                # LegiScan returns status as a dict with 'text' field
+                enhanced['status'] = status.get('text', 'Unknown')
+            else:
+                # Fallback for string status
+                enhanced['status'] = str(status) if status else 'Unknown'
+            
+            # Ensure we have last_action_date
+            if 'last_action_date' not in enhanced and 'last_action' in bill_data:
+                last_action = bill_data['last_action']
+                if isinstance(last_action, dict) and 'date' in last_action:
+                    enhanced['last_action_date'] = last_action['date']
+                elif isinstance(last_action, (int, float)):
+                    # Unix timestamp
+                    enhanced['last_action_date'] = datetime.utcfromtimestamp(last_action).strftime('%Y-%m-%d')
+            
+            # Add metadata for tracking
+            enhanced['last_modified'] = datetime.utcnow().isoformat()
+            
+            return enhanced
+            
+        except Exception as e:
+            print(f"Error enhancing bill data: {str(e)}")
+            return bill_data
     
     async def get_bill_changes(self, bill_id: str, since: Optional[datetime] = None) -> Dict:
         """

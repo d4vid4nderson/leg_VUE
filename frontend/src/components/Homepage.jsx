@@ -208,7 +208,7 @@ const Homepage = () => {
         }
       `}</style>
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 pb-20 px-4 sm:px-6">
+      <section className="relative overflow-hidden pt-12 pb-20">
         <div className="max-w-7xl mx-auto">
           {/* Mobile Sticker - Below HR1 Banner, Above Title */}
           <MobileSticker onShowModal={() => setShowPWAModal(true)} />
@@ -322,7 +322,7 @@ const Homepage = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-white dark:bg-dark-bg">
+      <section className="py-16 sm:py-20 bg-white dark:bg-dark-bg">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
@@ -620,7 +620,7 @@ const Homepage = () => {
       </section>
 
       {/* Practice Areas */}
-      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-white dark:bg-dark-bg">
+      <section className="py-16 sm:py-20 bg-white dark:bg-dark-bg">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>

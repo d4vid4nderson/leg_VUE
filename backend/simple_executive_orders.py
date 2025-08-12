@@ -550,6 +550,51 @@ async def fetch_executive_orders_simple_integration(
 # HELPER FUNCTIONS
 # ===============================
 
+def check_for_new_orders():
+    """Check if there are new executive orders available in Federal Register"""
+    try:
+        logger.info("🔍 Checking for new executive orders...")
+        
+        # Get count from Federal Register
+        federal_result = SimpleExecutiveOrders().get_executive_orders_count()
+        if not federal_result['success']:
+            return federal_result
+        
+        federal_count = federal_result['count']
+        
+        # Get count from database
+        table_name = get_table_name()
+        with get_db_cursor() as cursor:
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            db_count = cursor.fetchone()[0]
+        
+        # Compare counts
+        difference = federal_count - db_count
+        has_new_orders = difference > 0
+        
+        logger.info(f"📊 Federal Register: {federal_count}, Database: {db_count}, Difference: {difference}")
+        
+        return {
+            'success': True,
+            'federal_register_count': federal_count,
+            'database_count': db_count,
+            'difference': difference,
+            'has_updates': has_new_orders,
+            'update_count': max(0, difference),
+            'message': f"Found {difference} new orders" if has_new_orders else "Database is up to date"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking for new orders: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'federal_register_count': 0,
+            'database_count': 0,
+            'difference': 0,
+            'has_updates': False,
+            'update_count': 0
+        }
 
 def check_executive_orders_table():
     """Check if the executive_orders table exists and get its structure"""

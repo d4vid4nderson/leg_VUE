@@ -69,7 +69,7 @@ class LegiScanAPI:
             debug_params = {k: v for k, v in params.items() if k != 'key'}
             print(f"   Parameter values: {debug_params}")
             
-            response = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=30)
+            response = self.session.get(f"{self.base_url}{endpoint}", params=params, timeout=60)
             response.raise_for_status()
             
             data = response.json()
@@ -143,7 +143,7 @@ class LegiScanAPI:
             smart_query_applied = False
             
             if not query and year_filter in ['current', 'recent']:
-                from datetime import datetime
+                from datetime import datetime, timedelta
                 # Try specific date first (most likely to get July 14 bills)
                 current_date = datetime.now().strftime('%Y-%m-%d')  # e.g., "2025-07-15"
                 yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')  # "2025-07-14"
@@ -237,8 +237,15 @@ class LegiScanAPI:
                 elif page == 1:
                     print(f"⚠️ No bills found on page 1. Search results type: {type(search_results)}")
                 
-                # Check if we have enough results or if this was a partial page
-                if len(all_bills) >= limit or len(page_bills) < 50:
+                # Check if we have enough results or if we should continue
+                # Only stop early if we hit the limit - don't stop for partial pages in case of pagination quirks
+                if len(all_bills) >= limit:
+                    print(f"✅ Reached desired limit of {limit} bills")
+                    break
+                
+                # Only stop if we get completely empty pages (not just < 50)
+                if len(page_bills) == 0:
+                    print(f"📄 Empty page {page} - stopping pagination")
                     break
                 
                 # Rate limiting between requests
@@ -887,6 +894,63 @@ class LegiScanAPI:
             print(f"❌ Error saving bill {db_data.get('bill_id', 'unknown')}: {e}")
             return False
     
+    def get_master_list(self, state: str, session_id: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Get master list of ALL bills for a state using getMasterList API
+        This is more efficient than pagination for getting complete datasets
+        """
+        try:
+            state_abbr = self.get_state_abbreviation(state)
+            print(f"🔍 Getting master list for {state} ({state_abbr})")
+            
+            params = {
+                'op': 'getMasterList',
+                'state': state_abbr
+            }
+            
+            if session_id:
+                params['id'] = session_id
+            
+            response = self._make_request('', params)
+            
+            if response and 'masterlist' in response:
+                master_list = response['masterlist']
+                
+                # Extract bills from master list structure
+                bills_dict = master_list.get('bill', {})
+                session_info = master_list.get('session', {})
+                
+                print(f"📋 Master list contains {len(bills_dict)} bills")
+                print(f"📅 Session: {session_info.get('session_name', 'Unknown')}")
+                
+                # Convert bills dict to list and process
+                bills_list = []
+                for bill_id, bill_data in bills_dict.items():
+                    if isinstance(bill_data, dict):
+                        bill_data['bill_id'] = bill_id  # Ensure bill_id is set
+                        bills_list.append(bill_data)
+                
+                return {
+                    'success': True,
+                    'bills': bills_list,
+                    'session_info': session_info,
+                    'total_bills': len(bills_list)
+                }
+            
+            return {
+                'success': False,
+                'error': 'No masterlist in response',
+                'bills': []
+            }
+            
+        except Exception as e:
+            print(f"❌ Error getting master list: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'bills': []
+            }
+
     def optimized_bulk_fetch(self, state: str, limit: int = 50, recent_only: bool = False, year_filter: str = 'all', max_pages: int = 10) -> Dict[str, Any]:
         """
         *** BULK FETCH METHOD CALLED BY YOUR MAIN.PY ***
@@ -900,6 +964,52 @@ class LegiScanAPI:
             print(f"   - Year filter: {year_filter}")
             print(f"   - Max pages: {max_pages}")
             
+            # Strategy: Use getMasterList for comprehensive data, then filter if needed
+            # This gets ALL bills for a state in one API call (more efficient than pagination)
+            
+            # First try to get all bills using master list approach
+            if limit > 100 or year_filter == 'all':
+                print(f"🔍 Using getMasterList for comprehensive fetch (limit={limit})")
+                master_result = self.get_master_list(state)
+                
+                if master_result['success'] and master_result['bills']:
+                    all_bills = master_result['bills']
+                    print(f"📋 Master list returned {len(all_bills)} total bills")
+                    
+                    # Apply limit if specified
+                    if limit > 0 and len(all_bills) > limit:
+                        all_bills = all_bills[:limit]
+                        print(f"✂️ Trimmed to {len(all_bills)} bills per limit")
+                    
+                    # Process bills to add AI analysis and clean data
+                    processed_bills = []
+                    for i, bill in enumerate(all_bills):
+                        try:
+                            # Extract and clean bill data 
+                            bill_data = self._extract_bill_data(bill, self.get_state_abbreviation(state))
+                            
+                            # Add to processed list
+                            processed_bills.append(bill_data)
+                            
+                            if (i + 1) % 100 == 0:
+                                print(f"📝 Processed {i + 1}/{len(all_bills)} bills...")
+                                
+                        except Exception as e:
+                            print(f"⚠️ Error processing bill {i}: {e}")
+                            continue
+                    
+                    print(f"✅ Master list fetch successful: {len(processed_bills)} bills processed")
+                    return {
+                        'success': True,
+                        'bills': processed_bills,
+                        'bills_processed': len(processed_bills),
+                        'state': state,
+                        'source': 'masterlist',
+                        'timestamp': datetime.now().isoformat()
+                    }
+            
+            # Fallback to search-based approach for smaller requests or if master list fails
+            print(f"🔍 Falling back to search-based approach")
             # Use new parameter or fallback to recent_only logic
             if recent_only and year_filter == 'all':
                 year_filter = 'current'
@@ -910,13 +1020,14 @@ class LegiScanAPI:
             
             if result['success']:
                 bills = result['bills']
-                print(f"✅ Bulk fetch successful: {len(bills)} bills")
+                print(f"✅ Search-based fetch successful: {len(bills)} bills")
                 
                 return {
                     'success': True,
                     'bills': bills,
                     'bills_processed': len(bills),
                     'state': state,
+                    'source': 'search',
                     'timestamp': datetime.now().isoformat()
                 }
             else:

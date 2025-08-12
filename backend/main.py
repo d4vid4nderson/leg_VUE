@@ -46,12 +46,62 @@ from executive_orders_db import (add_highlight_direct, create_highlights_table,
                                  remove_highlight_direct)
 # FastAPI imports
 from fastapi import (BackgroundTasks, FastAPI, HTTPException, Path, Query,
-                     Request, Response)
+                     Request, Response, Depends)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
+import jwt
+import requests
 
 load_dotenv(override=True)
+
+# Security
+security = HTTPBearer(auto_error=False)
+
+# Function to extract user info from Azure AD token
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Extract user information from Azure AD token if provided"""
+    if not credentials:
+        return None
+    
+    try:
+        # For Azure AD tokens, we can decode without verification to get user info
+        # In production, you should verify the token with Azure AD public keys
+        token = credentials.credentials
+        
+        # Decode token without verification (for user info extraction)
+        # Note: In production, verify with Azure AD keys
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        
+        user_info = {
+            "user_id": decoded.get("oid") or decoded.get("sub"),  # Object ID or Subject
+            "email": decoded.get("unique_name") or decoded.get("upn") or decoded.get("email") or decoded.get("preferred_username"),
+            "name": decoded.get("name"),
+            "given_name": decoded.get("given_name"),
+            "family_name": decoded.get("family_name") or decoded.get("surname"),
+            "upn": decoded.get("upn"),  # User Principal Name
+        }
+        
+        return user_info
+    except Exception as e:
+        print(f"Could not extract user from token: {e}")
+        return None
+
+@app.get("/api/auth/test-token")
+async def test_token(current_user: dict = Depends(get_current_user)):
+    """Test endpoint to check if token parsing works"""
+    if current_user:
+        return {
+            "success": True,
+            "message": "Token parsed successfully",
+            "user": current_user
+        }
+    else:
+        return {
+            "success": False,
+            "message": "No token provided or token invalid"
+        }
 
 # User ID mapping function for database compatibility
 def normalize_user_id(user_id_input):
@@ -2033,8 +2083,11 @@ async def check_executive_orders_count():
             "success": True,
             "federal_register_count": federal_register_count,
             "database_count": database_count,
+            "difference": new_orders_available,
             "new_orders_available": new_orders_available,
             "needs_fetch": needs_fetch,
+            "has_updates": needs_fetch,  # Added for frontend compatibility
+            "update_count": new_orders_available,  # Added for frontend compatibility
             "last_checked": datetime.now().isoformat(),
             "message": f"Found {new_orders_available} new executive orders available" if needs_fetch else "Database is up to date"
         }
@@ -2052,6 +2105,112 @@ async def check_executive_orders_count():
         }
 
 
+
+@app.post("/api/admin/load-legiscan-datasets")
+async def load_legiscan_datasets_endpoint():
+    """Load bills from LegiScan dataset directories"""
+    import glob
+    from load_legiscan_data import load_bill_from_json, insert_bills_batch
+    
+    try:
+        data_dir = "/Users/david.anderson/Downloads/PoliticalVue/backend/data"
+        results = {}
+        total_inserted = 0
+        
+        # Process each state
+        for state_dir in glob.glob(os.path.join(data_dir, "*")):
+            if not os.path.isdir(state_dir):
+                continue
+                
+            state_abbr = os.path.basename(state_dir).upper()
+            if ' ' in state_abbr:
+                state_abbr = state_abbr.split()[0]
+            
+            # Skip non-state directories
+            if state_abbr in ['EXECUTIVE_ORDERS.DB', 'LEGISLATION.DB', '.DS_STORE']:
+                continue
+            
+            print(f"Processing {state_abbr}...")
+            
+            # Find bill files
+            bill_files = glob.glob(os.path.join(state_dir, "*/bill/*.json"))
+            if not bill_files:
+                bill_files = glob.glob(os.path.join(state_dir, "bill/*.json"))
+            
+            bills = []
+            for bill_file in bill_files:
+                bill = load_bill_from_json(bill_file, state_abbr)
+                if bill:
+                    bills.append(bill)
+            
+            if bills:
+                inserted, skipped = insert_bills_batch(bills, state_abbr)
+                total_inserted += inserted
+                results[state_abbr] = {
+                    "files_found": len(bill_files),
+                    "bills_loaded": len(bills),
+                    "inserted": inserted,
+                    "skipped": skipped
+                }
+        
+        return {
+            "success": True,
+            "total_inserted": total_inserted,
+            "states_processed": results
+        }
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/admin/remove-duplicate-texas")
+async def remove_duplicate_texas_endpoint():
+    """Remove entries with state='Texas', keep only state='TX'"""
+    try:
+        print("🔧 Removing duplicate Texas entries...")
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check current Texas distribution
+            cursor.execute("SELECT state, COUNT(*) as count FROM dbo.state_legislation WHERE state IN ('Texas', 'TX') GROUP BY state")
+            current_texas = cursor.fetchall()
+            
+            print("📊 Current Texas distribution:")
+            for state, count in current_texas:
+                print(f"   {state}: {count}")
+            
+            # Delete entries with state='Texas' (keep TX)
+            delete_query = "DELETE FROM dbo.state_legislation WHERE state = 'Texas'"
+            cursor.execute(delete_query)
+            deleted_count = cursor.rowcount
+            
+            print(f"🗑️ Deleted {deleted_count} 'Texas' entries")
+            
+            conn.commit()
+            
+            # Check final distribution
+            cursor.execute("SELECT state, COUNT(*) as count FROM dbo.state_legislation WHERE state IN ('Texas', 'TX') GROUP BY state")
+            final_texas = cursor.fetchall()
+            
+            print("📊 Final Texas distribution:")
+            for state, count in final_texas:
+                print(f"   {state}: {count}")
+            
+            return {
+                "success": True,
+                "message": f"Successfully removed {deleted_count} duplicate 'Texas' entries",
+                "before": dict(current_texas),
+                "after": dict(final_texas),
+                "deleted_count": deleted_count
+            }
+            
+    except Exception as e:
+        print(f"❌ Error removing duplicate Texas entries: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.get("/api/debug/database-msi")
 async def debug_database_msi_connection():
@@ -3401,14 +3560,33 @@ def save_bills_to_state_legislation_table(bills):
             
             for bill in bills:
                 try:
+                    # Standardize state names to abbreviations
+                    state_name = bill.get('state', '')
+                    state_abbr = bill.get('state_abbr', '')
+                    
+                    # Map full names to abbreviations
+                    state_mappings = {
+                        'Texas': 'TX', 'California': 'CA', 'Colorado': 'CO',
+                        'Florida': 'FL', 'Kentucky': 'KY', 'Nevada': 'NV', 
+                        'South Carolina': 'SC'
+                    }
+                    
+                    # Use abbreviation for both fields
+                    if state_name in state_mappings:
+                        final_state = state_mappings[state_name]
+                    elif state_abbr:
+                        final_state = state_abbr
+                    else:
+                        final_state = state_name
+                    
                     # Map bill data to state_legislation table columns
                     params = (
                         bill.get('bill_id', ''),
                         bill.get('bill_number', ''),
                         bill.get('title', ''),
                         bill.get('description', ''),
-                        bill.get('state', ''),
-                        bill.get('state_abbr', ''),
+                        final_state,  # Use standardized state
+                        final_state,  # Use same for state_abbr
                         bill.get('status', ''),
                         bill.get('category', 'not-applicable'),
                         bill.get('introduced_date', ''),
@@ -4160,7 +4338,7 @@ async def get_admin_analytics_optimized(cleanup_test_users: bool = False):
                     FROM dbo.user_profiles p
                     LEFT JOIN (
                         SELECT 
-                            user_id,
+                            CAST(user_id AS NVARCHAR(50)) as user_id,
                             COUNT(*) as highlight_count,
                             COUNT(DISTINCT CAST(highlighted_at AS DATE)) as active_days
                         FROM dbo.user_highlights 
@@ -4217,7 +4395,7 @@ async def get_admin_analytics_optimized(cleanup_test_users: bool = False):
                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                     page_name as stat_name, CAST(view_count AS NVARCHAR) as stat_value
                 FROM TopPages
-                ORDER BY data_type, login_count DESC
+                ORDER BY data_type, ISNULL(login_count, 0) DESC
             """)
             
             # Process the combined results efficiently
@@ -4741,11 +4919,21 @@ async def get_recent_sessions(limit: int = 20):
 # ANALYTICS TRACKING ENDPOINTS
 # ===============================
 
+class BrowserInfo(BaseModel):
+    browser: Optional[str] = None
+    os: Optional[str] = None
+    deviceType: Optional[str] = None
+    screenResolution: Optional[str] = None
+    language: Optional[str] = None
+    timezone: Optional[str] = None
+    userAgent: Optional[str] = None
+
 class PageViewRequest(BaseModel):
     user_id: str
     page_name: str
     page_path: str
     session_id: Optional[str] = None
+    browser_info: Optional[BrowserInfo] = None
 
 class SessionStartRequest(BaseModel):
     session_id: str
@@ -4753,21 +4941,110 @@ class SessionStartRequest(BaseModel):
     display_name: Optional[str] = None
 
 @app.post("/api/analytics/track-page-view")
-async def track_page_view(request: PageViewRequest):
+async def track_page_view(
+    request: PageViewRequest, 
+    http_request: Request,
+    current_user: dict = Depends(get_current_user)
+):
     """Track a page view for analytics"""
     try:
         create_page_views_table()
+        create_user_profiles_table()
         
-        # Normalize user ID to handle both email and numeric IDs
-        normalized_user_id = normalize_user_id(request.user_id)
+        # Get client IP address
+        client_ip = http_request.headers.get("x-forwarded-for")
+        if client_ip:
+            client_ip = client_ip.split(",")[0].strip()
+        else:
+            client_ip = http_request.client.host if http_request.client else "unknown"
+        
+        # Use real user identity if available from Azure AD token
+        if current_user and current_user.get("email"):
+            # We have a real authenticated user
+            normalized_user_id = normalize_user_id(current_user["email"])
+            real_name = current_user.get("name") or current_user.get("email")
+            msi_email = current_user.get("email")
+            is_authenticated = True
+            print(f"🔑 Authenticated user detected: {real_name} ({msi_email})")
+        else:
+            # Anonymous user - use browser fingerprint
+            normalized_user_id = normalize_user_id(request.user_id)
+            real_name = None
+            msi_email = f"anonymous-{normalized_user_id}@local.app"
+            is_authenticated = False
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
+            # Insert the page view
             cursor.execute("""
                 INSERT INTO dbo.page_views (user_id, page_name, page_path, session_id, viewed_at)
                 VALUES (?, ?, ?, ?, GETDATE())
             """, (normalized_user_id, request.page_name, request.page_path, request.session_id))
+            
+            # Create or update user profile for this user
+            print(f"🔍 DEBUG: Checking user profile for normalized_user_id: {normalized_user_id}")
+            cursor.execute("SELECT user_id FROM dbo.user_profiles WHERE user_id = ?", (normalized_user_id,))
+            existing_user = cursor.fetchone()
+            print(f"🔍 DEBUG: Existing user query result: {existing_user}")
+            
+            if existing_user:
+                # Update last activity
+                cursor.execute("""
+                    UPDATE dbo.user_profiles 
+                    SET last_login = GETDATE()
+                    WHERE user_id = ?
+                """, (normalized_user_id,))
+                print(f"✅ Updated profile for user: {normalized_user_id}")
+            else:
+                # Create new user profile with browser info
+                if is_authenticated and real_name:
+                    # Use real name for authenticated users
+                    display_name = real_name
+                else:
+                    # Generate display name for anonymous users
+                    display_name = f"User {normalized_user_id[-6:]}"  # Default
+                
+                if not is_authenticated and request.browser_info:
+                    # Create a more descriptive name using browser info
+                    browser = request.browser_info.browser or "Unknown"
+                    os = request.browser_info.os or "Unknown" 
+                    device = request.browser_info.deviceType or "Desktop"
+                    
+                    # Add IP info to help identify users
+                    ip_suffix = ""
+                    if client_ip != "unknown" and not client_ip.startswith("127."):
+                        ip_parts = client_ip.split(".")
+                        if len(ip_parts) >= 2:
+                            ip_suffix = f" ({ip_parts[0]}.{ip_parts[1]}.x.x)"
+                    
+                    if browser != "Unknown" and os != "Unknown":
+                        display_name = f"{browser} on {os} ({device}){ip_suffix}"
+                    elif browser != "Unknown":
+                        display_name = f"{browser} User ({device}){ip_suffix}"
+                    else:
+                        display_name = f"{device} User {normalized_user_id[-6:]}{ip_suffix}"
+                
+                # Store additional device info if available
+                browser_details = ""
+                device_info = ""
+                timezone_info = ""
+                
+                if request.browser_info:
+                    browser_details = f"{request.browser_info.browser or 'Unknown'}"
+                    device_info = f"{request.browser_info.os or 'Unknown'} {request.browser_info.deviceType or 'Desktop'}"
+                    timezone_info = request.browser_info.timezone or ""
+                
+                print(f"🔍 DEBUG: Creating new profile - user_id: {normalized_user_id}, display_name: {display_name}")
+                print(f"🔍 DEBUG: Browser: {browser_details}, Device: {device_info}, TZ: {timezone_info}")
+                print(f"🔍 DEBUG: Client IP: {client_ip}")
+                
+                cursor.execute("""
+                    INSERT INTO dbo.user_profiles (
+                        user_id, msi_email, display_name, last_login, login_count, is_active
+                    ) VALUES (?, ?, ?, GETDATE(), 1, 1)
+                """, (normalized_user_id, f"anonymous-{normalized_user_id}@local.app", display_name))
+                print(f"✅ Created new profile for user: {normalized_user_id} as '{display_name}'")
             
             conn.commit()
             
@@ -5091,6 +5368,379 @@ async def enhanced_search_and_analyze_endpoint(request: LegiScanSearchRequest):
             detail=f"Enhanced search and analyze failed: {str(e)}"
         )
 
+def save_bill_to_database(bill_details: dict, ai_analysis: dict, state: str) -> dict:
+    """
+    Save a single bill to the database with AI analysis
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Extract bill information
+        bill_id = bill_details.get('bill_id')
+        bill_number = bill_details.get('bill', {}).get('bill_number', '')
+        title = bill_details.get('bill', {}).get('title', '')
+        description = bill_details.get('bill', {}).get('description', '')
+        
+        # Extract AI analysis
+        executive_summary = ai_analysis.get('executive_summary', '')
+        talking_points = json.dumps(ai_analysis.get('talking_points', []))
+        business_impact = json.dumps(ai_analysis.get('business_impact', {}))
+        categories = json.dumps(ai_analysis.get('categories', []))
+        
+        # Check if bill already exists
+        cursor.execute("SELECT BillID FROM Bills WHERE BillID = ?", (bill_id,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing bill
+            cursor.execute("""
+                UPDATE Bills 
+                SET Title = ?, Description = ?, ExecutiveSummary = ?,
+                    TalkingPoints = ?, BusinessImpact = ?, Categories = ?,
+                    LastUpdated = GETDATE()
+                WHERE BillID = ?
+            """, (title, description, executive_summary, talking_points,
+                  business_impact, categories, bill_id))
+        else:
+            # Insert new bill
+            cursor.execute("""
+                INSERT INTO Bills (BillID, BillNumber, Title, Description, State,
+                                 ExecutiveSummary, TalkingPoints, BusinessImpact, 
+                                 Categories, CreatedDate, LastUpdated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
+            """, (bill_id, bill_number, title, description, state,
+                  executive_summary, talking_points, business_impact, categories))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {"success": True, "bill_id": bill_id}
+        
+    except Exception as e:
+        print(f"❌ Error saving bill to database: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# Background job management
+import threading
+import uuid
+from datetime import datetime
+from typing import Dict, Any
+
+# Global job storage (in production, use Redis or database)
+active_jobs: Dict[str, Dict[str, Any]] = {}
+
+def create_job(job_type: str, params: dict) -> str:
+    """Create a new background job"""
+    job_id = str(uuid.uuid4())
+    active_jobs[job_id] = {
+        "id": job_id,
+        "type": job_type,
+        "params": params,
+        "status": "starting",
+        "progress": 0,
+        "total": 0,
+        "processed": 0,
+        "saved": 0,
+        "failed": 0,
+        "message": "Initializing...",
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    return job_id
+
+def update_job_progress(job_id: str, **kwargs):
+    """Update job progress"""
+    if job_id in active_jobs:
+        active_jobs[job_id].update(kwargs)
+        active_jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+def background_bill_processor(job_id: str, state: str, batch_size: int):
+    """Background function to process bills"""
+    try:
+        update_job_progress(job_id, status="running", message=f"Fetching bills for {state}...")
+        
+        # Initialize LegiScan API
+        from legiscan_api import LegiScanAPI
+        legiscan_api = LegiScanAPI()
+        
+        # Step 1: Get bills with optimized search
+        all_bills = []
+        search_approaches = [
+            {"query": "89th Legislature", "year_filter": "current", "limit": 1000},
+            {"query": "2025", "year_filter": "current", "limit": 800},
+            {"query": None, "year_filter": "current", "limit": 500}
+        ]
+        
+        for i, approach in enumerate(search_approaches, 1):
+            try:
+                if approach.get("query"):
+                    result = legiscan_api.search_bills(
+                        state=state,
+                        query=approach["query"],
+                        limit=approach["limit"],
+                        year_filter=approach["year_filter"],
+                        max_pages=5
+                    )
+                else:
+                    result = legiscan_api.optimized_bulk_fetch(
+                        state=state,
+                        limit=approach["limit"],
+                        recent_only=True,
+                        year_filter=approach["year_filter"],
+                        max_pages=3
+                    )
+                
+                if result.get('success') and len(result.get('bills', [])) > 0:
+                    found_bills = result.get('bills', [])
+                    existing_ids = {b.get('bill_id') for b in all_bills}
+                    new_bills = [b for b in found_bills if b.get('bill_id') not in existing_ids]
+                    all_bills.extend(new_bills)
+                    
+                    update_job_progress(
+                        job_id,
+                        message=f"Found {len(all_bills)} bills from approach {i}",
+                        total=len(all_bills)
+                    )
+                    
+                    if len(all_bills) >= 1000:
+                        break
+                        
+            except Exception as e:
+                print(f"Background job {job_id}: Error with approach {i}: {e}")
+                continue
+        
+        if not all_bills:
+            update_job_progress(job_id, status="failed", message="No bills found")
+            return
+        
+        # Safety limit
+        if len(all_bills) > 500:
+            all_bills = all_bills[:500]
+        
+        update_job_progress(
+            job_id,
+            total=len(all_bills),
+            message=f"Processing {len(all_bills)} bills..."
+        )
+        
+        # Step 2: Check existing bills
+        existing_bill_ids = set()
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT BillID FROM Bills WHERE State = ?", (state,))
+            existing_bill_ids = {str(row[0]) for row in cursor.fetchall()}
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"Background job {job_id}: Error checking database: {e}")
+        
+        # Step 3: Filter new bills
+        new_bills = [b for b in all_bills if str(b.get('bill_id')) not in existing_bill_ids]
+        
+        if not new_bills:
+            update_job_progress(
+                job_id,
+                status="completed",
+                message=f"All {len(all_bills)} bills already in database"
+            )
+            return
+        
+        update_job_progress(
+            job_id,
+            total=len(new_bills),
+            message=f"Processing {len(new_bills)} new bills..."
+        )
+        
+        # Step 4: Process bills in batches
+        total_processed = 0
+        total_saved = 0
+        
+        for i in range(0, len(new_bills), batch_size):
+            batch = new_bills[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = math.ceil(len(new_bills) / batch_size)
+            
+            update_job_progress(
+                job_id,
+                message=f"Processing batch {batch_num}/{total_batches} ({len(batch)} bills)...",
+                progress=int((i / len(new_bills)) * 100)
+            )
+            
+            for bill in batch:
+                try:
+                    bill_id = bill.get('bill_id')
+                    
+                    # Get full bill details
+                    bill_details = legiscan_api.get_bill_details(bill_id)
+                    
+                    if not bill_details:
+                        continue
+                    
+                    # Extract bill text for AI processing
+                    bill_text = ""
+                    if bill_details and 'bill' in bill_details:
+                        bill_info = bill_details['bill']
+                        bill_text = f"Title: {bill_info.get('title', '')}\n"
+                        bill_text += f"Description: {bill_info.get('description', '')}\n"
+                        bill_text += f"Bill Number: {bill_info.get('bill_number', '')}\n"
+                    
+                    # Process with AI
+                    from ai import process_with_ai, PromptType
+                    import asyncio
+                    
+                    # Run async function in sync context
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                    ai_result = loop.run_until_complete(
+                        process_with_ai(
+                            text=bill_text,
+                            prompt_type=PromptType.STATE_BILL_SUMMARY
+                        )
+                    )
+                    
+                    loop.close()
+                    
+                    if ai_result:  # AI returned result
+                        # Save to database
+                        save_result = save_bill_to_database(
+                            bill_details=bill_details,
+                            ai_analysis=ai_result,
+                            state=state
+                        )
+                        
+                        if save_result.get('success'):
+                            total_saved += 1
+                    
+                    total_processed += 1
+                    
+                    # Update progress
+                    update_job_progress(
+                        job_id,
+                        processed=total_processed,
+                        saved=total_saved,
+                        progress=int((total_processed / len(new_bills)) * 100)
+                    )
+                    
+                    # Small delay to avoid overwhelming the system
+                    import time
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    print(f"Background job {job_id}: Error processing bill {bill.get('bill_id')}: {e}")
+                    continue
+            
+            # Delay between batches
+            import time
+            time.sleep(2)
+        
+        # Job completed
+        update_job_progress(
+            job_id,
+            status="completed",
+            progress=100,
+            message=f"Completed! Processed {total_processed} bills, saved {total_saved}"
+        )
+        
+    except Exception as e:
+        print(f"Background job {job_id}: Fatal error: {e}")
+        update_job_progress(
+            job_id,
+            status="failed",
+            message=f"Job failed: {str(e)}"
+        )
+
+@app.post("/api/legiscan/incremental-state-fetch")
+async def incremental_state_fetch_endpoint(request: dict):
+    """
+    Start background job to fetch ALL bills for a state incrementally.
+    Returns immediately with job ID for progress tracking.
+    """
+    try:
+        state = request.get('state')
+        batch_size = request.get('batch_size', 10)
+        
+        if not state:
+            raise HTTPException(status_code=400, detail="State parameter is required")
+        
+        if not LEGISCAN_AVAILABLE or not LEGISCAN_INITIALIZED:
+            raise HTTPException(status_code=503, detail="LegiScan API not available")
+        
+        # Create background job
+        job_id = create_job("incremental_fetch", {"state": state, "batch_size": batch_size})
+        
+        # Start background processing
+        thread = threading.Thread(
+            target=background_bill_processor,
+            args=(job_id, state, batch_size),
+            daemon=True
+        )
+        thread.start()
+        
+        return {
+            "success": True,
+            "message": f"Background job started for {state}",
+            "job_id": job_id,
+            "status_endpoint": f"/api/legiscan/job-status/{job_id}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ INCREMENTAL FETCH: Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to start incremental fetch: {str(e)}"
+        )
+
+
+@app.get("/api/legiscan/job-status/{job_id}")
+async def get_job_status(job_id: str):
+    """Get status of a background job"""
+    if job_id not in active_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return active_jobs[job_id]
+
+
+@app.get("/api/legiscan/jobs")
+async def list_active_jobs():
+    """List all active/recent jobs"""
+    # Clean up old completed jobs (older than 1 hour)
+    now = datetime.now()
+    jobs_to_remove = []
+    
+    for job_id, job in active_jobs.items():
+        updated_time = datetime.fromisoformat(job["updated_at"])
+        if job["status"] in ["completed", "failed"] and (now - updated_time).seconds > 3600:
+            jobs_to_remove.append(job_id)
+    
+    for job_id in jobs_to_remove:
+        del active_jobs[job_id]
+    
+    return {"jobs": list(active_jobs.values())}
+
+
+@app.delete("/api/legiscan/job/{job_id}")
+async def cancel_job(job_id: str):
+    """Cancel a background job"""
+    if job_id not in active_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = active_jobs[job_id]
+    if job["status"] in ["completed", "failed"]:
+        del active_jobs[job_id]
+        return {"success": True, "message": "Job removed"}
+    else:
+        # Mark as cancelled (thread will check this)
+        update_job_progress(job_id, status="cancelled", message="Job cancelled by user")
+        return {"success": True, "message": "Job marked for cancellation"}
+
+
 @app.post("/api/legiscan/check-and-update")
 async def check_and_update_bills_endpoint(request: dict):
     """
@@ -5104,23 +5754,60 @@ async def check_and_update_bills_endpoint(request: dict):
         
         print(f"🔄 CHECK & UPDATE: Starting for state {state}")
         
-        # Initialize clients
-        enhanced_client = EnhancedLegiScanClient()
+        # Initialize clients - Use the NEW improved LegiScan API
+        if not LEGISCAN_AVAILABLE or not LEGISCAN_INITIALIZED:
+            raise HTTPException(status_code=503, detail="LegiScan API not available")
+            
+        legiscan_api = LegiScanAPI()
         
-        # Step 1: Get recent bills from LegiScan API for the state (use broader search)
-        print(f"📡 Fetching recent bills from LegiScan API for {state}...")
-        api_search_result = await enhanced_client.search_bills_enhanced(
-            state=state,
-            query="",  # Empty query to get all recent bills
-            limit=100,  # Start with smaller limit for testing
-            year_filter='all'  # Get all years for broader results
-        )
+        # Step 1: Get SESSION 89 bills from LegiScan API using enhanced search approach
+        print(f"📡 Fetching SESSION 89 bills from LegiScan API for {state}...")
+        
+        # Try multiple approaches to find session 89 bills
+        search_approaches = [
+            {"query": "89th Legislature", "year_filter": "all", "limit": 5000},
+            {"query": "89th", "year_filter": "all", "limit": 3000}, 
+            {"query": None, "year_filter": "current", "limit": 2000}  # Current year (2025)
+        ]
+        
+        api_search_result = None
+        for i, approach in enumerate(search_approaches, 1):
+            print(f"🔍 Attempt {i}: Searching with query='{approach['query']}', year_filter='{approach['year_filter']}'")
+            
+            if approach.get("query"):
+                # Use search_bills for queries
+                result = legiscan_api.search_bills(
+                    state=state,
+                    query=approach["query"],
+                    limit=approach["limit"],
+                    year_filter=approach["year_filter"],
+                    max_pages=50
+                )
+            else:
+                # Use optimized_bulk_fetch for no-query searches
+                result = legiscan_api.optimized_bulk_fetch(
+                    state=state,
+                    limit=approach["limit"],
+                    recent_only=True,  # Focus on recent bills
+                    year_filter=approach["year_filter"],
+                    max_pages=50
+                )
+            
+            if result.get('success') and len(result.get('bills', [])) > 0:
+                api_search_result = result
+                print(f"✅ Found {len(result.get('bills', []))} bills with approach {i}")
+                break
+            else:
+                print(f"❌ Approach {i} found no bills")
+        
+        if not api_search_result:
+            api_search_result = {"success": False, "error": "All search approaches failed"}
         
         if not api_search_result.get('success'):
             raise HTTPException(status_code=500, detail="Failed to fetch bills from LegiScan API")
         
-        api_bills = api_search_result.get('results', [])
-        print(f"📊 Found {len(api_bills)} bills in LegiScan API")
+        api_bills = api_search_result.get('bills', [])  # Changed from 'results' to 'bills'
+        print(f"📊 Found {len(api_bills)} bills in LegiScan API using {api_search_result.get('source', 'unknown')} method")
         
         # Step 2: Get all existing bills from database for comparison
         print(f"🗃️ Fetching existing bills from database for {state}...")
@@ -5184,11 +5871,11 @@ async def check_and_update_bills_endpoint(request: dict):
         container_name = os.getenv('CONTAINER_APP_NAME', '')
         is_production = (environment == 'production' or 'azure' in container_name.lower() or container_name != '')
         
-        # Process more bills at once for better UX - remove artificial small limits
+        # Process more bills at once for session 89 - increase limits significantly  
         if is_production:
-            max_process = min(len(missing_bills), 25)  # Reasonable batch for production
+            max_process = min(len(missing_bills), 200)  # Much higher for session 89 processing
         else:
-            max_process = min(len(missing_bills), 50)  # Larger batch for development
+            max_process = min(len(missing_bills), 500)  # Even higher for development
         
         bills_to_process = missing_bills[:max_process]
         
@@ -5200,7 +5887,23 @@ async def check_and_update_bills_endpoint(request: dict):
                 print(f"🔄 Processing bill {i+1}/{max_process}: {bill.get('bill_number', 'Unknown')}")
                 
                 # Process with AI (the search already includes AI analysis)
-                processed_bill = bill  # Bills from enhanced search already have AI analysis
+                processed_bill = bill.copy()  # Bills from enhanced search already have AI analysis
+                
+                # Standardize state name to abbreviation before saving
+                state_mappings = {
+                    'Texas': 'TX', 'California': 'CA', 'Colorado': 'CO',
+                    'Florida': 'FL', 'Kentucky': 'KY', 'Nevada': 'NV', 
+                    'South Carolina': 'SC'
+                }
+                
+                # Ensure state is standardized to abbreviation
+                original_state = processed_bill.get('state', '')
+                if original_state in state_mappings:
+                    standardized_state = state_mappings[original_state]
+                    processed_bill['state'] = standardized_state
+                    processed_bill['state_abbr'] = standardized_state
+                elif processed_bill.get('state_abbr'):
+                    processed_bill['state'] = processed_bill['state_abbr']
                 
                 # Save to database immediately after AI processing (use state_legislation table)
                 bill_id = processed_bill.get('bill_id')
@@ -5402,15 +6105,15 @@ async def fetch_recent_bills_endpoint_disabled(request: dict):
         try:
             final_results = await asyncio.wait_for(
                 stream_process_bills(),
-                timeout=300.0  # 5 minute overall timeout
+                timeout=900.0  # 15 minute overall timeout for large datasets like Texas
             )
         except asyncio.TimeoutError:
-            print(f"⚠️ Overall operation timeout after 5 minutes")
+            print(f"⚠️ Overall operation timeout after 15 minutes")
             # Return any partial results
             if results:
                 return {
                     "success": True,
-                    "message": f"Partial incremental fetch completed for {state} (timeout)",
+                    "message": f"Partial incremental fetch completed for {state} (15-minute timeout)",
                     "bills_found": len(results),
                     "bills_processed": processed_count,
                     "most_recent_date_before": most_recent_date,
@@ -7559,7 +8262,7 @@ async def fetch_state_legislation_endpoint(request: StateLegislationFetchRequest
                     limit=request.bills_per_state,
                     recent_only=False,  # Changed to False to get more bills
                     year_filter=getattr(request, 'year_filter', 'all'),
-                    max_pages=getattr(request, 'max_pages', 3)
+                    max_pages=getattr(request, 'max_pages', 15)  # Increased from 3 to 15 to handle states like Texas
                 )
                 
                 print(f"🔍 BACKEND: Bulk fetch result for {state}:")
@@ -7580,7 +8283,23 @@ async def fetch_state_legislation_endpoint(request: StateLegislationFetchRequest
                         print(f"🔍 BACKEND: Saving {len(bills)} bills to database for {state}")
                         
                         try:
-                            state_saved = save_state_legislation_to_db(bills)
+                            # Process in chunks of 100 to avoid timeouts
+                            chunk_size = 100
+                            state_saved = 0
+                            
+                            for i in range(0, len(bills), chunk_size):
+                                chunk = bills[i:i+chunk_size]
+                                chunk_num = (i // chunk_size) + 1
+                                total_chunks = (len(bills) + chunk_size - 1) // chunk_size
+                                
+                                print(f"📦 Processing chunk {chunk_num}/{total_chunks} ({len(chunk)} bills)")
+                                chunk_saved = save_state_legislation_to_db(chunk)
+                                state_saved += chunk_saved
+                                
+                                # Small delay between chunks to prevent overwhelming the database
+                                if i + chunk_size < len(bills):
+                                    time.sleep(0.5)
+                            
                             total_saved += state_saved
                             print(f"✅ BACKEND: Successfully saved {state_saved} bills for {state}")
                         except Exception as e:
@@ -8584,6 +9303,112 @@ async def simple_post_test(data: dict):
     logger.info(f"🧪 Simple POST test: {data}")
     return {"received": data}
 
+
+@app.post("/api/legiscan/check-and-update-v2")
+async def check_and_update_bills_v2_endpoint(request: dict):
+    """
+    NEW VERSION - Uses the improved master list approach
+    """
+    try:
+        state = request.get('state')
+        if not state:
+            raise HTTPException(status_code=400, detail="State parameter is required")
+        
+        print(f"🚀 CHECK & UPDATE V2: Starting for state {state} with NEW METHOD")
+        
+        # Initialize NEW LegiScan API client
+        if not LEGISCAN_AVAILABLE or not LEGISCAN_INITIALIZED:
+            raise HTTPException(status_code=503, detail="LegiScan API not available")
+            
+        legiscan_api = LegiScanAPI()
+        
+        # Get bills for session 89 specifically 
+        print(f"🔍 Using enhanced search to find session 89 bills...")
+        
+        # Try multiple search approaches for session 89
+        search_approaches = [
+            {"query": "89th Legislature", "year_filter": "all", "limit": 5000},
+            {"query": "89th", "year_filter": "all", "limit": 3000},
+            {"query": None, "year_filter": "current", "limit": 2000},  # Current year (2025)
+        ]
+        
+        best_result = None
+        for i, approach in enumerate(search_approaches, 1):
+            print(f"🔍 Attempt {i}: Searching with query='{approach['query']}', year_filter='{approach['year_filter']}'")
+            
+            if approach.get("query"):
+                # Use search_bills for queries
+                api_search_result = legiscan_api.search_bills(
+                    state=state,
+                    query=approach["query"],
+                    limit=approach["limit"],
+                    year_filter=approach["year_filter"],
+                    max_pages=50
+                )
+            else:
+                # Use optimized_bulk_fetch for no-query searches
+                api_search_result = legiscan_api.optimized_bulk_fetch(
+                    state=state,
+                    limit=approach["limit"],
+                    recent_only=False,
+                    year_filter=approach["year_filter"],
+                    max_pages=50
+                )
+            
+            if api_search_result.get('success'):
+                bills_found = len(api_search_result.get('bills', []))
+                print(f"✅ Approach {i} found {bills_found} bills")
+                if bills_found > 0:
+                    best_result = api_search_result
+                    print(f"🎯 Using approach {i} with {bills_found} bills")
+                    break
+            else:
+                print(f"❌ Approach {i} failed: {api_search_result.get('error')}")
+        
+        # Use the best result we found
+        if not best_result or not best_result.get('success'):
+            raise HTTPException(status_code=500, detail="All search approaches failed")
+        
+        api_bills = best_result.get('bills', [])
+        source_method = best_result.get('source', 'unknown')
+        print(f"✅ SESSION 89 SEARCH SUCCESS: Found {len(api_bills)} bills using {source_method}!")
+        
+        # Now SAVE the bills to the database (this was missing!)
+        print(f"💾 Saving {len(api_bills)} bills to database...")
+        
+        # Use the nightly_bill_updater to save bills
+        from tasks.nightly_bill_updater import NightlyBillUpdater
+        
+        bill_updater = NightlyBillUpdater()
+        saved_count = 0
+        updated_count = 0
+        
+        for bill_data in api_bills:
+            try:
+                result = await bill_updater.save_or_update_bill(bill_data)
+                if result.get('is_new'):
+                    saved_count += 1
+                else:
+                    updated_count += 1
+            except Exception as e:
+                print(f"❌ Error saving bill {bill_data.get('bill_id', 'unknown')}: {e}")
+                continue
+        
+        print(f"✅ DATABASE SAVE COMPLETE: {saved_count} new bills, {updated_count} updated bills")
+        
+        return {
+            "success": True,
+            "message": f"SESSION 89 SEARCH: Found {len(api_bills)} bills and saved {saved_count} new + {updated_count} updated to database!",
+            "bills_found": len(api_bills),
+            "bills_saved": saved_count,
+            "bills_updated": updated_count,
+            "source_method": source_method,
+            "method_used": "multiple search approaches for session 89"
+        }
+        
+    except Exception as e:
+        print(f"❌ V2 Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/state-legislation/test-regenerate")
 async def test_regenerate_state_legislation():

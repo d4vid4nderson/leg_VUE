@@ -53,13 +53,15 @@ const CATEGORY_FILTERS = FILTERS;
 // =====================================
 // SIMPLE FETCH BUTTON COMPONENT
 // =====================================
-const FetchButtonGroup = ({ onFetch, isLoading, updateInfo, filteredCount = 0 }) => {
+const FetchButtonGroup = ({ onFetch, isLoading, updateInfo, newOrdersAvailable, newOrdersCount, filteredCount = 0 }) => {
   const handleFetch = () => {
     onFetch('executive_orders');
   };
 
   const hasUpdates = updateInfo?.has_updates;
   const updateCount = updateInfo?.update_count || 0;
+  const showNotification = newOrdersAvailable || hasUpdates;
+  const notificationCount = newOrdersCount || updateCount || 0;
 
   return (
     <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -70,27 +72,27 @@ const FetchButtonGroup = ({ onFetch, isLoading, updateInfo, filteredCount = 0 })
         className={`flex items-center justify-center gap-2 px-5 sm:px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-auto min-h-[48px] sm:min-h-[44px] ${
           isLoading 
             ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
-            : hasUpdates
+            : showNotification
             ? 'bg-orange-600 dark:bg-orange-700 text-white border-orange-600 dark:border-orange-700 hover:bg-orange-700 dark:hover:bg-orange-600 hover:border-orange-700 dark:hover:border-orange-600'
             : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
         }`}
       >
         {isLoading ? (
           <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
-        ) : hasUpdates ? (
+        ) : showNotification ? (
           <Download size={16} className="animate-bounce flex-shrink-0" />
         ) : (
           <Download size={16} className="flex-shrink-0" />
         )}
         <span>
-          {isLoading ? 'Checking...' : hasUpdates ? `${updateCount} New Updates` : 'Check for Updates'}
+          {isLoading ? 'Checking...' : showNotification ? `${notificationCount} New Orders` : 'Fetch'}
         </span>
       </button>
       
-      {/* Notification Badge */}
-      {hasUpdates && !isLoading && (
-        <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
-          {updateCount > 99 ? '99+' : updateCount}
+      {/* Red Notification Badge */}
+      {showNotification && !isLoading && (
+        <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[24px] h-6 px-1 flex items-center justify-center animate-pulse shadow-lg">
+          {notificationCount > 99 ? '99+' : notificationCount}
         </div>
       )}
       </div>
@@ -843,6 +845,9 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   
+  // New orders notification state
+  const [newOrdersAvailable, setNewOrdersAvailable] = useState(false);
+  const [newOrdersCount, setNewOrdersCount] = useState(0);
 
   
   const [pagination, setPagination] = useState({
@@ -921,7 +926,20 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       console.log('📊 Count check result:', data);
 
       if (data.success) {
-        // Check completed successfully but no UI feedback needed
+        // Check if there are new orders available
+        const federalCount = data.federal_register_count || 0;
+        const dbCount = data.database_count || 0;
+        const difference = federalCount - dbCount;
+        
+        if (difference > 0) {
+          console.log(`🆕 Found ${difference} new executive orders available!`);
+          setNewOrdersAvailable(true);
+          setNewOrdersCount(difference);
+        } else {
+          console.log('✅ Database is up to date with Federal Register');
+          setNewOrdersAvailable(false);
+          setNewOrdersCount(0);
+        }
       } else {
         throw new Error(data.error || 'Count check failed');
       }
@@ -934,6 +952,9 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const fetchExecutiveOrders = useCallback(async (docType = 'executive_orders') => {
     try {
       setFetchingData(true);
+      // Clear the notification after fetching
+      setNewOrdersAvailable(false);
+      setNewOrdersCount(0);
       setError(null);
       
       const docTypeName = 'Executive Orders';
@@ -1756,7 +1777,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       <CountStatusComponent />
       
       {/* Header Section */}
-      <section className="relative overflow-hidden px-4 sm:px-6 pt-8 sm:pt-12 pb-8 sm:pb-12">
+      <section className="relative overflow-hidden pt-8 sm:pt-12 pb-8 sm:pb-12">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
             
@@ -1773,7 +1794,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
       </section>
 
       {/* Results Section */}
-      <section className="py-6 sm:py-8 px-4 sm:px-6">
+      <section className="py-6 sm:py-8">
         <div className="max-w-7xl mx-auto">
           <div className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg shadow-sm overflow-visible">
             <div className="p-4 sm:p-6">
@@ -1785,6 +1806,8 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 onFetch={(docType) => fetchExecutiveOrders(docType)} 
                 isLoading={fetchingData}
                 updateInfo={updateInfo}
+                newOrdersAvailable={newOrdersAvailable}
+                newOrdersCount={newOrdersCount}
                 filteredCount={filteredOrders.length}
               />
             </div>

@@ -24,7 +24,8 @@ import {
   Target,
   Shield,
   Briefcase,
-  ExternalLink
+  ExternalLink,
+  Star
 } from 'lucide-react';
 import API_URL from '../config/api';
 import { getCardClasses, getTextClasses, getButtonClasses } from '../utils/darkModeClasses';
@@ -341,6 +342,10 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [showDetailView, setShowDetailView] = useState(false);
 
+  // Highlight state management
+  const [localHighlights, setLocalHighlights] = useState(new Set());
+  const [highlightLoading, setHighlightLoading] = useState(new Set());
+
   // Focus search input when modal opens
   useEffect(() => {
     if (isOpen && searchInputRef.current) {
@@ -434,6 +439,138 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
     setShowDetailView(false);
     setSelectedItem(null);
   };
+
+  // Load existing highlights on mount
+  useEffect(() => {
+    const loadExistingHighlights = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
+        if (response.ok) {
+          const data = await response.json();
+          const highlights = Array.isArray(data) ? data : [];
+          
+          const highlightIds = new Set();
+          highlights.forEach(highlight => {
+            if (highlight.order_id) {
+              highlightIds.add(highlight.order_id);
+            }
+          });
+          
+          setLocalHighlights(highlightIds);
+        }
+      } catch (error) {
+        console.error('Failed to load highlights:', error);
+      }
+    };
+    
+    if (isOpen) {
+      loadExistingHighlights();
+    }
+  }, [isOpen]);
+
+  // Get item ID for highlighting
+  const getItemId = (item) => {
+    if (item.type === 'executive_order') {
+      return item.executive_order_number || item.eo_number || item.id;
+    } else if (item.type === 'state_legislation') {
+      return item.bill_id || item.id;
+    } else if (item.type === 'proclamation') {
+      return item.proclamation_number || item.id;
+    }
+    return item.id;
+  };
+
+  // Check if item is highlighted
+  const isItemHighlighted = (item) => {
+    const itemId = getItemId(item);
+    return itemId ? localHighlights.has(itemId) : false;
+  };
+
+  // Check if item is currently loading highlight operation
+  const isItemHighlightLoading = (item) => {
+    const itemId = getItemId(item);
+    return itemId ? highlightLoading.has(itemId) : false;
+  };
+
+  // Handle highlighting an item
+  const handleItemHighlight = useCallback(async (item) => {
+    const itemId = getItemId(item);
+    if (!itemId) {
+      console.error('No valid item ID found for highlighting');
+      return;
+    }
+    
+    const isCurrentlyHighlighted = localHighlights.has(itemId);
+    setHighlightLoading(prev => new Set([...prev, itemId]));
+    
+    try {
+      if (isCurrentlyHighlighted) {
+        // Remove highlight
+        setLocalHighlights(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(itemId);
+          return newSet;
+        });
+        
+        const response = await fetch(`${API_URL}/api/highlights/${itemId}?user_id=1`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to remove highlight from backend');
+          // Revert local state on failure
+          setLocalHighlights(prev => new Set([...prev, itemId]));
+        }
+      } else {
+        // Add highlight
+        setLocalHighlights(prev => new Set([...prev, itemId]));
+        
+        const response = await fetch(`${API_URL}/api/highlights`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: 1,
+            order_id: itemId,
+            order_type: item.type,
+            title: item.title,
+            url: item.url || item.legiscan_url || null,
+            state: item.state || null,
+            bill_number: item.bill_number || null,
+            executive_order_number: item.executive_order_number || item.eo_number || null,
+            proclamation_number: item.proclamation_number || null
+          }),
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to add highlight to backend');
+          // Revert local state on failure
+          setLocalHighlights(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(itemId);
+            return newSet;
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error handling highlight:', error);
+      // Revert local state on error
+      if (isCurrentlyHighlighted) {
+        setLocalHighlights(prev => new Set([...prev, itemId]));
+      } else {
+        setLocalHighlights(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(itemId);
+          return newSet;
+        });
+      }
+    } finally {
+      setHighlightLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
+    }
+  }, [localHighlights]);
 
   // Get type icon
   const getTypeIcon = (type) => {
@@ -719,6 +856,36 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
                           {getTypeLabel(selectedItem.type)}
                         </span>
                       </div>
+                      {/* Star highlight button */}
+                      <button
+                        type="button"
+                        className={`p-3 md:p-2 rounded-lg transition-all duration-300 flex-shrink-0 min-w-[44px] min-h-[44px] md:min-w-[36px] md:min-h-[36px] flex items-center justify-center ${
+                          isItemHighlighted(selectedItem)
+                            ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
+                            : 'text-gray-400 dark:text-gray-500 hover:text-yellow-500 dark:hover:text-yellow-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        } ${isItemHighlightLoading(selectedItem) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!isItemHighlightLoading(selectedItem)) {
+                            await handleItemHighlight(selectedItem);
+                          }
+                        }}
+                        disabled={isItemHighlightLoading(selectedItem)}
+                        title={
+                          isItemHighlightLoading(selectedItem) 
+                            ? "Processing..." 
+                            : isItemHighlighted(selectedItem) 
+                              ? "Remove from highlights" 
+                              : "Add to highlights"
+                        }
+                      >
+                        {isItemHighlightLoading(selectedItem) ? (
+                          <Loader2 size={20} className="animate-spin" />
+                        ) : (
+                          <Star size={20} className={`${isItemHighlighted(selectedItem) ? 'fill-current' : ''}`} />
+                        )}
+                      </button>
                       <button
                         onClick={onClose}
                         className="p-3 md:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation md:hidden"

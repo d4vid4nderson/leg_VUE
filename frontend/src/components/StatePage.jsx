@@ -40,6 +40,10 @@ import StatusFilter from '../components/StatusFilter';
 import API_URL from '../config/api';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 
+// Request cache to prevent duplicate API calls
+const requestCache = new Map();
+const CACHE_DURATION = 1000; // 1 second cache
+
 // Utility function to add timeout to fetch requests
 const fetchWithTimeout = async (url, options = {}, timeoutMs = 300000) => { // 5 minutes default
     const controller = new AbortController();
@@ -59,6 +63,56 @@ const fetchWithTimeout = async (url, options = {}, timeoutMs = 300000) => { // 5
         }
         throw error;
     }
+};
+
+// Cached fetch to prevent duplicate requests
+const cachedFetch = async (url, options = {}) => {
+    const cacheKey = url + JSON.stringify(options);
+    const now = Date.now();
+    
+    // Check if we have a recent cached response
+    if (requestCache.has(cacheKey)) {
+        const { timestamp, responseData } = requestCache.get(cacheKey);
+        if (now - timestamp < CACHE_DURATION) {
+            // Return a cloned response to avoid "body already consumed" error
+            return new Response(JSON.stringify(responseData.data), {
+                status: responseData.status,
+                statusText: responseData.statusText,
+                headers: responseData.headers
+            });
+        }
+        requestCache.delete(cacheKey);
+    }
+    
+    // Create new request
+    const response = await fetchWithTimeout(url, options);
+    
+    // Only cache successful JSON responses
+    if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        try {
+            const clonedResponse = response.clone();
+            const data = await clonedResponse.json();
+            
+            requestCache.set(cacheKey, {
+                timestamp: now,
+                responseData: {
+                    data,
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries())
+                }
+            });
+            
+            // Clean up cache entry after duration
+            setTimeout(() => {
+                requestCache.delete(cacheKey);
+            }, CACHE_DURATION);
+        } catch (error) {
+            console.warn('Failed to cache response:', error);
+        }
+    }
+    
+    return response;
 };
 import { 
     getCurrentStatus, 
@@ -629,7 +683,7 @@ const StatePage = ({ stateName }) => {
             if (!SUPPORTED_STATES[stateName]) return;
             
             try {
-                const response = await fetch(`${API_URL}/api/legiscan/session-status`, {
+                const response = await cachedFetch(`${API_URL}/api/legiscan/session-status`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -724,7 +778,7 @@ const StatePage = ({ stateName }) => {
             );
             
             // Make API call to update category
-            const response = await fetch(`${API_URL}/api/state-legislation/${itemId}/category`, {
+            const response = await cachedFetch(`${API_URL}/api/state-legislation/${itemId}/category`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -921,6 +975,109 @@ const StatePage = ({ stateName }) => {
         }
     }, [stateName]);
 
+    // Enhanced fetch handler - uses master list approach for comprehensive fetching
+    const handleEnhancedFetch = useCallback(async () => {
+        setShowFetchDropdown(false);
+        setFetchLoading(true);
+        setError(null);
+        setFetchSuccess(null);
+        
+        try {
+            console.log(`🚀 Starting enhanced fetch (master list) for ${stateName}`);
+            
+            const stateAbbr = SUPPORTED_STATES[stateName];
+            
+            const fetchUrl = `${API_URL}/api/legiscan/check-and-update`;
+            
+            const requestBody = {
+                state: stateAbbr
+            };
+            
+            console.log(`📡 Making enhanced fetch API call...`);
+            
+            const response = await fetchWithTimeout(fetchUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            }, 900000); // 15 minute timeout for large datasets
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const textResponse = await response.text();
+                console.error('❌ Expected JSON but got:', contentType, 'Response:', textResponse.substring(0, 200));
+                throw new Error(`API returned ${contentType || 'unknown content type'} instead of JSON. Check if backend is running properly.`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success || result.status === 'success') {
+                console.log(`✅ Enhanced fetch completed:`, result);
+                console.log(`📊 Bills found: ${result.bills_found}, Method: ${result.method_used || result.source_method}`);
+                
+                if (result.bills_found > 1000) {
+                    setFetchSuccess(
+                        `🎉 Enhanced fetch SUCCESS! Found ${result.bills_found} bills including session 89 - ` +
+                        `much more comprehensive than the previous 723 bills! Refresh the page to see all new bills.`
+                    );
+                } else if (result.bills_found > 723) {
+                    setFetchSuccess(
+                        `✅ Enhanced fetch completed! Found ${result.bills_found} bills - an improvement over previous fetches. ` +
+                        `Refresh the page to see the updated results.`
+                    );
+                } else if (result.bills_found > 0) {
+                    setFetchSuccess(
+                        `✅ Enhanced fetch completed! Found ${result.bills_found} bills using comprehensive search. ` +
+                        `Refresh the page to see any new session 89 bills.`
+                    );
+                } else {
+                    setFetchSuccess(
+                        `ℹ️ Enhanced search completed but found no new bills. Session 89 bills may already be in the database.`
+                    );
+                }
+                
+                // Refresh the page data to show new bills
+                try {
+                    await fetchFromDatabase(1);
+                } catch (refreshError) {
+                    console.warn('Failed to refresh data after enhanced update:', refreshError);
+                }
+                
+                // Clear success message after 10 seconds
+                setTimeout(() => setFetchSuccess(null), 10000);
+                
+            } else {
+                throw new Error(result.error || result.detail || result.message || 'Enhanced fetch failed');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error in enhanced fetch:', error);
+            
+            if (error.message.includes('timeout') || error.message.includes('504')) {
+                setError(
+                    `Enhanced fetch timeout - Large datasets may take longer to process. ` +
+                    `The operation may still be completing in the background. Check back in a few minutes.`
+                );
+            } else if (error.message.includes('503') || error.message.includes('connection')) {
+                setError(
+                    `LegiScan API connection failed - The service may be down. ` +
+                    `Please check back later or try the standard Fetch option.`
+                );
+            } else {
+                setError(`Enhanced fetch failed: ${error.message || 'Unknown error'}`);
+            }
+            
+        } finally {
+            setFetchLoading(false);
+        }
+    }, [stateName]);
+
     // Check for updates handler - compares API data with database and processes missing bills one-by-one
     const handleCheckForUpdates = useCallback(async () => {
         setShowFetchDropdown(false);
@@ -976,7 +1133,7 @@ const StatePage = ({ stateName }) => {
                     if (remainingBills > 0) {
                         setFetchSuccess(
                             `✅ Batch completed! Processed ${result.processed_bills} of ${result.missing_bills} missing bills. ` +
-                            `${remainingBills} bills remaining. Click "Check for Updates" again to process more.`
+                            `${remainingBills} bills remaining. Click "Fetch" again to process more.`
                         );
                     } else {
                         setFetchSuccess(
@@ -1048,8 +1205,8 @@ const StatePage = ({ stateName }) => {
             const stateAbbr = SUPPORTED_STATES[stateName];
             const url = `${API_URL}/api/state-legislation?state=${stateAbbr}&page=${pageNum}&per_page=${perPage}`;
             
-            // Use timeout wrapper for large dataset handling
-            const response = await fetchWithTimeout(url, {
+            // Use cached fetch to prevent duplicate requests
+            const response = await cachedFetch(url, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
@@ -1174,7 +1331,7 @@ const StatePage = ({ stateName }) => {
                     return newSet;
                 });
                 
-                const response = await fetch(`${API_URL}/api/highlights/${billId}?user_id=${getCurrentUserId()}`, {
+                const response = await cachedFetch(`${API_URL}/api/highlights/${billId}?user_id=${getCurrentUserId()}`, {
                     method: 'DELETE',
                 });
                 
@@ -1184,7 +1341,7 @@ const StatePage = ({ stateName }) => {
             } else {
                 setLocalHighlights(prev => new Set([...prev, billId]));
                 
-                const response = await fetch(`${API_URL}/api/highlights`, {
+                const response = await cachedFetch(`${API_URL}/api/highlights`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1390,7 +1547,7 @@ const StatePage = ({ stateName }) => {
     useEffect(() => {
         const loadHighlights = async () => {
             try {
-                const response = await fetch(`${API_URL}/api/highlights?user_id=${getCurrentUserId()}`);
+                const response = await cachedFetch(`${API_URL}/api/highlights?user_id=${getCurrentUserId()}`);
                 if (response.ok) {
                     // Check if response is actually JSON
                     const contentType = response.headers.get('content-type');
@@ -1462,7 +1619,7 @@ const StatePage = ({ stateName }) => {
             <ScrollToTopButton />
             
             {/* Page Header */}
-            <section id="page-header" className="relative overflow-hidden px-6 pt-12 pb-12">
+            <section id="page-header" className="relative overflow-hidden pt-12 pb-12">
                 <div className="max-w-7xl mx-auto relative z-10">
                     <div className="text-center mb-8">
                         {/* Main Title */}
@@ -1481,7 +1638,7 @@ const StatePage = ({ stateName }) => {
             </section>
             
             {/* Single Smart Notification System */}
-            <div className="max-w-7xl mx-auto px-6 mb-4">
+            <div className="max-w-7xl mx-auto mb-4">
                 {/* Progress Message */}
                 {fetchProgress && (
                     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 flex items-start space-x-3 mb-4">
@@ -1544,7 +1701,7 @@ const StatePage = ({ stateName }) => {
             </div>
             
             {/* Results Section */}
-            <section className="py-6 sm:py-8 px-4 sm:px-6">
+            <section className="py-6 sm:py-8">
                 <div className="max-w-7xl mx-auto">
                     <div className={getCardClasses('rounded-lg shadow-sm')}>
                         <div className="p-4 sm:p-6">
@@ -1566,7 +1723,7 @@ const StatePage = ({ stateName }) => {
                                             <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
                                         )}
                                         <span>
-                                            {fetchLoading ? 'Processing...' : 'Check for Updates'}
+                                            {fetchLoading ? 'Processing...' : 'Fetch'}
                                         </span>
                                         {!fetchLoading && !loading && (
                                             <ChevronDown size={14} className="ml-1 flex-shrink-0" />
@@ -1584,7 +1741,22 @@ const StatePage = ({ stateName }) => {
                                             
                                             <div className="overflow-y-auto max-h-[320px]">
                                                 <div className="py-1">
-                                                    {/* Check for Updates */}
+                                                    {/* Enhanced Fetch - Master List Approach */}
+                                                    <button
+                                                        onClick={() => handleEnhancedFetch()}
+                                                        className="w-full text-left px-6 py-3 pr-8 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors duration-150 flex items-center justify-between group border-b border-gray-100 dark:border-gray-700"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <RefreshIcon size={16} className="text-blue-600 dark:text-blue-400" />
+                                                            <div>
+                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Enhanced Fetch</span>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Get ALL bills using master list (solves Texas 723 limit)</div>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">New</span>
+                                                    </button>
+
+                                                    {/* Standard Fetch */}
                                                     <button
                                                         onClick={() => handleCheckForUpdates()}
                                                         className="w-full text-left px-6 py-3 pr-8 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors duration-150 flex items-center justify-between group"
@@ -1592,7 +1764,7 @@ const StatePage = ({ stateName }) => {
                                                         <div className="flex items-center gap-3">
                                                             <RefreshIcon size={16} className="text-green-600 dark:text-green-400" />
                                                             <div>
-                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Check for Updates</span>
+                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Fetch</span>
                                                                 <div className="text-xs text-gray-500 dark:text-gray-400">Compare API vs DB, process missing bills one-by-one</div>
                                                             </div>
                                                         </div>

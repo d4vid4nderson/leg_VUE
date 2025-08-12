@@ -11,7 +11,7 @@ from sqlalchemy import select, insert, update, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db_setup import get_db_session
-from models.bills import Bills
+from database_azure_fixed import StateLegislationDB
 from models.update_logs import UpdateLogs
 from models.update_notifications import UpdateNotifications
 from legiscan_service import LegiScanService
@@ -43,6 +43,7 @@ class NightlyBillUpdater:
             'sessions_updated': 0,
             'bills_added': 0,
             'bills_updated': 0,
+            'status_changes': 0,
             'ai_processed': 0,
             'errors': []
         }
@@ -65,6 +66,7 @@ class NightlyBillUpdater:
                     total_stats['sessions_updated'] += 1
                     total_stats['bills_added'] += session_stats['bills_added']
                     total_stats['bills_updated'] += session_stats['bills_updated']
+                    total_stats['status_changes'] += session_stats['status_changes']
                     total_stats['ai_processed'] += session_stats['ai_processed']
                     
                     logger.info(f"Updated session {session['session_id']}: {session_stats}")
@@ -103,8 +105,8 @@ class NightlyBillUpdater:
             # Get sessions that have been active in the last 60 days
             cutoff_date = datetime.utcnow() - timedelta(days=60)
             
-            query = select(Bills.session_id, Bills.state_code).where(
-                Bills.last_updated > cutoff_date
+            query = select(StateLegislationDB.session_id, StateLegislationDB.state_abbr).where(
+                StateLegislationDB.last_updated > cutoff_date.strftime('%Y-%m-%dT%H:%M:%S')
             ).distinct()
             
             result = await session.execute(query)
@@ -114,7 +116,7 @@ class NightlyBillUpdater:
             return [
                 {
                     'session_id': row.session_id,
-                    'state_code': row.state_code
+                    'state_code': row.state_abbr
                 }
                 for row in sessions
             ]
@@ -137,6 +139,7 @@ class NightlyBillUpdater:
         stats = {
             'bills_added': 0,
             'bills_updated': 0,
+            'status_changes': 0,
             'ai_processed': 0
         }
         
@@ -152,11 +155,19 @@ class NightlyBillUpdater:
                 last_update_time = None
                 
             # Get updated bills from LegiScan
+            # For manual refresh or if it's been more than 12 hours, check all bills for status changes
+            should_check_all = force_update or (last_update_time and 
+                                              (datetime.utcnow() - last_update_time).total_seconds() > 12 * 3600)
+            
             updated_bills = await self.legiscan.get_updated_bills(
                 session_id=session_id,
                 since=last_update_time,
-                state_code=state_code
+                state_code=state_code,
+                force_check_all=should_check_all
             )
+            
+            if should_check_all:
+                logger.info(f"Performing comprehensive status check for session {session_id} (checking all bills)")
             
             logger.info(f"Found {len(updated_bills)} bills to process for session {session_id}")
             
@@ -164,15 +175,18 @@ class NightlyBillUpdater:
             for bill_data in updated_bills:
                 try:
                     # Save or update bill in database
-                    is_new_bill = await self.save_or_update_bill(bill_data)
+                    update_result = await self.save_or_update_bill(bill_data)
                     
-                    if is_new_bill:
+                    if update_result['is_new']:
                         stats['bills_added'] += 1
                     else:
                         stats['bills_updated'] += 1
+                    
+                    if update_result['status_changed']:
+                        stats['status_changes'] += 1
                         
                     # Queue for AI processing if significant changes
-                    if await self.should_process_with_ai(bill_data, is_new_bill):
+                    if await self.should_process_with_ai(bill_data, update_result['is_new']):
                         await self.queue_for_ai_processing(bill_data)
                         stats['ai_processed'] += 1
                         
@@ -188,6 +202,12 @@ class NightlyBillUpdater:
             # Create user notification if there were significant updates
             if stats['bills_added'] > 0 or stats['bills_updated'] > 5:
                 await self.create_update_notification(session_info, stats)
+            
+            # Log status changes specifically 
+            status_changes = stats.get('status_changes', 0)
+            if status_changes > 0:
+                logger.info(f"Session {session_id}: {status_changes} bills had status changes")
+                await self.create_status_change_notification(session_info, status_changes)
                 
         except Exception as e:
             # Log session update failure
@@ -211,42 +231,73 @@ class NightlyBillUpdater:
             
             return last_update
 
-    async def save_or_update_bill(self, bill_data: Dict) -> bool:
+    async def save_or_update_bill(self, bill_data: Dict) -> Dict:
         """
-        Save or update a bill in the database
+        Save or update a bill in the database with enhanced status tracking
         
         Args:
             bill_data: Dictionary containing bill information
             
         Returns:
-            True if new bill was created, False if existing bill was updated
+            Dict with update information: {'is_new': bool, 'status_changed': bool}
         """
         async with get_db_session() as session:
             # Check if bill already exists
-            existing_query = select(Bills).where(Bills.bill_id == bill_data['bill_id'])
+            existing_query = select(StateLegislationDB).where(StateLegislationDB.bill_id == bill_data['bill_id'])
             existing_result = await session.execute(existing_query)
             existing_bill = existing_result.scalar_one_or_none()
             
             if existing_bill:
-                # Update existing bill
-                update_query = update(Bills).where(
-                    Bills.bill_id == bill_data['bill_id']
-                ).values(
-                    title=bill_data.get('title', existing_bill.title),
-                    description=bill_data.get('description', existing_bill.description),
-                    status=bill_data.get('status', existing_bill.status),
-                    legiscan_last_modified=bill_data.get('last_modified'),
-                    needs_ai_processing=True,
-                    last_updated=datetime.utcnow()
-                )
+                # Check for status changes
+                new_status = bill_data.get('status', existing_bill.status)
+                status_changed = existing_bill.status != new_status
                 
-                await session.execute(update_query)
-                await session.commit()
-                return False
+                # Track what fields are being updated
+                updated_fields = {}
+                
+                # Compare and update fields that have changed
+                if bill_data.get('title') and bill_data.get('title') != existing_bill.title:
+                    updated_fields['title'] = bill_data.get('title')
+                
+                if bill_data.get('description') and bill_data.get('description') != existing_bill.description:
+                    updated_fields['description'] = bill_data.get('description')
+                
+                if status_changed:
+                    updated_fields['status'] = new_status
+                    logger.info(f"Status change detected for bill {bill_data['bill_id']}: '{existing_bill.status}' -> '{new_status}'")
+                
+                # Update last_action_date if provided and different
+                if bill_data.get('last_action_date') and bill_data.get('last_action_date') != existing_bill.last_action_date:
+                    updated_fields['last_action_date'] = bill_data.get('last_action_date')
+                
+                # Update legiscan_last_modified if provided
+                if bill_data.get('last_modified'):
+                    updated_fields['legiscan_last_modified'] = bill_data.get('last_modified')
+                
+                # Always update last_updated timestamp
+                updated_fields['last_updated'] = datetime.utcnow()
+                
+                # Only trigger AI processing if there are significant changes
+                if status_changed or updated_fields.get('title') or updated_fields.get('description'):
+                    updated_fields['needs_ai_processing'] = True
+                    logger.info(f"Marking bill {bill_data['bill_id']} for AI reprocessing due to significant changes")
+                
+                # Execute update if there are changes
+                if len(updated_fields) > 1:  # More than just last_updated
+                    update_query = update(StateLegislationDB).where(
+                        StateLegislationDB.bill_id == bill_data['bill_id']
+                    ).values(**updated_fields)
+                    
+                    await session.execute(update_query)
+                    await session.commit()
+                    
+                    logger.info(f"Updated bill {bill_data['bill_id']} with {len(updated_fields)} field changes")
+                
+                return {'is_new': False, 'status_changed': status_changed}
                 
             else:
                 # Create new bill
-                new_bill = Bills(
+                new_bill = StateLegislationDB(
                     bill_id=bill_data['bill_id'],
                     session_id=bill_data['session_id'],
                     state_code=bill_data['state_code'],
@@ -260,7 +311,7 @@ class NightlyBillUpdater:
                 
                 session.add(new_bill)
                 await session.commit()
-                return True
+                return {'is_new': True, 'status_changed': False}
 
     async def should_process_with_ai(self, bill_data: Dict, is_new_bill: bool) -> bool:
         """
@@ -289,12 +340,32 @@ class NightlyBillUpdater:
         """Queue a bill for AI processing"""
         # Mark bill as needing AI processing
         async with get_db_session() as session:
-            update_query = update(Bills).where(
-                Bills.bill_id == bill_data['bill_id']
+            update_query = update(StateLegislationDB).where(
+                StateLegislationDB.bill_id == bill_data['bill_id']
             ).values(needs_ai_processing=True)
             
             await session.execute(update_query)
             await session.commit()
+
+    async def create_status_change_notification(self, session_info: Dict, status_changes_count: int):
+        """Create notification for status changes"""
+        try:
+            async with get_db_session() as session:
+                notification = UpdateNotifications(
+                    session_id=session_info['session_id'],
+                    state_code=session_info['state_code'],
+                    notification_type='status_changes',
+                    title=f"Bill Status Updates - {session_info['state_code']}",
+                    message=f"{status_changes_count} bills had status changes in {session_info['state_code']}",
+                    notification_created=datetime.utcnow(),
+                    notification_read=False
+                )
+                
+                session.add(notification)
+                await session.commit()
+                
+        except Exception as e:
+            logger.error(f"Failed to create status change notification: {str(e)}")
 
     async def log_session_update_start(self, session_info: Dict) -> int:
         """Log the start of a session update"""

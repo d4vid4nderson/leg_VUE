@@ -11,32 +11,109 @@ const getSessionId = () => {
     return sessionId;
 };
 
+// Get browser information for user identification
+const getBrowserInfo = () => {
+    const ua = navigator.userAgent;
+    let browser = 'Unknown';
+    let os = 'Unknown';
+    
+    // Detect browser
+    if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+    else if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+    else if (ua.includes('Edg')) browser = 'Edge';
+    else if (ua.includes('Opera')) browser = 'Opera';
+    
+    // Detect OS
+    if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Mac OS X')) os = 'macOS';
+    else if (ua.includes('Linux')) os = 'Linux';
+    else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+    else if (ua.includes('Android')) os = 'Android';
+    
+    // Detect device type
+    let deviceType = 'Desktop';
+    if (/Mobi|Android/i.test(ua)) deviceType = 'Mobile';
+    else if (/Tablet|iPad/i.test(ua)) deviceType = 'Tablet';
+    
+    return {
+        browser,
+        os,
+        deviceType,
+        screenResolution: `${screen.width}x${screen.height}`,
+        language: navigator.language,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        userAgent: ua
+    };
+};
+
 // Get user ID (in production, this would come from your auth system)
 const getUserId = () => {
-    // For now, using a hardcoded user ID
-    // In production, this should come from your MSI authentication
-    return '1';
+    // Generate a unique user ID based on browser fingerprinting
+    let userId = localStorage.getItem('analyticsUserId');
+    if (!userId) {
+        // Create a pseudo-unique identifier using browser characteristics
+        const browserInfo = getBrowserInfo();
+        const browserFingerprint = `${browserInfo.userAgent}-${browserInfo.screenResolution}-${browserInfo.language}-${browserInfo.timezone}`;
+        const hash = btoa(browserFingerprint).replace(/[^a-zA-Z0-9]/g, '').substring(0, 12);
+        userId = `user-${hash}-${Date.now().toString(36)}`;
+        localStorage.setItem('analyticsUserId', userId);
+        
+        // Store browser info for later use
+        localStorage.setItem('analyticsBrowserInfo', JSON.stringify(browserInfo));
+        console.log('🆔 New user ID created:', userId);
+        console.log('🔍 Browser info:', browserInfo);
+    } else {
+        console.log('🆔 Existing user ID:', userId);
+    }
+    return userId;
 };
 
 // Track page view
 export const trackPageView = async (pageName, pagePath) => {
     try {
+        const userId = getUserId();
+        const sessionId = getSessionId();
+        const browserInfo = getBrowserInfo();
+        const payload = {
+            user_id: userId,
+            page_name: pageName,
+            page_path: pagePath || window.location.pathname,
+            session_id: sessionId,
+            browser_info: browserInfo
+        };
+        
+        // console.log('📊 Tracking page view:', payload);
+        
+        // Get Azure AD token if available
+        const token = localStorage.getItem('auth_token');
+        const userData = localStorage.getItem('user');
+        
+        console.log('🔍 Analytics Debug:');
+        console.log('  Token exists:', !!token);
+        console.log('  User data:', userData ? JSON.parse(userData) : 'None');
+        
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+            console.log('  ✅ Adding Authorization header');
+        } else {
+            console.log('  ❌ No token found - tracking as anonymous');
+        }
+        
         const response = await fetch(`${API_URL}/api/analytics/track-page-view`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                user_id: getUserId(),
-                page_name: pageName,
-                page_path: pagePath || window.location.pathname,
-                session_id: getSessionId()
-            })
+            headers: headers,
+            body: JSON.stringify(payload)
         });
         
         if (!response.ok) {
             console.error('Failed to track page view');
         }
+        // else { console.log('✅ Page view tracked successfully'); }
     } catch (error) {
         console.error('Error tracking page view:', error);
     }

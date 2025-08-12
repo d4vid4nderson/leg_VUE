@@ -434,11 +434,11 @@ const Header = ({
         <>
             <header className="bg-white dark:bg-dark-bg shadow-sm sticky top-0 z-[100]">
                 <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12">
-                    <div className="flex items-center justify-between h-16 lg:h-24">
+                    <div className="flex items-center justify-between h-16 lg:h-24 w-full">
                         
                         {/* Logo Section - Icon on mobile, full text on desktop */}
                         <div 
-                            className="flex items-center cursor-pointer hover:opacity-80 transition-opacity duration-300"
+                            className="flex items-center cursor-pointer hover:opacity-80 transition-opacity duration-300 flex-shrink-0"
                             onClick={() => navigate('/')}
                         >
                             {/* Mobile Logo Icon with Gradient Background */}
@@ -462,7 +462,7 @@ const Header = ({
                         </div>
 
                         {/* Right Side Navigation */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                             
                             {/* Global Search Button */}
                             <button
