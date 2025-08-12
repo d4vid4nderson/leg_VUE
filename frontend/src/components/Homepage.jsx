@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import HR1PolicyBanner from './HR1PolicyBanner';
+import GlobalSearchBanner from './GlobalSearchBanner';
+import GlobalSearch from './GlobalSearch';
 import PWAInstallModal from './PWAInstallModal';
 import { getPageContainerClasses, getCardClasses, getTextClasses } from '../utils/darkModeClasses';
 import { usePageTracking } from '../hooks/usePageTracking';
@@ -122,19 +123,33 @@ const Homepage = () => {
   const [hoveredFeature, setHoveredFeature] = useState(null);
   const [hoveredButton, setHoveredButton] = useState(null);
   const [showPWAModal, setShowPWAModal] = useState(false);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   
 
   // Track page view
   usePageTracking('Homepage');
 
+  // Keyboard shortcut for search (Cmd/Ctrl + K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowGlobalSearch(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div className={getPageContainerClasses()}>
-      {/* HR1 Policy Banner */}
-      <HR1PolicyBanner 
-        onClick={() => {
-          navigate('/hr1');
+      {/* Global Search Banner */}
+      <GlobalSearchBanner 
+        onTryNow={() => {
+          setShowGlobalSearch(true);
         }}
-        expirationDate="2025-08-15" // Banner will expire on August 15, 2025
+        expirationDate="2025-12-31" // Banner will expire on December 31, 2025
       />
       
       <style jsx="true">{`
@@ -779,6 +794,12 @@ const Homepage = () => {
       <PWAInstallModal 
         isOpen={showPWAModal}
         onClose={() => setShowPWAModal(false)}
+      />
+      
+      {/* Global Search Modal */}
+      <GlobalSearch 
+        isOpen={showGlobalSearch}
+        onClose={() => setShowGlobalSearch(false)}
       />
     </div>
   );
