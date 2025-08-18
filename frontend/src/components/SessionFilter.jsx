@@ -6,7 +6,8 @@ const SessionFilter = ({
   selectedSessions = [], 
   onSessionChange, 
   disabled = false,
-  loading = false 
+  loading = false,
+  sessionCounts = {}
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -178,10 +179,22 @@ const SessionFilter = ({
                         )}
                       </div>
                       
-                      <div className={`flex-shrink-0 ml-2 ${
-                        isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'
-                      }`}>
-                        <Check size={16} className="text-blue-600 dark:text-blue-400" />
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        {/* Bill Count */}
+                        <span className={`text-sm px-2 py-1 rounded-full font-medium ${
+                          isSelected 
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700' 
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                        }`}>
+                          {(sessionCounts[session.session_id] || 0).toLocaleString()}
+                        </span>
+                        
+                        {/* Check Mark */}
+                        <div className={`${
+                          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'
+                        }`}>
+                          <Check size={16} className="text-blue-600 dark:text-blue-400" />
+                        </div>
                       </div>
                     </button>
                   );

@@ -16,16 +16,30 @@ import {
   Cpu,
   TrendingUp,
   Globe,
-  HelpCircle
+  HelpCircle,
+  Car,
+  Briefcase,
+  Home,
+  Scale
 } from 'lucide-react';
 
-// Filter configuration
+// Filter configuration - Updated to match new database categories
 export const FILTERS = [
   { key: 'all_practice_areas', icon: LayoutGrid, label: 'All Practice Areas' },
-  { key: 'civic', icon: Building, label: 'Civic' },
+  { key: 'government-operations', icon: Building, label: 'Government Operations' },
+  { key: 'technology', icon: Cpu, label: 'Technology' },
+  { key: 'criminal-justice', icon: Shield, label: 'Criminal Justice' },
+  { key: 'economics', icon: DollarSign, label: 'Economics' },
   { key: 'education', icon: GraduationCap, label: 'Education' },
-  { key: 'engineering', icon: Wrench, label: 'Engineering' },
   { key: 'healthcare', icon: HeartPulse, label: 'Healthcare' },
+  { key: 'transportation', icon: Car, label: 'Transportation' },
+  { key: 'environment', icon: Leaf, label: 'Environment' },
+  { key: 'labor', icon: Briefcase, label: 'Labor' },
+  { key: 'housing', icon: Home, label: 'Housing' },
+  { key: 'tax', icon: TrendingUp, label: 'Tax' },
+  // Legacy categories for backwards compatibility
+  { key: 'civic', icon: Building, label: 'Civic' },
+  { key: 'engineering', icon: Wrench, label: 'Engineering' },
   { key: 'not-applicable', icon: Ban, label: 'Not Applicable' },
 ];
 
@@ -33,10 +47,20 @@ export const FILTERS = [
 export const getFilterActiveClass = (filterKey) => {
   const styles = {
     'all_practice_areas': 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-medium',
-    'civic': 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium',
+    'government-operations': 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium',
+    'technology': 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium',
+    'criminal-justice': 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium',
+    'economics': 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium',
     'education': 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 font-medium',
+    'healthcare': 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300 font-medium',
+    'transportation': 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium',
+    'environment': 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-medium',
+    'labor': 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-medium',
+    'housing': 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 font-medium',
+    'tax': 'bg-lime-100 dark:bg-lime-900/30 text-lime-700 dark:text-lime-300 font-medium',
+    // Legacy categories
+    'civic': 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium',
     'engineering': 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium',
-    'healthcare': 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium',
     'not-applicable': 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium',
   };
   return styles[filterKey] || 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium';
@@ -46,10 +70,20 @@ export const getFilterActiveClass = (filterKey) => {
 export const getFilterIconClass = (filterKey) => {
   const styles = {
     'all_practice_areas': 'text-teal-600',
-    'civic': 'text-blue-600',
+    'government-operations': 'text-blue-600',
+    'technology': 'text-purple-600',
+    'criminal-justice': 'text-red-600',
+    'economics': 'text-green-600',
     'education': 'text-orange-600',
+    'healthcare': 'text-pink-600',
+    'transportation': 'text-indigo-600',
+    'environment': 'text-emerald-600',
+    'labor': 'text-amber-600',
+    'housing': 'text-cyan-600',
+    'tax': 'text-lime-600',
+    // Legacy categories
+    'civic': 'text-blue-600',
     'engineering': 'text-green-600',
-    'healthcare': 'text-red-600',
     'not-applicable': 'text-gray-600',
   };
   return styles[filterKey] || 'text-gray-600';
@@ -59,18 +93,20 @@ export const getFilterIconClass = (filterKey) => {
 export const getCategoryTagClass = (filterKey) => {
   const styles = {
     'all_practice_areas': 'bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300',
-    'civic': 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
+    'government-operations': 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
+    'technology': 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300',
+    'criminal-justice': 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
+    'economics': 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
     'education': 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300',
-    'engineering': 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
-    'healthcare': 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
-    'defense': 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300',
-    'energy': 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300',
+    'healthcare': 'bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-300',
+    'transportation': 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300',
     'environment': 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300',
-    'finance': 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300',
-    'technology': 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-300',
-    'trade': 'bg-pink-100 dark:bg-pink-900/30 text-pink-800 dark:text-pink-300',
-    'international': 'bg-violet-100 dark:bg-violet-900/30 text-violet-800 dark:text-violet-300',
-    'other': 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300',
+    'labor': 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300',
+    'housing': 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-300',
+    'tax': 'bg-lime-100 dark:bg-lime-900/30 text-lime-800 dark:text-lime-300',
+    // Legacy categories
+    'civic': 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
+    'engineering': 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
     'not-applicable': 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300',
   };
   return styles[filterKey] || 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300';

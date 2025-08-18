@@ -169,6 +169,23 @@ const getStatusStage = (billStatus) => {
     
     const statusLower = billStatus.toLowerCase();
     
+    // Exact matches for our database status values
+    if (statusLower === 'enrolled') {
+        return 'enacted';  // Enrolled bills are ready to be enacted
+    }
+    
+    if (statusLower === 'passed') {
+        return 'passed';
+    }
+    
+    if (statusLower === 'engrossed') {
+        return 'floor';  // Engrossed bills are in floor process
+    }
+    
+    if (statusLower === 'introduced' || statusLower === 'pending' || statusLower === 'vetoed') {
+        return 'introduced';
+    }
+    
     // Enacted/Signed into law
     if (statusLower.includes('enacted') || 
         statusLower.includes('signed') || 
@@ -192,6 +209,7 @@ const getStatusStage = (billStatus) => {
         statusLower.includes('reading') ||
         statusLower.includes('debate') ||
         statusLower.includes('amended') ||
+        statusLower.includes('engrossed') ||
         statusLower.includes('calendar')) {
         return 'floor';
     }
@@ -624,6 +642,7 @@ const StatePage = ({ stateName }) => {
     const [fetchLoading, setFetchLoading] = useState(false); // New state for fetch loading
     const [fetchSuccess, setFetchSuccess] = useState(null); // Success message for fetch
     const [fetchProgress, setFetchProgress] = useState(null); // Progress message for long operations
+    const [actualBillCount, setActualBillCount] = useState(null); // Actual count from database
     
     // Manual refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -632,7 +651,7 @@ const StatePage = ({ stateName }) => {
     const [selectedFilters, setSelectedFilters] = useState([]);
     const [selectedStatusFilter, setSelectedStatusFilter] = useState(null);
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-    const [showFetchDropdown, setShowFetchDropdown] = useState(false);
+    // Removed showFetchDropdown - using single fetch button now
     
     // Sort state
     const [sortOrder, setSortOrder] = useState('latest');
@@ -975,9 +994,8 @@ const StatePage = ({ stateName }) => {
         }
     }, [stateName]);
 
-    // Enhanced fetch handler - uses master list approach for comprehensive fetching
-    const handleEnhancedFetch = useCallback(async () => {
-        setShowFetchDropdown(false);
+    // Universal Smart Fetch - combines enhanced and incremental approaches
+    const handleUniversalFetch = useCallback(async () => {
         setFetchLoading(true);
         setError(null);
         setFetchSuccess(null);
@@ -1080,7 +1098,6 @@ const StatePage = ({ stateName }) => {
 
     // Check for updates handler - compares API data with database and processes missing bills one-by-one
     const handleCheckForUpdates = useCallback(async () => {
-        setShowFetchDropdown(false);
         setFetchLoading(true);
         setError(null);
         setFetchSuccess(null);
@@ -1196,6 +1213,60 @@ const StatePage = ({ stateName }) => {
     }, [stateName]);
     
     // Fetch data from database
+    // Fetch the actual count from database
+    const fetchActualBillCount = useCallback(async () => {
+        try {
+            const stateAbbr = SUPPORTED_STATES[stateName];
+            const countUrl = `${API_URL}/api/state-legislation/count?state=${stateAbbr}`;
+            
+            const response = await fetch(countUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    setActualBillCount(data.count);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching actual bill count:', error);
+            // Fallback to filtered count if the endpoint fails
+            setActualBillCount(null);
+        }
+    }, [stateName]);
+
+    // Status update function
+    const updateBillStatuses = useCallback(async () => {
+        try {
+            console.log('🔄 Updating bill statuses from LegiScan API...');
+            
+            const response = await fetch(`${API_URL}/api/bills/update-statuses`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ quick_mode: true })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ Status update completed:', result);
+                return result;
+            } else {
+                console.warn('⚠️ Status update failed:', response.status);
+                return null;
+            }
+        } catch (error) {
+            console.error('❌ Error updating bill statuses:', error);
+            return null;
+        }
+    }, []);
+
     const fetchFromDatabase = useCallback(async (pageNum = 1) => {
         try {
             setLoading(true);
@@ -1523,9 +1594,20 @@ const StatePage = ({ stateName }) => {
     // Load data on mount
     useEffect(() => {
         if (stateName && SUPPORTED_STATES[stateName]) {
-            fetchFromDatabase(1);
+            // Update bill statuses first, then load data
+            const loadData = async () => {
+                // Only update statuses for Texas (since we have the endpoint for TX)
+                if (stateName === 'texas') {
+                    await updateBillStatuses();
+                }
+                
+                fetchFromDatabase(1);
+                fetchActualBillCount(); // Also fetch the actual count
+            };
+            
+            loadData();
         }
-    }, [stateName, fetchFromDatabase]);
+    }, [stateName, fetchFromDatabase, fetchActualBillCount, updateBillStatuses]);
     
     // Removed unused refresh handlers to clean up code
     
@@ -1591,10 +1673,7 @@ const StatePage = ({ stateName }) => {
             if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
                 setShowFilterDropdown(false);
             }
-            // Close fetch dropdown if clicking outside
-            if (!event.target.closest('.fetch-dropdown-container')) {
-                setShowFetchDropdown(false);
-            }
+            // Removed fetch dropdown handling - using single button now
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -1700,6 +1779,7 @@ const StatePage = ({ stateName }) => {
                 />
             </div>
             
+            
             {/* Results Section */}
             <section className="py-6 sm:py-8">
                 <div className="max-w-7xl mx-auto">
@@ -1709,79 +1789,34 @@ const StatePage = ({ stateName }) => {
                         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-6 w-full">
                             {/* Fetch Button with Session Options - Left side */}
                             <div className="flex items-center gap-3 justify-start">
-                                <div className="relative fetch-dropdown-container">
-                                    <button
-                                        onClick={() => setShowFetchDropdown(!showFetchDropdown)}
-                                        disabled={fetchLoading || loading}
-                                        className={`flex items-center justify-center gap-2 px-4 py-3 sm:py-2 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-auto min-h-[48px] sm:min-h-[44px] ${
-                                            fetchLoading || loading
-                                                ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
-                                                : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
-                                        }`}
-                                    >
-                                        {fetchLoading && (
-                                            <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
-                                        )}
-                                        <span>
-                                            {fetchLoading ? 'Processing...' : 'Fetch'}
-                                        </span>
-                                        {!fetchLoading && !loading && (
-                                            <ChevronDown size={14} className="ml-1 flex-shrink-0" />
-                                        )}
-                                    </button>
-                                    
-                                    {/* Session Fetch Dropdown */}
-                                    {showFetchDropdown && !fetchLoading && !loading && (
-                                        <div className="absolute top-full mt-2 bg-white dark:bg-dark-bg-secondary border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[120] w-full sm:w-auto sm:min-w-[320px] max-h-[400px] overflow-hidden left-0 right-0 sm:left-0 sm:right-auto">
-                                            <div className="sticky top-0 bg-gray-50 dark:bg-dark-bg-secondary px-4 py-3 sm:py-2 border-b border-gray-200 dark:border-gray-700">
-                                                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                    Fetch Legislation Options
-                                                </span>
-                                            </div>
-                                            
-                                            <div className="overflow-y-auto max-h-[320px]">
-                                                <div className="py-1">
-                                                    {/* Enhanced Fetch - Master List Approach */}
-                                                    <button
-                                                        onClick={() => handleEnhancedFetch()}
-                                                        className="w-full text-left px-6 py-3 pr-8 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors duration-150 flex items-center justify-between group border-b border-gray-100 dark:border-gray-700"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <RefreshIcon size={16} className="text-blue-600 dark:text-blue-400" />
-                                                            <div>
-                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Enhanced Fetch</span>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Get ALL bills using master list (solves Texas 723 limit)</div>
-                                                            </div>
-                                                        </div>
-                                                        <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">New</span>
-                                                    </button>
-
-                                                    {/* Standard Fetch */}
-                                                    <button
-                                                        onClick={() => handleCheckForUpdates()}
-                                                        className="w-full text-left px-6 py-3 pr-8 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors duration-150 flex items-center justify-between group"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <RefreshIcon size={16} className="text-green-600 dark:text-green-400" />
-                                                            <div>
-                                                                <span className="text-sm font-medium text-gray-900 dark:text-white">Fetch</span>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">Compare API vs DB, process missing bills one-by-one</div>
-                                                            </div>
-                                                        </div>
-                                                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">Smart</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
+                                <button
+                                    onClick={handleUniversalFetch}
+                                    disabled={fetchLoading || loading}
+                                    className={`flex items-center justify-center gap-2 px-4 py-3 sm:py-2 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-auto min-h-[48px] sm:min-h-[44px] ${
+                                        fetchLoading || loading
+                                            ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
+                                            : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
+                                    }`}
+                                >
+                                    {fetchLoading && (
+                                        <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
                                     )}
-                                </div>
+                                    <span>
+                                        {fetchLoading ? 'Processing...' : 'Smart Fetch'}
+                                    </span>
+                                </button>
                                 
                                 {/* Bill Count Display */}
                                 <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-xs">
                                     <FileText size={12} className="text-gray-500 dark:text-gray-400" />
                                     <span className="font-medium text-gray-700 dark:text-gray-300">
-                                        {loading ? '...' : `${filteredStateOrders.length.toLocaleString()}`}
+                                        {loading ? '...' : `${(actualBillCount !== null ? actualBillCount : filteredStateOrders.length).toLocaleString()}`}
                                     </span>
+                                    {actualBillCount !== null && actualBillCount > filteredStateOrders.length && (
+                                        <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                            ({filteredStateOrders.length.toLocaleString()} shown)
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             
@@ -1878,6 +1913,47 @@ const StatePage = ({ stateName }) => {
                                         
                                         return finalSessions;
                                     }, [availableSessions, stateOrders])}
+                                    sessionCounts={useMemo(() => {
+                                        const counts = {};
+                                        const sessions = [];
+                                        
+                                        // Build session list similar to above
+                                        const sessionMap = new Map();
+                                        
+                                        availableSessions.forEach((session) => {
+                                            if (session.session_name) {
+                                                const sessionKey = session.session_name;
+                                                sessionMap.set(sessionKey, {
+                                                    session_id: session.session_id || session.session_name,
+                                                    session_name: session.session_name,
+                                                });
+                                            }
+                                        });
+                                        
+                                        stateOrders.forEach((bill) => {
+                                            const sessionName = bill.session || bill.session_name;
+                                            if (sessionName && sessionName.trim() && sessionName !== 'Unknown Session') {
+                                                if (!sessionMap.has(sessionName)) {
+                                                    sessionMap.set(sessionName, {
+                                                        session_id: sessionName,
+                                                        session_name: sessionName,
+                                                    });
+                                                }
+                                            }
+                                        });
+                                        
+                                        // Count bills per session
+                                        Array.from(sessionMap.values()).forEach(session => {
+                                            const sessionName = session.session_name;
+                                            const sessionId = session.session_id;
+                                            counts[sessionId] = stateOrders.filter(bill => {
+                                                const billSessionName = bill.session || bill.session_name;
+                                                return billSessionName === sessionName;
+                                            }).length;
+                                        });
+                                        
+                                        return counts;
+                                    }, [stateOrders, availableSessions])}
                                     selectedSessions={selectedSessions}
                                     onSessionChange={setSelectedSessions}
                                     disabled={loading || fetchLoading}

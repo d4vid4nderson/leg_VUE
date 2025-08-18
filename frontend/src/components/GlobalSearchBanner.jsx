@@ -35,15 +35,17 @@ const GlobalSearchBanner = ({ onTryNow, expirationDate }) => {
               </h3>
               <p className="text-xs sm:text-sm text-blue-100 mt-1 leading-tight">
                 Search across all bills and orders instantly with{' '}
-                <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded text-xs font-mono">
-                  <Command size={10} />
-                  <span>K</span>
-                </span>
-                {' '}or{' '}
-                <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded text-xs font-mono">
-                  <span>Ctrl</span>
-                  <span>+</span>
-                  <span>K</span>
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded text-xs font-mono">
+                    <Command size={10} />
+                    <span>K</span>
+                  </span>
+                  <span className="mx-1">or</span>
+                  <span className="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded text-xs font-mono">
+                    <span>Ctrl</span>
+                    <span>+</span>
+                    <span>K</span>
+                  </span>
                 </span>
               </p>
             </div>

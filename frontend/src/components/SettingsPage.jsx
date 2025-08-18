@@ -32,6 +32,7 @@ import {
 import API_URL from '../config/api';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 import { usePageTracking } from '../hooks/usePageTracking';
+import DataUploadSection from './DataUploadSection';
 
 // Password required for database management (change this to whatever you want)
 const REQUIRED_PASSWORD = "database";
@@ -1411,144 +1412,8 @@ const SettingsPage = ({
                                 </button>
                             </div>
 
-                            {/* Incremental State Fetch Section */}
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md p-4 mb-4">
-                                <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
-                                    <Database size={16} />
-                                    <span>Incremental State Bill Fetch</span>
-                                </h4>
-                                <p className="text-blue-700 dark:text-blue-300 text-sm mb-2">
-                                    Fetch recent bills (2024-2025 session) for a specific state from LegiScan. Bills are processed incrementally with AI to avoid token limits.
-                                </p>
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mb-3 italic">
-                                    Note: Only recent bills are fetched to avoid overwhelming the system. Max 500 bills per run.
-                                </p>
-                                
-                                <div className="flex flex-col sm:flex-row gap-3">
-                                    <div className="relative flex-1">
-                                        <select
-                                            id="state-select"
-                                            value={selectedState}
-                                            onChange={(e) => setSelectedState(e.target.value)}
-                                            className="w-full appearance-none px-4 py-2.5 pr-10 
-                                                     bg-white dark:bg-dark-bg-secondary 
-                                                     border border-blue-300 dark:border-blue-600 
-                                                     text-gray-800 dark:text-gray-200 
-                                                     rounded-lg shadow-sm
-                                                     hover:border-blue-400 dark:hover:border-blue-500
-                                                     focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent
-                                                     transition-all duration-200 cursor-pointer"
-                                        >
-                                            <option value="" className="text-gray-500">Select a state...</option>
-                                            <option value="CA" className="text-gray-800 dark:text-gray-200">California</option>
-                                            <option value="CO" className="text-gray-800 dark:text-gray-200">Colorado</option>
-                                            <option value="KY" className="text-gray-800 dark:text-gray-200">Kentucky</option>
-                                            <option value="NV" className="text-gray-800 dark:text-gray-200">Nevada</option>
-                                            <option value="SC" className="text-gray-800 dark:text-gray-200">South Carolina</option>
-                                            <option value="TX" className="text-gray-800 dark:text-gray-200">Texas</option>
-                                        </select>
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                                            <ChevronDown size={18} className="text-blue-500 dark:text-blue-400" />
-                                        </div>
-                                    </div>
-                                    
-                                    <button
-                                        onClick={handleIncrementalFetch}
-                                        disabled={!selectedState || incrementalFetchStatus.fetching}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-300 min-h-[44px] flex items-center justify-center ${
-                                            !selectedState || incrementalFetchStatus.fetching
-                                                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                                                : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
-                                        }`}
-                                    >
-                                        {incrementalFetchStatus.fetching ? (
-                                            <>
-                                                <RotateCw size={14} className="animate-spin mr-2" />
-                                                Fetching...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Database size={14} className="mr-2" />
-                                                Fetch Bills
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
-                                
-                                {/* Real-time Job Progress */}
-                                {(incrementalFetchStatus.message || activeJob) && (
-                                    <div className={`mt-3 p-3 rounded-md text-sm ${
-                                        incrementalFetchStatus.success 
-                                            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300'
-                                            : activeJob?.status === 'failed'
-                                            ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300'
-                                            : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                                    }`}>
-                                        <div className="flex items-center justify-between">
-                                            <span>{activeJob?.message || incrementalFetchStatus.message}</span>
-                                            {activeJob?.progress > 0 && (
-                                                <span className="text-xs font-mono">{activeJob.progress}%</span>
-                                            )}
-                                        </div>
-                                        
-                                        {/* Progress Bar */}
-                                        {activeJob?.progress > 0 && (
-                                            <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                                <div 
-                                                    className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-500"
-                                                    style={{ width: `${activeJob.progress}%` }}
-                                                ></div>
-                                            </div>
-                                        )}
-                                        
-                                        {/* Job Details */}
-                                        {activeJob && (
-                                            <div className="mt-2 text-xs space-y-1">
-                                                <div className="flex justify-between">
-                                                    <span>Status:</span>
-                                                    <span className={`font-medium ${
-                                                        activeJob.status === 'completed' ? 'text-green-600' :
-                                                        activeJob.status === 'failed' ? 'text-red-600' :
-                                                        activeJob.status === 'running' ? 'text-blue-600' : 'text-yellow-600'
-                                                    }`}>{activeJob.status}</span>
-                                                </div>
-                                                {activeJob.total > 0 && (
-                                                    <div className="flex justify-between">
-                                                        <span>Progress:</span>
-                                                        <span>{activeJob.processed || 0} / {activeJob.total} bills</span>
-                                                    </div>
-                                                )}
-                                                {activeJob.saved > 0 && (
-                                                    <div className="flex justify-between">
-                                                        <span>Saved:</span>
-                                                        <span className="text-green-600">{activeJob.saved} bills</span>
-                                                    </div>
-                                                )}
-                                                {activeJob.failed > 0 && (
-                                                    <div className="flex justify-between">
-                                                        <span>Failed:</span>
-                                                        <span className="text-red-600">{activeJob.failed} bills</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                        
-                                        {/* Legacy details for non-job responses */}
-                                        {incrementalFetchStatus.details && !activeJob && (
-                                            <div className="mt-2 text-xs">
-                                                <p>• Total found: {incrementalFetchStatus.details.total_found || 0}</p>
-                                                <p>• Already in DB: {incrementalFetchStatus.details.already_in_db || 0}</p>
-                                                <p>• New bills: {incrementalFetchStatus.details.new_bills || 0}</p>
-                                                <p>• Processed: {incrementalFetchStatus.details.total_processed || 0}</p>
-                                                <p>• Saved: {incrementalFetchStatus.details.total_saved || 0}</p>
-                                                {incrementalFetchStatus.details.failed_bills > 0 && (
-                                                    <p className="text-red-600 dark:text-red-400">• Failed: {incrementalFetchStatus.details.failed_bills}</p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                            {/* Data Upload Section */}
+                            <DataUploadSection />
 
 
                             {/* MSI Database Connection Debug */}
@@ -1736,3 +1601,4 @@ const SettingsPage = ({
 };
 
 export default SettingsPage;
+

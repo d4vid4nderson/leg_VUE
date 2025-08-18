@@ -7,7 +7,28 @@ const BillProgressBar = ({ status, className = '' }) => {
         
         const statusLower = billStatus.toLowerCase();
         
-        // Enacted/Signed into law
+        // Exact matches for our database status values
+        if (statusLower === 'enrolled') {
+            return { percentage: 100, stage: 'Enacted', color: 'bg-green-600' };
+        }
+        
+        if (statusLower === 'passed') {
+            return { percentage: 75, stage: 'Passed', color: 'bg-emerald-600' };
+        }
+        
+        if (statusLower === 'engrossed') {
+            return { percentage: 50, stage: 'Floor Vote', color: 'bg-yellow-600' };
+        }
+        
+        if (statusLower === 'introduced' || statusLower === 'pending') {
+            return { percentage: 10, stage: 'Introduced', color: 'bg-blue-600' };
+        }
+        
+        if (statusLower === 'vetoed') {
+            return { percentage: 15, stage: 'Vetoed', color: 'bg-red-600' };
+        }
+        
+        // Enacted/Signed into law (fallback for text-based statuses)
         if (statusLower.includes('enacted') || 
             statusLower.includes('signed') || 
             statusLower.includes('law') ||
@@ -16,7 +37,7 @@ const BillProgressBar = ({ status, className = '' }) => {
             return { percentage: 100, stage: 'Enacted', color: 'bg-green-600' };
         }
         
-        // Passed one chamber
+        // Passed one chamber (fallback)
         if (statusLower.includes('passed') || 
             statusLower.includes('enrolled') ||
             statusLower.includes('concurred') ||
@@ -24,23 +45,29 @@ const BillProgressBar = ({ status, className = '' }) => {
             return { percentage: 75, stage: 'Passed', color: 'bg-emerald-600' };
         }
         
-        // Floor action/voting
+        // Floor action/voting (fallback)
         if (statusLower.includes('floor') || 
             statusLower.includes('vote') || 
             statusLower.includes('reading') ||
             statusLower.includes('debate') ||
             statusLower.includes('amended') ||
+            statusLower.includes('engrossed') ||
             statusLower.includes('calendar')) {
             return { percentage: 50, stage: 'Floor Vote', color: 'bg-yellow-600' };
         }
         
-        // Committee review
+        // Committee review (fallback)
         if (statusLower.includes('committee') || 
             statusLower.includes('referred') ||
             statusLower.includes('hearing') ||
             statusLower.includes('markup') ||
             statusLower.includes('reported')) {
             return { percentage: 25, stage: 'Committee', color: 'bg-purple-600' };
+        }
+        
+        // Vetoed bills (fallback)
+        if (statusLower.includes('vetoed') || statusLower.includes('veto')) {
+            return { percentage: 15, stage: 'Vetoed', color: 'bg-red-600' };
         }
         
         // Default to introduced

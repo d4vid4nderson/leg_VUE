@@ -307,33 +307,46 @@ const capitalizeFirstLetter = (text) => {
 // =====================================
 // Helper function to clean and validate categories
 const cleanCategory = (category) => {
-    if (!category || typeof category !== 'string') return 'not-applicable';
+    if (!category || typeof category !== 'string') return 'government-operations';
     const trimmedCategory = category.trim().toLowerCase();
     
     if (trimmedCategory === 'unknown' || trimmedCategory === '') {
-        return 'not-applicable';
+        return 'government-operations';
     }
     
+    // Updated category mapping to match our new categorization system
     const categoryMap = {
-        'government': 'civic',
-        'public policy': 'civic',
-        'municipal': 'civic',
+        'government': 'government-operations',
+        'public policy': 'government-operations',
+        'municipal': 'government-operations',
+        'federal': 'government-operations',
+        'administration': 'government-operations',
+        'civic': 'government-operations', // Legacy mapping
+        'engineering': 'technology', // Legacy mapping
         'school': 'education',
         'university': 'education',
         'learning': 'education',
-        'infrastructure': 'engineering',
-        'technology': 'engineering',
-        'construction': 'engineering',
+        'infrastructure': 'transportation',
+        'construction': 'transportation',
         'medical': 'healthcare',
         'health': 'healthcare',
-        'hospital': 'healthcare'
+        'hospital': 'healthcare',
+        'crime': 'criminal-justice',
+        'police': 'criminal-justice',
+        'security': 'criminal-justice',
+        'trade': 'economics',
+        'finance': 'economics',
+        'economic': 'economics',
+        'business': 'economics',
+        'employment': 'labor',
+        'worker': 'labor',
+        'job': 'labor'
     };
     
     const mappedCategory = categoryMap[trimmedCategory] || trimmedCategory;
     const validCategories = FILTERS.map(f => f.key);
-    validCategories.push('not-applicable');
     
-    return validCategories.includes(mappedCategory) ? mappedCategory : 'not-applicable';
+    return validCategories.includes(mappedCategory) ? mappedCategory : 'government-operations';
 };
 
 // =====================================
@@ -903,7 +916,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     try {
       console.log('🔍 Checking for new executive orders...');
 
-      const response = await fetch(`${API_URL}/api/executive-orders/check-count`, {
+      const response = await fetch(`${API_URL}/api/executive-orders/check-updates`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -927,14 +940,15 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
       if (data.success) {
         // Check if there are new orders available
-        const federalCount = data.federal_register_count || 0;
+        const federalCount = data.federal_count || 0;
         const dbCount = data.database_count || 0;
-        const difference = federalCount - dbCount;
+        const updateCount = data.update_count || 0;
+        const hasUpdates = data.has_updates || false;
         
-        if (difference > 0) {
-          console.log(`🆕 Found ${difference} new executive orders available!`);
+        if (hasUpdates && updateCount > 0) {
+          console.log(`🆕 Found ${updateCount} new executive orders available!`);
           setNewOrdersAvailable(true);
-          setNewOrdersCount(difference);
+          setNewOrdersCount(updateCount);
         } else {
           console.log('✅ Database is up to date with Federal Register');
           setNewOrdersAvailable(false);

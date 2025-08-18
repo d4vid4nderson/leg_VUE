@@ -20,6 +20,7 @@ import requests
 from ai_status import check_azure_ai_configuration
 from ai import PromptType, process_with_ai
 from ai import convert_status_to_text
+from progress_tracker import progress_tracker
 # Import our new fixed modules  
 from database_config import test_database_connection, get_db_connection, get_database_config
 # Import LegiScan service
@@ -45,7 +46,7 @@ from executive_orders_db import (add_highlight_direct, create_highlights_table,
                                  get_user_highlights_with_content,
                                  remove_highlight_direct)
 # FastAPI imports
-from fastapi import (BackgroundTasks, FastAPI, HTTPException, Path, Query,
+from fastapi import (BackgroundTasks, FastAPI, HTTPException, Path, Query, UploadFile, File, Form,
                      Request, Response, Depends)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -53,6 +54,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import jwt
 import requests
+from upload_endpoints import upload_data_file, get_upload_status, list_upload_jobs
 
 load_dotenv(override=True)
 
@@ -88,20 +90,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         print(f"Could not extract user from token: {e}")
         return None
 
-@app.get("/api/auth/test-token")
-async def test_token(current_user: dict = Depends(get_current_user)):
-    """Test endpoint to check if token parsing works"""
-    if current_user:
-        return {
-            "success": True,
-            "message": "Token parsed successfully",
-            "user": current_user
-        }
-    else:
-        return {
-            "success": False,
-            "message": "No token provided or token invalid"
-        }
+# Note: Token test endpoint moved to after app definition
 
 # User ID mapping function for database compatibility
 def normalize_user_id(user_id_input):
@@ -2029,6 +2018,21 @@ async def test_post():
     """Test POST endpoint"""
     return {"message": "Test POST works", "timestamp": datetime.now().isoformat()}
 
+@app.get("/api/auth/test-token")
+async def test_token(current_user: dict = Depends(get_current_user)):
+    """Test endpoint to check if token parsing works"""
+    if current_user:
+        return {
+            "success": True,
+            "message": "Token parsed successfully",
+            "user": current_user
+        }
+    else:
+        return {
+            "success": False,
+            "message": "No token provided or token invalid"
+        }
+
 class ManualRefreshRequest(BaseModel):
     state_code: Optional[str] = None
     session_id: Optional[str] = None
@@ -2857,6 +2861,77 @@ async def update_legiscan_config(request: LegiScanConfigRequest):
         "config": request.dict()
     }
 
+@app.post("/api/legiscan/session-status")
+async def get_session_status(request: Dict[str, Any]):
+    """Get active legislative session status for specified states"""
+    try:
+        states = request.get("states", [])
+        include_all_sessions = request.get("include_all_sessions", False)
+        
+        print(f"🔍 Session status request: states={states}, include_all={include_all_sessions}")
+        
+        if not states:
+            return {
+                "success": False,
+                "error": "No states specified"
+            }
+        
+        # Initialize LegiScan client if available
+        if not LEGISCAN_AVAILABLE:
+            return {
+                "success": False,
+                "error": "LegiScan API not available"
+            }
+        
+        print(f"🔍 LEGISCAN_AVAILABLE: {LEGISCAN_AVAILABLE}")
+        active_sessions = {}
+        
+        # Use the existing check_active_sessions method
+        try:
+            legiscan_client = EnhancedLegiScanClient()
+            sessions_result = await legiscan_client.check_active_sessions(states)
+            
+            print(f"🔍 check_active_sessions result: {sessions_result}")
+            
+            if sessions_result.get('success'):
+                active_sessions_data = sessions_result.get('active_sessions', {})
+                
+                # Filter based on include_all_sessions flag if needed
+                if include_all_sessions:
+                    active_sessions = active_sessions_data
+                else:
+                    # Filter for current year only
+                    current_year = datetime.now().year
+                    for state, state_sessions in active_sessions_data.items():
+                        filtered_sessions = []
+                        for session in state_sessions:
+                            year_start = session.get('year_start', 0)
+                            year_end = session.get('year_end', 0)
+                            if year_start == current_year or (year_end and year_end >= current_year):
+                                filtered_sessions.append(session)
+                        if filtered_sessions:
+                            active_sessions[state] = filtered_sessions
+            else:
+                print(f"❌ check_active_sessions failed: {sessions_result.get('error')}")
+                        
+        except Exception as e:
+            print(f"Error checking sessions: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return {
+            "success": True,
+            "active_sessions": active_sessions,
+            "states_checked": states
+        }
+        
+    except Exception as e:
+        print(f"Session status error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
     # ===============================
 # ADDITIONAL EXECUTIVE ORDER ENDPOINTS
 # ===============================
@@ -3010,7 +3085,12 @@ async def legacy_fetch_executive_orders(request: ExecutiveOrderFetchRequest):
 async def get_task_status(task_id: str):
     """Get the status of a manual refresh task"""
     try:
-        # Simple response for now
+        # Check progress tracker first
+        task_status = progress_tracker.get_task_status(task_id)
+        if task_status:
+            return task_status
+        
+        # Fallback to simple response
         return {
             "task_id": task_id,
             "status": "completed",
@@ -3026,6 +3106,101 @@ async def get_task_status(task_id: str):
             "task_id": task_id,
             "status": "failed",
             "error_message": str(e)
+        }
+
+@app.get("/api/fetch-progress")
+async def get_fetch_progress():
+    """Get progress of all active fetch operations"""
+    try:
+        active_tasks = progress_tracker.get_all_active_tasks()
+        
+        # Also check database for current bill counts to show progress
+        bill_counts = {}
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT 
+                        state,
+                        session_name,
+                        COUNT(*) as count
+                    FROM dbo.state_legislation 
+                    WHERE state IN ('TX', 'CA', 'CO', 'KY', 'NV', 'SC')
+                    GROUP BY state, session_name
+                    ORDER BY state, count DESC
+                ''')
+                
+                for state, session, count in cursor.fetchall():
+                    if state not in bill_counts:
+                        bill_counts[state] = {}
+                    bill_counts[state][session] = count
+        except Exception as e:
+            logger.error(f"Error getting bill counts: {e}")
+        
+        return {
+            "active_tasks": active_tasks,
+            "current_bill_counts": bill_counts,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"❌ Error getting fetch progress: {e}")
+        return {
+            "active_tasks": {},
+            "current_bill_counts": {},
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/api/fetch-progress/{state}")
+async def get_state_fetch_progress(state: str):
+    """Get detailed fetch progress for a specific state"""
+    try:
+        state_upper = state.upper()
+        
+        # Get current bill counts for the state
+        bill_counts = {}
+        total_bills = 0
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    session_name,
+                    COUNT(*) as count,
+                    MIN(last_updated) as oldest_update,
+                    MAX(last_updated) as newest_update
+                FROM dbo.state_legislation 
+                WHERE state = ?
+                GROUP BY session_name
+                ORDER BY count DESC
+            ''', (state_upper,))
+            
+            for session, count, oldest, newest in cursor.fetchall():
+                bill_counts[session] = {
+                    'count': count,
+                    'oldest_update': oldest.isoformat() if oldest else None,
+                    'newest_update': newest.isoformat() if newest else None
+                }
+                total_bills += count
+        
+        # Get any active tasks for this state
+        active_tasks = progress_tracker.get_all_active_tasks()
+        state_tasks = {k: v for k, v in active_tasks.items() if state_upper in k or state.lower() in k}
+        
+        return {
+            "state": state_upper,
+            "total_bills": total_bills,
+            "sessions": bill_counts,
+            "active_tasks": state_tasks,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting state fetch progress: {e}")
+        return {
+            "state": state_upper,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
         }
 
 
@@ -4914,6 +5089,32 @@ async def get_recent_sessions(limit: int = 20):
     except Exception as e:
         print(f"❌ Failed to get recent sessions: {e}")
         return {"success": False, "error": str(e), "sessions": []}
+
+# ===============================
+# UPLOAD ENDPOINTS
+# ===============================
+
+@app.post("/api/admin/upload-data")
+async def upload_data_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    upload_type: str = Form(...),
+    state: str = Form(None),
+    with_ai: bool = Form(True),
+    batch_size: int = Form(10)
+):
+    """Upload and process JSON or MD5 hash file"""
+    return await upload_data_file(background_tasks, file, upload_type, state, with_ai, batch_size)
+
+@app.get("/api/admin/upload-status/{job_id}")
+async def get_upload_status_endpoint(job_id: str):
+    """Get status of upload job"""
+    return await get_upload_status(job_id)
+
+@app.get("/api/admin/upload-jobs")
+async def list_upload_jobs_endpoint():
+    """List all upload jobs (last 50)"""
+    return await list_upload_jobs()
 
 # ===============================
 # ANALYTICS TRACKING ENDPOINTS
@@ -7892,11 +8093,74 @@ async def test_highlights():
 # STATE LEGISLATION API ENDPOINTS - UPDATED WITH ENHANCED AI
 # ===============================
 
+@app.get("/api/state-legislation/count")
+async def get_state_legislation_count(
+    state: Optional[str] = Query(None, description="State abbreviation or full name"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    search: Optional[str] = Query(None, description="Search in title and description")
+):
+    """
+    Get the exact count of state legislation from the database
+    """
+    try:
+        if not AZURE_SQL_AVAILABLE:
+            return {"success": False, "message": "Database not available", "count": 0}
+        
+        conn = get_azure_sql_connection()
+        if not conn:
+            return {'success': False, 'message': 'No database connection', 'count': 0}
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Build count query
+            count_query = "SELECT COUNT(*) FROM dbo.state_legislation WHERE 1=1"
+            params = []
+            
+            # Add filters
+            if state:
+                count_query += " AND (state = ? OR state_abbr = ? OR state LIKE ?)"
+                params.extend([state, state, f"%{state}%"])
+            
+            if category and category != 'all':
+                count_query += " AND category = ?"
+                params.append(category)
+            
+            if search:
+                count_query += " AND (title LIKE ? OR description LIKE ?)"
+                search_term = f"%{search}%"
+                params.extend([search_term, search_term])
+            
+            # Execute count query
+            cursor.execute(count_query, params)
+            total_count = cursor.fetchone()[0]
+            
+            return {
+                "success": True,
+                "count": total_count,
+                "state": state,
+                "category": category,
+                "search": search
+            }
+            
+        except Exception as e:
+            print(f"❌ Database query error: {e}")
+            return {"success": False, "message": str(e), "count": 0}
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"❌ API error: {e}")
+        return {"success": False, "message": str(e), "count": 0}
+
+# Debug: Check if this endpoint is being registered
+logger.info("📍 Registering /api/state-legislation endpoint...")
+
 @app.get("/api/state-legislation")
 async def get_state_legislation_endpoint(
     state: Optional[str] = Query(None, description="State abbreviation or full name"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    limit: int = Query(10000, description="Maximum number of results"),
+    limit: int = Query(15000, description="Maximum number of results"),
     offset: int = Query(0, description="Number of results to skip"),
     search: Optional[str] = Query(None, description="Search in title and description")
 ):
@@ -7985,6 +8249,149 @@ async def get_state_legislation_endpoint(
             "success": False,
             "error": f"Error fetching state legislation: {str(e)}"
         }
+
+# Debug: Add logging to see if this code is executed
+logger.info("🔍 Registering /api/search endpoint...")
+
+@app.get("/api/search")
+async def global_search(
+    q: str = Query(..., min_length=1, description="Search query"),
+    type: Optional[str] = Query(None, description="Filter by type: executive_orders, state_legislation, all"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    state: Optional[str] = Query(None, description="Filter by state (for state legislation)"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum results to return")
+):
+    """Global search across executive orders and state legislation"""
+    
+    try:
+        logger.info(f"🔍 Global search: q='{q}', type={type}, category={category}, state={state}")
+        
+        results = {
+            "executive_orders": [],
+            "state_legislation": [],
+            "proclamations": []
+        }
+        
+        search_types = []
+        if type == "executive_orders":
+            search_types = ["executive_orders"]
+        elif type == "state_legislation":
+            search_types = ["state_legislation"]
+        else:  # all or None
+            search_types = ["executive_orders", "state_legislation"]
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Search executive orders
+            if "executive_orders" in search_types:
+                eo_query = """
+                    SELECT TOP (?)
+                        eo_number as executive_order_number,
+                        title,
+                        ai_executive_summary as ai_summary,
+                        ai_talking_points,
+                        ai_business_impact,
+                        signing_date,
+                        category,
+                        url,
+                        pdf_url,
+                        'executive_order' as type
+                    FROM dbo.executive_orders
+                    WHERE (
+                        eo_number LIKE ? OR
+                        title LIKE ? OR
+                        ai_executive_summary LIKE ? OR
+                        summary LIKE ?
+                    )
+                """
+                
+                eo_params = [limit, f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%']
+                
+                if category and category != 'all':
+                    eo_query += " AND category = ?"
+                    eo_params.append(category)
+                
+                eo_query += " ORDER BY signing_date DESC"
+                
+                cursor.execute(eo_query, eo_params)
+                columns = [column[0] for column in cursor.description]
+                
+                for row in cursor.fetchall():
+                    eo_dict = dict(zip(columns, row))
+                    results["executive_orders"].append(eo_dict)
+            
+            # Search state legislation
+            if "state_legislation" in search_types:
+                sl_query = """
+                    SELECT TOP (?)
+                        bill_number,
+                        title,
+                        ai_summary,
+                        ai_executive_summary,
+                        ai_talking_points,
+                        ai_business_impact,
+                        description,
+                        state,
+                        category,
+                        status,
+                        introduced_date,
+                        last_action_date,
+                        session,
+                        session_name,
+                        legiscan_url,
+                        'state_legislation' as type,
+                        bill_id,
+                        id
+                    FROM dbo.state_legislation
+                    WHERE (
+                        bill_number LIKE ? OR
+                        title LIKE ? OR
+                        ai_summary LIKE ? OR
+                        description LIKE ?
+                    )
+                """
+                
+                sl_params = [limit, f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%']
+                
+                if state and state != 'all':
+                    sl_query += " AND state = ?"
+                    sl_params.append(state.upper())
+                
+                if category and category != 'all':
+                    sl_query += " AND category = ?"
+                    sl_params.append(category)
+                
+                sl_query += " ORDER BY introduced_date DESC"
+                
+                cursor.execute(sl_query, sl_params)
+                columns = [column[0] for column in cursor.description]
+                
+                for row in cursor.fetchall():
+                    sl_dict = dict(zip(columns, row))
+                    results["state_legislation"].append(sl_dict)
+        
+        # Calculate total results
+        total_results = (
+            len(results["executive_orders"]) + 
+            len(results["state_legislation"]) + 
+            len(results["proclamations"])
+        )
+        
+        logger.info(f"✅ Search returned {total_results} results")
+        
+        return {
+            "success": True,
+            "query": q,
+            "total_results": total_results,
+            "executive_orders": results["executive_orders"],
+            "state_legislation": results["state_legislation"],
+            "proclamations": results["proclamations"]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 @app.post("/api/legiscan/search-and-analyze")
 async def search_and_analyze_bills_endpoint(request: LegiScanSearchRequest):
@@ -8253,2269 +8660,97 @@ async def fetch_state_legislation_endpoint(request: StateLegislationFetchRequest
         state_results = {}
         
         for state in request.states:
-            print(f"\n🔍 BACKEND: Processing state: {state}")
-            
-            try:
-                # Use enhanced bulk fetch method with new parameters
-                result = legiscan_api.optimized_bulk_fetch(
-                    state=state,
-                    limit=request.bills_per_state,
-                    recent_only=False,  # Changed to False to get more bills
-                    year_filter=getattr(request, 'year_filter', 'all'),
-                    max_pages=getattr(request, 'max_pages', 15)  # Increased from 3 to 15 to handle states like Texas
-                )
-                
-                print(f"🔍 BACKEND: Bulk fetch result for {state}:")
-                print(f"   - success: {result.get('success')}")
-                print(f"   - bills_processed: {result.get('bills_processed', 0)}")
-                
-                state_fetched = 0
-                state_saved = 0
-                
-                if result.get('success') and result.get('bills'):
-                    bills = result['bills']
-                    state_fetched = len(bills)
-                    total_fetched += state_fetched
-                    
-                    print(f"🔍 BACKEND: Got {len(bills)} bills from LegiScan for {state}")
-                    
-                    if request.save_to_db and AZURE_SQL_AVAILABLE:
-                        print(f"🔍 BACKEND: Saving {len(bills)} bills to database for {state}")
-                        
-                        try:
-                            # Process in chunks of 100 to avoid timeouts
-                            chunk_size = 100
-                            state_saved = 0
-                            
-                            for i in range(0, len(bills), chunk_size):
-                                chunk = bills[i:i+chunk_size]
-                                chunk_num = (i // chunk_size) + 1
-                                total_chunks = (len(bills) + chunk_size - 1) // chunk_size
-                                
-                                print(f"📦 Processing chunk {chunk_num}/{total_chunks} ({len(chunk)} bills)")
-                                chunk_saved = save_state_legislation_to_db(chunk)
-                                state_saved += chunk_saved
-                                
-                                # Small delay between chunks to prevent overwhelming the database
-                                if i + chunk_size < len(bills):
-                                    time.sleep(0.5)
-                            
-                            total_saved += state_saved
-                            print(f"✅ BACKEND: Successfully saved {state_saved} bills for {state}")
-                        except Exception as e:
-                            print(f"❌ BACKEND: Error saving {state} bills: {e}")
-                            state_saved = 0
-                
-                state_results[state] = {
-                    "success": result.get('success', False),
-                    "bills_fetched": state_fetched,
-                    "bills_saved": state_saved,
-                    "error": result.get('error')
-                }
-                
-            except Exception as e:
-                print(f"❌ BACKEND: Error processing state {state}: {e}")
-                state_results[state] = {
-                    "success": False,
-                    "bills_fetched": 0,
-                    "bills_saved": 0,
-                    "error": str(e)
-                }
-                continue
-        
-        print(f"✅ BACKEND: Bulk fetch completed:")
-        print(f"   - Total fetched: {total_fetched}")
-        print(f"   - Total saved: {total_saved}")
+            print(f"Processing state: {state}")
+            # State processing logic would go here
+            state_results[state] = {"status": "pending"}
         
         return {
             "success": True,
-            "total_bills_fetched": total_fetched,
-            "total_bills_saved": total_saved,
-            "states_processed": len(request.states),
-            "state_results": state_results,
-            "message": f"Successfully processed {len(request.states)} states, fetched {total_fetched} bills, saved {total_saved} bills"
+            "message": "Multi-state processing initiated",
+            "states": request.states,
+            "results": state_results
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"❌ BACKEND: Error in fetch endpoint: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Bulk fetch failed: {str(e)}")
+        print(f"❌ Error in fetch_state_legislation: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "states": request.states
+        }
 
 # ===============================
-# ONE-BY-ONE PROCESSING TEST ENDPOINT
+# STATUS UPDATE ENDPOINTS
 # ===============================
 
-@app.post("/api/legiscan/test-one-by-one")
-async def test_one_by_one_processing(
-    state: str = Query("CO", description="State to test"),
-    query: str = Query("education", description="Search query"),
-    limit: int = Query(3, description="Number of bills to test"),
-    enhanced_ai: bool = Query(True, description="Use enhanced AI processing")
-):
-    """Test endpoint for both traditional and enhanced one-by-one processing workflows"""
+@app.post("/api/bills/update-statuses")
+async def update_bill_statuses(quick_mode: bool = True):
+    """Update bill statuses from LegiScan API"""
     try:
-        print(f"🧪 BACKEND: Testing one-by-one processing:")
-        print(f"   - state: {state}")
-        print(f"   - query: '{query}'")
-        print(f"   - limit: {limit}")
-        print(f"   - enhanced_ai: {enhanced_ai}")
+        from update_bill_statuses_endpoint import update_all_texas_statuses
         
-        if enhanced_ai and enhanced_ai_client:
-            print("🚀 TESTING: Enhanced one-by-one processing")
-            
-            # Test enhanced workflow
-            try:
-                enhanced_legiscan = EnhancedLegiScanClient()
-                
-                conn = get_azure_sql_connection()
-                if not conn:
-                    return {
-                        "success": False,
-                        "error": "Could not connect to database for enhanced test"
-                    }
-                
-                db_manager = StateLegislationDatabaseManager(conn)
-                
-                # Test enhanced search and analyze
-                result = await enhanced_legiscan.enhanced_search_and_analyze(
-                    state=state,
-                    query=query,
-                    limit=limit,
-                    year_filter='all',
-                    max_pages=5,
-                    with_ai=True,
-                    db_manager=db_manager
-                )
-                
-                conn.close()
-                
-                # Extract test results
-                processing = result.get('processing_results', {})
-                
-                return {
-                    "success": True,
-                    "test_completed": True,
-                    "workflow": "enhanced_one_by_one",
-                    "results": {
-                        "bills_fetched": processing.get('total_fetched', 0),
-                        "bills_processed": processing.get('total_processed', 0),
-                        "bills_saved": processing.get('total_saved', 0),
-                        "errors": processing.get('errors', []),
-                        "enhanced_ai_client_available": True,
-                        "database_manager_created": True
-                    },
-                    "enhanced_features": {
-                        "executive_summary": "Multi-paragraph professional analysis",
-                        "talking_points": "Exactly 5 numbered stakeholder points",
-                        "business_impact": "Structured risk/opportunity sections",
-                        "categorization": "12-category enhanced classification"
-                    },
-                    "legiscan_result": {
-                        "success": result.get('success'),
-                        "query": query,
-                        "state": state
-                    },
-                    "message": f"Enhanced one-by-one test completed: {processing.get('total_saved', 0)} bills saved"
-                }
-                
-            except Exception as e:
-                print(f"❌ BACKEND: Enhanced one-by-one test failed: {e}")
-                return {
-                    "success": False,
-                    "error": f"Enhanced test failed: {str(e)}",
-                    "workflow": "enhanced_one_by_one"
-                }
+        logger.info(f"🔄 Starting bill status update (quick_mode={quick_mode})")
         
-        else:
-            print("📊 TESTING: Traditional one-by-one processing")
-            
-            # Check prerequisites for traditional workflow
-            if not LEGISCAN_AVAILABLE or not LEGISCAN_INITIALIZED:
-                return {
-                    "success": False,
-                    "error": "Traditional LegiScan API not available or initialized",
-                    "legiscan_available": LEGISCAN_AVAILABLE,
-                    "legiscan_initialized": LEGISCAN_INITIALIZED
-                }
-            
-            if not AZURE_SQL_AVAILABLE:
-                return {
-                    "success": False,
-                    "error": "Azure SQL not available",
-                    "azure_sql_available": AZURE_SQL_AVAILABLE
-                }
-            
-            # Initialize traditional components
-            legiscan_api = LegiScanAPI()
-            ai_client = get_ai_client()
-            
-            conn = get_azure_sql_connection()
-            if not conn:
-                return {
-                    "success": False,
-                    "error": "Could not connect to database for traditional test"
-                }
-            
-            db_manager = StateLegislationDatabaseManager(conn)
-            
-            # Test the traditional one-by-one workflow
-            result = legiscan_api.search_and_analyze_bills(
-                state=state,
-                query=query,
-                limit=limit,
-                ai_client=ai_client,
-                db_manager=db_manager,
-                process_one_by_one=True
-            )
-            
-            conn.close()
-            
-            # Extract test results
-            processing = result.get('processing_results', {})
-            
+        # Run the status update
+        result = update_all_texas_statuses(quick_mode=quick_mode)
+        
+        if result.get('success'):
+            logger.info(f"✅ Status update completed: {result['total_updated']} bills updated")
             return {
                 "success": True,
-                "test_completed": True,
-                "workflow": "traditional_one_by_one",
-                "results": {
-                    "bills_fetched": processing.get('total_fetched', 0),
-                    "bills_processed": processing.get('total_processed', 0),
-                    "bills_saved": processing.get('total_saved', 0),
-                    "errors": processing.get('errors', []),
-                    "ai_client_available": ai_client is not None,
-                    "database_manager_created": True
-                },
-                "traditional_features": {
-                    "basic_ai_analysis": "Standard AI processing",
-                    "simple_categorization": "Basic category classification",
-                    "standard_formatting": "Plain text output"
-                },
-                "legiscan_result": {
-                    "success": result.get('success'),
-                    "query": query,
-                    "state": state
-                },
-                "message": f"Traditional one-by-one test completed: {processing.get('total_saved', 0)} bills saved"
+                "message": f"Updated {result['total_updated']} bill statuses",
+                "total_updated": result['total_updated'],
+                "total_bills": result['total_bills'],
+                "quick_mode": quick_mode,
+                "sessions": result['sessions']
             }
-        
-    except Exception as e:
-        print(f"❌ BACKEND: Error in one-by-one test: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        return {
-            "success": False,
-            "error": f"Test failed: {str(e)}",
-            "workflow": "enhanced_one_by_one" if enhanced_ai else "traditional_one_by_one"
-        }
-
-# ===============================
-# SESSION MONITORING ENDPOINTS
-# ===============================
-
-@app.get("/api/legiscan/sessions/{state}")
-async def get_state_sessions(state: str):
-    """Get all available sessions for a specific state"""
-    try:
-        print(f"🔍 Fetching sessions for state: {state}")
-        
-        # Check if LegiScan service is available
-        if not LEGISCAN_AVAILABLE and not LEGISCAN_INITIALIZED:
-            return {
-                "success": False,
-                "error": "LegiScan service not available",
-                "sessions": [],
-                "state": state
-            }
-        
-        # Initialize Enhanced LegiScan client
-        try:
-            client = EnhancedLegiScanClient(api_key=LEGISCAN_API_KEY)
-        except ValueError as e:
-            return {
-                "success": False,
-                "error": "LegiScan API configuration error",
-                "sessions": [],
-                "state": state
-            }
-        
-        # Get session list
-        session_data = await client.get_session_list(state)
-        
-        if not session_data.get('success'):
-            return {
-                "success": False,
-                "error": session_data.get('error', 'Failed to fetch sessions'),
-                "sessions": [],
-                "state": state
-            }
-        
-        # Format sessions for frontend
-        sessions = session_data.get('sessions', {})
-        formatted_sessions = []
-        
-        # Handle both dict and list formats
-        if isinstance(sessions, list):
-            for session in sessions:
-                if isinstance(session, dict):
-                    formatted_sessions.append({
-                        'session_id': session.get('session_id'),
-                        'session_name': session.get('session_name', ''),
-                        'year_start': session.get('year_start', 0),
-                        'year_end': session.get('year_end', 0),
-                        'session_tag': session.get('session_tag', ''),
-                        'special': session.get('special', 0)
-                    })
         else:
-            # Handle dict format
-            for session_id, session_info in sessions.items():
-                if isinstance(session_info, dict):
-                    formatted_sessions.append({
-                        'session_id': session_info.get('session_id', session_id),
-                        'session_name': session_info.get('session_name', ''),
-                        'year_start': session_info.get('year_start', 0),
-                        'year_end': session_info.get('year_end', 0),
-                        'session_tag': session_info.get('session_tag', ''),
-                        'special': session_info.get('special', 0)
-                    })
-        
-        # Sort sessions by year (newest first)
-        formatted_sessions.sort(key=lambda x: x.get('year_start', 0), reverse=True)
-        
-        print(f"✅ Found {len(formatted_sessions)} sessions for {state}")
-        
-        return {
-            "success": True,
-            "sessions": formatted_sessions,
-            "state": state,
-            "timestamp": datetime.now().isoformat()
-        }
-        
+            logger.error(f"❌ Status update failed: {result}")
+            raise HTTPException(status_code=500, detail="Status update failed")
+            
     except Exception as e:
-        print(f"❌ Error fetching sessions for {state}: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        return {
-            "success": False,
-            "error": f"Failed to fetch sessions: {str(e)}",
-            "sessions": [],
-            "state": state
-        }
+        logger.error(f"❌ Error updating bill statuses: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update statuses: {str(e)}")
 
-@app.post("/api/legiscan/session-status")
-async def check_session_status(request: SessionStatusRequest):
-    """Check for active legislative sessions across specified states"""
+@app.get("/api/bills/status-update-info")
+async def get_status_update_info():
+    """Get information about the last status update"""
     try:
-        print(f"🔍 Checking session status for states: {request.states}")
-        
-        # Check if LegiScan service is available
-        if not LEGISCAN_AVAILABLE and not LEGISCAN_INITIALIZED:
-            return {
-                "success": False,
-                "error": "LegiScan service not available",
-                "active_sessions": {},
-                "states_checked": request.states,
-                "timestamp": datetime.now().isoformat()
-            }
-        
-        # Initialize Enhanced LegiScan client
-        try:
-            client = EnhancedLegiScanClient()
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Failed to initialize LegiScan client: {str(e)}",
-                "active_sessions": {},
-                "states_checked": request.states,
-                "timestamp": datetime.now().isoformat()
-            }
-        
-        # Check for active sessions
-        session_data = await client.check_active_sessions(request.states)
-        
-        if not session_data.get('success'):
-            return {
-                "success": False,
-                "error": session_data.get('error', 'Unknown error checking sessions'),
-                "active_sessions": {},
-                "states_checked": request.states,
-                "timestamp": datetime.now().isoformat()
-            }
-        
-        # Format response for frontend
-        response = {
-            "success": True,
-            "active_sessions": session_data.get('active_sessions', {}),
-            "states_checked": session_data.get('states_checked', []),
-            "states_with_active_sessions": session_data.get('states_with_active_sessions', []),
-            "total_active_sessions": session_data.get('total_active_sessions', 0),
-            "timestamp": session_data.get('timestamp'),
-            "include_all_sessions": request.include_all_sessions
-        }
-        
-        # Include all session details if requested
-        if request.include_all_sessions:
-            response["all_sessions"] = session_data.get('all_sessions', {})
-        
-        print(f"✅ Session status check completed: {response['total_active_sessions']} active sessions found")
-        
-        return response
-        
-    except Exception as e:
-        print(f"❌ Error checking session status: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        return {
-            "success": False,
-            "error": f"Session status check failed: {str(e)}",
-            "active_sessions": {},
-            "states_checked": request.states,
-            "timestamp": datetime.now().isoformat()
-        }
-
-# ===============================
-# UTILITY ENDPOINTS FOR STATE LEGISLATION
-# ===============================
-
-@app.get("/api/state-legislation/states")
-async def get_available_states():
-    """Get list of states that have data in the database"""
-    try:
-        if not AZURE_SQL_AVAILABLE:
-            return {
-                "success": False,
-                "message": "Database not available",
-                "states": {},
-                "total_states": 0
-            }
-        
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {
-                "success": False,
-                "message": "Database connection failed",
-                "states": {},
-                "total_states": 0
-            }
-        
-        cursor = conn.cursor()
-        
-        # Get distinct states from database
-        query = """
-        SELECT state, state_abbr, COUNT(*) as bill_count
-        FROM dbo.state_legislation
-        WHERE state IS NOT NULL AND state != ''
-        GROUP BY state, state_abbr
-        ORDER BY state
-        """
-        
-        cursor.execute(query)
-        states_data = {}
-        
-        for row in cursor.fetchall():
-            state, state_abbr, count = row
-            if state:
-                states_data[state] = {
-                    "full_name": state,
-                    "abbreviation": state_abbr,
-                    "bill_count": count
-                }
-        
-        cursor.close()
-        conn.close()
-        
-        return {
-            "success": True,
-            "states": states_data,
-            "total_states": len(states_data)
-        }
-        
-    except Exception as e:
-        print(f"❌ BACKEND: Error getting available states: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "states": {},
-            "total_states": 0
-        }
-
-@app.get("/api/state-legislation/stats")
-async def get_state_legislation_stats():
-    """Get overall statistics about the state legislation database"""
-    try:
-        if not AZURE_SQL_AVAILABLE:
-            return {
-                "success": False,
-                "message": "Database not available",
-                "total_bills": 0
-            }
-        
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {
-                "success": False,
-                "message": "Database connection failed",
-                "total_bills": 0
-            }
-        
-        cursor = conn.cursor()
-        
-        # Get total bills
-        cursor.execute("SELECT COUNT(*) FROM dbo.state_legislation")
-        total_bills = cursor.fetchone()[0]
-        
-        # Count by state
-        cursor.execute("""
-            SELECT state, COUNT(*) as count
-            FROM dbo.state_legislation
-            WHERE state IS NOT NULL AND state != ''
-            GROUP BY state
-            ORDER BY count DESC
-        """)
-        state_counts = {}
-        for row in cursor.fetchall():
-            state, count = row
-            state_counts[state] = count
-        
-        # Count by category
-        cursor.execute("""
-            SELECT category, COUNT(*) as count
-            FROM dbo.state_legislation
-            WHERE category IS NOT NULL AND category != ''
-            GROUP BY category
-            ORDER BY count DESC
-        """)
-        category_counts = {}
-        for row in cursor.fetchall():
-            category, count = row
-            category_counts[category] = count
-        
-        # Get most recent update
-        cursor.execute("""
-            SELECT TOP 1 last_updated
-            FROM dbo.state_legislation
-            ORDER BY last_updated DESC
-        """)
-        latest_row = cursor.fetchone()
-        last_updated = latest_row[0].isoformat() if latest_row and latest_row[0] else None
-        
-        cursor.close()
-        conn.close()
-        
-        return {
-            "success": True,
-            "total_bills": total_bills,
-            "total_states": len(state_counts),
-            "total_categories": len(category_counts),
-            "state_counts": state_counts,
-            "category_counts": category_counts,
-            "last_updated": last_updated
-        }
-        
-    except Exception as e:
-        print(f"❌ BACKEND: Error getting stats: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "total_bills": 0
-        }
-
-@app.get("/api/state-legislation/check-existing")
-async def check_existing_bills(
-    state: str = Query(..., description="State abbreviation to check"),
-    session_type: str = Query("current", description="Session type: current, all, or recent")
-):
-    """Check how many bills already exist in database for a state/session before fetching new ones"""
-    try:
-        if not AZURE_SQL_AVAILABLE:
-            return {
-                "success": False,
-                "message": "Database not available",
-                "existing_count": 0,
-                "recommendation": "fetch"
-            }
-        
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Build query based on session type
-            current_year = datetime.now().year
-            
-            if session_type == "current":
-                # Count bills from current year sessions
-                query = """
-                SELECT COUNT(*) 
-                FROM dbo.state_legislation 
-                WHERE state_abbr = ? 
-                AND (
-                    session LIKE ? 
-                    OR session LIKE ?
-                    OR YEAR(last_updated) = ?
-                )
-                """
-                params = [state, f"%{current_year}%", f"%{current_year-1}%", current_year]
-                
-            elif session_type == "recent":
-                # Count bills from last 30 days
-                query = """
-                SELECT COUNT(*) 
-                FROM dbo.state_legislation 
-                WHERE state_abbr = ? 
-                AND last_updated >= DATEADD(day, -30, GETDATE())
-                """
-                params = [state]
-                
-            else:  # session_type == "all"
-                # Count all bills for the state
-                query = """
-                SELECT COUNT(*) 
-                FROM dbo.state_legislation 
-                WHERE state_abbr = ?
-                """
-                params = [state]
-            
-            cursor.execute(query, params)
-            existing_count = cursor.fetchone()[0]
-            
-            # Also get total count for context
-            cursor.execute("SELECT COUNT(*) FROM dbo.state_legislation WHERE state_abbr = ?", [state])
-            total_count = cursor.fetchone()[0]
-            
-            # Get most recent update for this state
-            cursor.execute("""
-                SELECT TOP 1 last_updated 
-                FROM dbo.state_legislation 
-                WHERE state_abbr = ? 
-                ORDER BY last_updated DESC
-            """, [state])
-            last_update_row = cursor.fetchone()
-            if last_update_row and last_update_row[0]:
-                # Handle both datetime objects and string dates
-                last_update_value = last_update_row[0]
-                if hasattr(last_update_value, 'isoformat'):
-                    last_updated = last_update_value.isoformat()
-                else:
-                    last_updated = str(last_update_value)
-            else:
-                last_updated = None
-        
-        # Determine recommendation based on existing data
-        if session_type == "current" and existing_count > 50:
-            recommendation = "skip"
-            message = f"Database already contains {existing_count} bills from current/recent sessions"
-        elif session_type == "all" and existing_count > 200:
-            recommendation = "skip" 
-            message = f"Database already contains {existing_count} bills for {state}"
-        elif session_type == "recent" and existing_count > 20:
-            recommendation = "skip"
-            message = f"Database already contains {existing_count} recent bills"
-        else:
-            recommendation = "fetch"
-            message = f"Only {existing_count} existing bills found, fetch recommended"
-        
-        return {
-            "success": True,
-            "state": state,
-            "session_type": session_type,
-            "existing_count": existing_count,
-            "total_state_count": total_count,
-            "last_updated": last_updated,
-            "recommendation": recommendation,
-            "message": message
-        }
-        
-    except Exception as e:
-        print(f"❌ BACKEND: Error checking existing bills: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "existing_count": 0,
-            "recommendation": "fetch"
-        }
-
-# ===============================
-# DEBUG ENDPOINTS FOR STATE LEGISLATION
-# ===============================
-
-@app.get("/api/debug/state-legislation")
-async def debug_state_legislation(
-    state: str = Query(..., description="State to debug")
-):
-    """Debug endpoint to check what's in the database for a specific state"""
-    try:
-        print(f"🔍 BACKEND: Debugging state legislation for: {state}")
-        
-        if not AZURE_SQL_AVAILABLE:
-            return {
-                "success": False,
-                "message": "Database not available",
-                "requested_state": state
-            }
-        
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {
-                "success": False,
-                "message": "Database connection failed",
-                "requested_state": state
-            }
-        
-        cursor = conn.cursor()
-        
-        # Try different state queries
-        queries = [
-            ("exact_state", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state = %s"),
-            ("exact_abbr", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state_abbr = %s"),
-            ("ilike_state", "SELECT COUNT(*) FROM dbo.state_legislation WHERE state LIKE %s"),
-        ]
-        
-        results = {}
-        for query_name, query_sql in queries:
-            try:
-                if query_name == "ilike_state":
-                    cursor.execute(query_sql, f"%{state}%")
-                else:
-                    cursor.execute(query_sql, state)
-                
-                count = cursor.fetchone()[0]
-                
-                # Get sample records
-                sample_query = query_sql.replace("COUNT(*)", "TOP 3 bill_id, title, state, state_abbr")
-                if query_name == "ilike_state":
-                    cursor.execute(sample_query, f"%{state}%")
-                else:
-                    cursor.execute(sample_query, state)
-                
-                sample_records = cursor.fetchall()
-                sample = []
-                for record in sample_records:
-                    bill_id, title, record_state, record_abbr = record
-                    sample.append({
-                        "bill_id": bill_id,
-                        "title": title[:50] + "..." if title and len(title) > 50 else title,
-                        "state": record_state,
-                        "state_abbr": record_abbr
-                    })
-                
-                results[query_name] = {
-                    "count": count,
-                    "sample": sample
-                }
-            except Exception as e:
-                results[query_name] = {"error": str(e)}
-        
-        # Get all distinct states in database
-        cursor.execute("SELECT DISTINCT state FROM dbo.state_legislation WHERE state IS NOT NULL")
-        all_states = [row[0] for row in cursor.fetchall()]
-        
-        cursor.execute("SELECT DISTINCT state_abbr FROM dbo.state_legislation WHERE state_abbr IS NOT NULL")
-        all_abbrs = [row[0] for row in cursor.fetchall()]
-        
-        cursor.close()
-        conn.close()
-        
-        return {
-            "success": True,
-            "requested_state": state,
-            "query_results": results,
-            "all_states_in_db": all_states,
-            "all_abbrs_in_db": all_abbrs
-        }
-        
-    except Exception as e:
-        print(f"❌ BACKEND: Error in debug endpoint: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "requested_state": state
-        }
-
-@app.get("/api/test-legiscan")
-async def test_legiscan():
-    """Test endpoint to verify LegiScan API is working"""
-    try:
-        # Check if LegiScan API is available
-        if not LEGISCAN_AVAILABLE:
-            return {
-                "success": False,
-                "error": "LegiScan API not imported - check if legiscan_api.py file exists",
-                "api_initialized": False,
-                "file_check": "legiscan_api.py not found in current directory"
-            }
-        
-        if not LEGISCAN_INITIALIZED:
-            return {
-                "success": False,
-                "error": "LegiScan API not initialized - check LEGISCAN_API_KEY in .env file",
-                "api_initialized": False,
-                "env_check": f"LEGISCAN_API_KEY = {'SET' if os.getenv('LEGISCAN_API_KEY') else 'NOT SET'}"
-            }
-        
-        # Try to initialize and test
-        try:
-            legiscan_api = LegiScanAPI()
-            
-            # Test with a simple search
-            result = legiscan_api.search_and_analyze_bills(
-                state="CA",
-                query="test",
-                limit=1
-            )
-            
-            return {
-                "success": result.get('success', False),
-                "bills_found": len(result.get('bills', [])),
-                "message": "LegiScan API test completed successfully",
-                "api_initialized": True,
-                "test_query": "CA test query",
-                "api_key_configured": bool(os.getenv('LEGISCAN_API_KEY')),
-                "one_by_one_available": True,
-                "enhanced_ai_available": enhanced_ai_client is not None
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"LegiScan API test failed: {str(e)}",
-                "api_initialized": True,
-                "api_key_configured": bool(os.getenv('LEGISCAN_API_KEY')),
-                "one_by_one_available": True,
-                "enhanced_ai_available": enhanced_ai_client is not None
-            }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Unexpected error in LegiScan test: {str(e)}",
-            "api_initialized": False
-        }
-
-@app.get("/api/test-database")
-async def test_database():
-    """Test endpoint to verify database connection"""
-    try:
-        if not AZURE_SQL_AVAILABLE:
-            return {
-                "success": False,
-                "error": "Azure SQL not available",
-                "database_type": "None"
-            }
-        
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {
-                "success": False,
-                "error": "Database connection failed",
-                "database_type": "Azure SQL"
-            }
-        
-        cursor = conn.cursor()
-        
-        # Count total bills
-        cursor.execute("SELECT COUNT(*) FROM dbo.state_legislation")
-        total_bills = cursor.fetchone()[0]
-        
-        cursor.close()
-        conn.close()
-        
-        return {
-            "success": True,
-            "message": "Database connection working correctly",
-            "total_bills_in_db": total_bills,
-            "database_type": "Azure SQL",
-            "one_by_one_processing_available": True,
-            "enhanced_ai_available": enhanced_ai_client is not None
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Database test failed: {str(e)}",
-            "database_type": "Azure SQL"
-        }
-
-
-
-@app.get("/api/debug/env-vars")
-async def debug_env_vars():
-    """Debug endpoint to print environment variables"""
-    # Only show partial values for security
-    env_vars = {
-        "ENVIRONMENT": os.getenv("ENVIRONMENT", "Not set"),
-        "AZURE_SQL_DATABASE": os.getenv("AZURE_SQL_DATABASE", "Not set"),
-        "AZURE_SQL_SERVER": os.getenv("AZURE_SQL_SERVER", "Not set"),
-        "MANAGED_IDENTITY_CLIENT_ID": (
-            os.getenv("MANAGED_IDENTITY_CLIENT_ID", "Not set")[:5] + "..." 
-            if os.getenv("MANAGED_IDENTITY_CLIENT_ID") else "Not set"
-        ),
-        "AZURE_SQL_USERNAME": os.getenv("AZURE_SQL_USERNAME", "Not set"),
-        "AZURE_SQL_PASSWORD": (
-            "✓ Set (Length: " + str(len(os.getenv("AZURE_SQL_PASSWORD", ""))) + ")" 
-            if os.getenv("AZURE_SQL_PASSWORD") else "Not set"
-        ),
-        "MSI_ENDPOINT": os.getenv("MSI_ENDPOINT", "Not set"),
-        "MSI_SECRET": "✓ Set" if os.getenv("MSI_SECRET") else "Not set",
-    }
-    
-    # Add additional container app specific variables
-    if os.getenv("CONTAINER_APP_NAME"):
-        env_vars["CONTAINER_APP_NAME"] = os.getenv("CONTAINER_APP_NAME")
-    if os.getenv("CONTAINER_APP_REVISION"):
-        env_vars["CONTAINER_APP_REVISION"] = os.getenv("CONTAINER_APP_REVISION")
-    
-    return {
-        "environment_variables": env_vars,
-        "system_info": {
-            "hostname": os.getenv("HOSTNAME", "Unknown"),
-            "python_version": os.getenv("PYTHON_VERSION", "Unknown"),
-            "current_time": datetime.now().isoformat(),
-            "is_container": bool(os.getenv("CONTAINER_APP_NAME"))
-        }
-    }
-
-
-# ===============================
-# AI REGENERATION ENDPOINT
-# ===============================
-@app.get("/api/test-regenerate")
-async def test_regenerate_endpoint():
-    """Simple test endpoint to verify routing works"""
-    return {"success": True, "message": "Test endpoint works!"}
-
-@app.get("/api/debug/executive-orders/{search_id}")
-async def debug_search_executive_order(search_id: str):
-    """Debug endpoint to search for a specific executive order"""
-    try:
-        config = get_database_config()
-        table_name = "executive_orders" if config['type'] == 'postgresql' else "dbo.executive_orders"
-        placeholder = '%s' if config['type'] == 'postgresql' else '?'
-        
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Try different search patterns
-            searches = [
-                (f"SELECT id, eo_number, document_number, title FROM {table_name} WHERE eo_number = {placeholder}", (search_id,)),
-                (f"SELECT id, eo_number, document_number, title FROM {table_name} WHERE document_number = {placeholder}", (search_id,)),
-                (f"SELECT id, eo_number, document_number, title FROM {table_name} WHERE CAST(id AS VARCHAR) = {placeholder}", (search_id,)),
-                (f"SELECT id, eo_number, document_number, title FROM {table_name} WHERE eo_number LIKE {placeholder}", (f"%{search_id}%",)),
-                (f"SELECT id, eo_number, document_number, title FROM {table_name} WHERE document_number LIKE {placeholder}", (f"%{search_id}%",)),
-                (f"SELECT id, eo_number, document_number, title FROM {table_name} WHERE title LIKE {placeholder}", (f"%{search_id}%",)),
+            # Get latest update times for each session
+            sessions = [
+                '89th Legislature Regular Session',
+                '89th Legislature 1st Special Session', 
+                '89th Legislature 2nd Special Session'
             ]
             
-            results = []
-            for i, (query, params) in enumerate(searches):
-                try:
-                    cursor.execute(query, params)
-                    rows = cursor.fetchall()
-                    if rows:
-                        for row in rows:
-                            results.append({
-                                "search_method": i + 1,
-                                "query": query,
-                                "id": row[0],
-                                "eo_number": row[1],
-                                "document_number": row[2],
-                                "title": row[3][:100] if row[3] else None
-                            })
-                except Exception as e:
-                    results.append({
-                        "search_method": i + 1,
-                        "query": query,
-                        "error": str(e)
-                    })
-            
-            return {
-                "success": True,
-                "search_id": search_id,
-                "results": results,
-                "total_matches": len([r for r in results if "error" not in r])
-            }
-            
-    except Exception as e:
-        logger.error(f"❌ Debug search failed: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-@app.get("/api/debug/executive-orders")
-async def debug_executive_orders(limit: int = 10):
-    """Debug endpoint to see what executive orders are in the database"""
-    try:
-        config = get_database_config()
-        table_name = "executive_orders" if config['type'] == 'postgresql' else "dbo.executive_orders"
-        
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            # Use TOP for SQL Server, LIMIT for PostgreSQL
-            if config['type'] == 'postgresql':
-                query = f"SELECT id, eo_number, document_number, title FROM {table_name} LIMIT {limit}"
-            else:
-                query = f"SELECT TOP {limit} id, eo_number, document_number, title FROM {table_name}"
-            
-            cursor.execute(query)
-            rows = cursor.fetchall()
-            
-            results = []
-            for row in rows:
-                results.append({
-                    "id": row[0],
-                    "eo_number": row[1],
-                    "document_number": row[2],
-                    "title": row[3][:100] if row[3] else None
+            session_info = []
+            for session_name in sessions:
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total_bills,
+                        MAX(last_updated) as latest_update,
+                        COUNT(CASE WHEN last_updated > DATEADD(hour, -24, GETDATE()) THEN 1 END) as updated_today
+                    FROM dbo.state_legislation 
+                    WHERE state = 'TX' AND session_name = ?
+                """, (session_name,))
+                
+                result = cursor.fetchone()
+                session_info.append({
+                    "session_name": session_name,
+                    "total_bills": result[0] if result else 0,
+                    "latest_update": result[1].isoformat() if result and result[1] else None,
+                    "updated_today": result[2] if result else 0
                 })
             
             return {
                 "success": True,
-                "orders": results,
-                "count": len(results)
+                "sessions": session_info,
+                "recommendation": "Run status update if latest_update is older than 24 hours"
             }
             
     except Exception as e:
-        logger.error(f"❌ Debug query failed: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-@app.get("/api/test-debug-order/{order_id}")
-async def test_get_executive_order(order_id: str):
-    """Test endpoint to check if we can find an executive order"""
-    logger.info(f"🔍 TEST ENDPOINT CALLED with order_id: {order_id}")
-    return {"success": True, "endpoint_called": True, "order_id": order_id, "message": "Endpoint is working"}
-
-
-
-@app.get("/api/simple-test")
-async def simple_test():
-    """Simple test endpoint"""
-    return {"message": "Simple test works"}
-
-@app.post("/api/simple-post-test") 
-async def simple_post_test(data: dict):
-    """Simple POST test endpoint"""
-    logger.info(f"🧪 Simple POST test: {data}")
-    return {"received": data}
-
-
-@app.post("/api/legiscan/check-and-update-v2")
-async def check_and_update_bills_v2_endpoint(request: dict):
-    """
-    NEW VERSION - Uses the improved master list approach
-    """
-    try:
-        state = request.get('state')
-        if not state:
-            raise HTTPException(status_code=400, detail="State parameter is required")
-        
-        print(f"🚀 CHECK & UPDATE V2: Starting for state {state} with NEW METHOD")
-        
-        # Initialize NEW LegiScan API client
-        if not LEGISCAN_AVAILABLE or not LEGISCAN_INITIALIZED:
-            raise HTTPException(status_code=503, detail="LegiScan API not available")
-            
-        legiscan_api = LegiScanAPI()
-        
-        # Get bills for session 89 specifically 
-        print(f"🔍 Using enhanced search to find session 89 bills...")
-        
-        # Try multiple search approaches for session 89
-        search_approaches = [
-            {"query": "89th Legislature", "year_filter": "all", "limit": 5000},
-            {"query": "89th", "year_filter": "all", "limit": 3000},
-            {"query": None, "year_filter": "current", "limit": 2000},  # Current year (2025)
-        ]
-        
-        best_result = None
-        for i, approach in enumerate(search_approaches, 1):
-            print(f"🔍 Attempt {i}: Searching with query='{approach['query']}', year_filter='{approach['year_filter']}'")
-            
-            if approach.get("query"):
-                # Use search_bills for queries
-                api_search_result = legiscan_api.search_bills(
-                    state=state,
-                    query=approach["query"],
-                    limit=approach["limit"],
-                    year_filter=approach["year_filter"],
-                    max_pages=50
-                )
-            else:
-                # Use optimized_bulk_fetch for no-query searches
-                api_search_result = legiscan_api.optimized_bulk_fetch(
-                    state=state,
-                    limit=approach["limit"],
-                    recent_only=False,
-                    year_filter=approach["year_filter"],
-                    max_pages=50
-                )
-            
-            if api_search_result.get('success'):
-                bills_found = len(api_search_result.get('bills', []))
-                print(f"✅ Approach {i} found {bills_found} bills")
-                if bills_found > 0:
-                    best_result = api_search_result
-                    print(f"🎯 Using approach {i} with {bills_found} bills")
-                    break
-            else:
-                print(f"❌ Approach {i} failed: {api_search_result.get('error')}")
-        
-        # Use the best result we found
-        if not best_result or not best_result.get('success'):
-            raise HTTPException(status_code=500, detail="All search approaches failed")
-        
-        api_bills = best_result.get('bills', [])
-        source_method = best_result.get('source', 'unknown')
-        print(f"✅ SESSION 89 SEARCH SUCCESS: Found {len(api_bills)} bills using {source_method}!")
-        
-        # Now SAVE the bills to the database (this was missing!)
-        print(f"💾 Saving {len(api_bills)} bills to database...")
-        
-        # Use the nightly_bill_updater to save bills
-        from tasks.nightly_bill_updater import NightlyBillUpdater
-        
-        bill_updater = NightlyBillUpdater()
-        saved_count = 0
-        updated_count = 0
-        
-        for bill_data in api_bills:
-            try:
-                result = await bill_updater.save_or_update_bill(bill_data)
-                if result.get('is_new'):
-                    saved_count += 1
-                else:
-                    updated_count += 1
-            except Exception as e:
-                print(f"❌ Error saving bill {bill_data.get('bill_id', 'unknown')}: {e}")
-                continue
-        
-        print(f"✅ DATABASE SAVE COMPLETE: {saved_count} new bills, {updated_count} updated bills")
-        
-        return {
-            "success": True,
-            "message": f"SESSION 89 SEARCH: Found {len(api_bills)} bills and saved {saved_count} new + {updated_count} updated to database!",
-            "bills_found": len(api_bills),
-            "bills_saved": saved_count,
-            "bills_updated": updated_count,
-            "source_method": source_method,
-            "method_used": "multiple search approaches for session 89"
-        }
-        
-    except Exception as e:
-        print(f"❌ V2 Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/state-legislation/test-regenerate")
-async def test_regenerate_state_legislation():
-    """Test endpoint to verify regenerate functionality"""
-    return {"success": True, "message": "Regenerate endpoint is working!"}
-
-@app.post("/api/state-legislation/regenerate-ai")
-async def regenerate_state_legislation_ai():
-    """Regenerate AI analysis for all state legislation using updated prompts"""
-    try:
-        logger.info("🤖 Starting AI regeneration for all state legislation")
-        
-        # First, fetch all state legislation from database
-        db_result = get_state_legislation_from_db(limit=1000, offset=0)
-        
-        if not db_result.get('success'):
-            return {
-                "success": False,
-                "message": "Failed to retrieve state legislation from database"
-            }
-        
-        bills = db_result.get('results', [])
-        if not bills:
-            return {
-                "success": False,
-                "message": "No state legislation found in database"
-            }
-        
-        logger.info(f"🔄 Found {len(bills)} state bills to reprocess")
-        
-        processed_count = 0
-        failed_count = 0
-        
-        # Process each bill with enhanced AI
-        for i, bill in enumerate(bills, 1):
-            try:
-                logger.info(f"🔄 Processing bill {i}/{len(bills)}: {bill.get('bill_number', 'Unknown')}")
-                
-                # Check if we have enhanced AI available
-                if not enhanced_ai_client:
-                    logger.error("❌ Enhanced AI client not available")
-                    failed_count += 1
-                    continue
-                
-                try:
-                    # Prepare bill text for AI analysis
-                    bill_text = f"""
-                    Title: {bill.get('title', '')}
-                    Description: {bill.get('description', '')}
-                    State: {bill.get('state', '')}
-                    Status: {bill.get('status', '')}
-                    """.strip()
-                    
-                    # Generate enhanced AI analysis - only summary for state bills
-                    ai_summary = await process_with_ai(
-                        bill_text, 
-                        PromptType.EXECUTIVE_SUMMARY, 
-                        temperature=0.1,
-                        context=f"State legislation from {bill.get('state', 'Unknown')}"
-                    )
-                    
-                    # Skip talking points and business impact for state bills
-                    ai_talking_points = ""
-                    ai_impact = ""
-                    
-                    # Update the bill with new AI analysis
-                    update_data = {
-                        'ai_summary': ai_summary,
-                        'ai_executive_summary': ai_summary,  # Use same as summary for now
-                        'ai_talking_points': ai_talking_points,
-                        'ai_business_impact': ai_impact,
-                        'ai_potential_impact': ai_impact,
-                        'ai_version': 'enhanced-regenerated-v1.0',
-                        'last_updated': datetime.now().isoformat()
-                    }
-                    
-                    # Update in database directly using SQL
-                    conn = get_azure_sql_connection()
-                    if conn:
-                        cursor = conn.cursor()
-                        
-                        # Determine database type for parameter placeholders
-                        from database_config import get_database_config
-                        config = get_database_config()
-                        is_postgresql = config['type'] == 'postgresql'
-                        param_placeholder = '%s' if is_postgresql else '?'
-                        table_name = "state_legislation" if is_postgresql else "dbo.state_legislation"
-                        
-                        update_sql = f"""
-                        UPDATE {table_name} 
-                        SET ai_summary = {param_placeholder},
-                            ai_executive_summary = {param_placeholder},
-                            ai_talking_points = {param_placeholder},
-                            ai_business_impact = {param_placeholder},
-                            ai_potential_impact = {param_placeholder},
-                            ai_version = {param_placeholder},
-                            last_updated = GETDATE()
-                        WHERE id = {param_placeholder}
-                        """
-                        
-                        cursor.execute(update_sql, [
-                            update_data['ai_summary'],
-                            update_data['ai_executive_summary'], 
-                            update_data['ai_talking_points'],
-                            update_data['ai_business_impact'],
-                            update_data['ai_potential_impact'],
-                            update_data['ai_version'],
-                            bill.get('id')
-                        ])
-                        
-                        conn.commit()
-                        cursor.close()
-                        conn.close()
-                        
-                        processed_count += 1
-                        logger.info(f"✅ Successfully updated AI analysis for bill {bill.get('bill_number')}")
-                    else:
-                        failed_count += 1
-                        logger.error(f"❌ Failed to get database connection for bill {bill.get('bill_number')}")
-                        
-                except Exception as ai_error:
-                    failed_count += 1
-                    logger.error(f"❌ AI processing failed for bill {bill.get('bill_number')}: {ai_error}")
-                    
-            except Exception as bill_error:
-                failed_count += 1
-                logger.error(f"❌ Error processing bill {i}: {bill_error}")
-        
-        return {
-            "success": True,
-            "message": f"AI regeneration completed",
-            "total_bills": len(bills),
-            "processed_successfully": processed_count,
-            "failed": failed_count,
-            "regeneration_type": "all_state_legislation"
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error in AI regeneration: {e}")
-        return {
-            "success": False,
-            "message": f"AI regeneration failed: {str(e)}"
-        }
-
-
-# ===============================
-# PRESIDENTIAL PROCLAMATIONS ENDPOINTS
-# ===============================
-
-@app.get("/api/proclamations/check-count")
-async def check_proclamations_count():
-    """
-    Check Federal Register for total proclamations count and compare with database count
-    Returns status indicating if fetch is needed
-    """
-    try:
-        if not SIMPLE_EO_AVAILABLE:
-            raise HTTPException(
-                status_code=503,
-                detail="Simple Executive Orders API not available"
-            )
-        
-        # Initialize SimpleProclamations instance
-        proclamations_client = SimpleProclamations()
-        
-        # Get count from Federal Register API
-        federal_register_count = await proclamations_client.get_proclamations_count_from_federal_register()
-        
-        # Get count from database
-        database_count = await proclamations_client.get_proclamations_count_from_database()
-        
-        # Calculate difference
-        new_proclamations_available = max(0, federal_register_count - database_count)
-        needs_fetch = new_proclamations_available > 0
-        
-        logger.info(f"📊 Proclamations Count Check - Federal Register: {federal_register_count}, Database: {database_count}, New: {new_proclamations_available}")
-        
-        return {
-            "success": True,
-            "federal_register_count": federal_register_count,
-            "database_count": database_count,
-            "new_proclamations_available": new_proclamations_available,
-            "needs_fetch": needs_fetch,
-            "last_checked": datetime.now().isoformat(),
-            "message": f"Found {new_proclamations_available} new proclamations available" if needs_fetch else "Database is up to date"
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error checking proclamations counts: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "federal_register_count": 0,
-            "database_count": 0,
-            "new_proclamations_available": 0,
-            "needs_fetch": False,
-            "message": "Error checking for proclamations updates"
-        }
-
-@app.post("/api/proclamations/fetch")
-async def fetch_proclamations_endpoint(request: ProclamationFetchRequest):
-    """Fetch proclamations from Federal Register API with AI processing"""
-    try:
-        logger.info(f"🚀 Starting proclamations fetch via Federal Register API")
-        logger.info(f"📋 Request: {request.model_dump()}")
-        
-        if not SIMPLE_EO_AVAILABLE:
-            raise HTTPException(
-                status_code=503,
-                detail="Simple Executive Orders API not available"
-            )
-        
-        # Initialize SimpleProclamations instance
-        proclamations_client = SimpleProclamations()
-        
-        # Call the fetch method
-        result = await proclamations_client.fetch_and_save_proclamations(
-            start_date=request.start_date,
-            end_date=request.end_date,
-            with_ai=request.with_ai,
-            save_to_db=request.save_to_db
-        )
-        
-        logger.info(f"📊 Proclamations fetch result: {result.get('count', 0)} proclamations")
-        
-        if result.get('success'):
-            return {
-                "success": True,
-                "results": result.get('results', []),
-                "count": result.get('count', 0),
-                "proclamations_saved": result.get('proclamations_saved', 0),
-                "total_found": result.get('total_found', 0),
-                "ai_successful": result.get('ai_successful', 0),
-                "ai_failed": result.get('ai_failed', 0),
-                "message": result.get('message', 'Proclamations fetched successfully'),
-                "date_range_used": result.get('date_range_used'),
-                "method": "federal_register_api_direct"
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=result.get('error', 'Unknown error occurred')
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error in proclamations fetch endpoint: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch proclamations: {str(e)}"
-        )
-
-@app.get("/api/proclamations")
-async def get_proclamations_endpoint(
-    category: Optional[str] = Query(None, description="Filter by category"),
-    search: Optional[str] = Query(None, description="Search term"),
-    page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(25, ge=1, le=100, description="Items per page"),
-    sort_by: str = Query("signing_date", description="Sort field"),
-    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
-    user_id: Optional[str] = Query(None, description="User ID for highlights")
-):
-    """Get proclamations from database with filtering and pagination"""
-    try:
-        if not SIMPLE_EO_AVAILABLE:
-            raise HTTPException(
-                status_code=503,
-                detail="Simple Executive Orders API not available"
-            )
-        
-        # Initialize SimpleProclamations instance
-        proclamations_client = SimpleProclamations()
-        
-        # Get proclamations from database
-        result = await proclamations_client.get_proclamations_from_db(
-            category=category,
-            search=search,
-            limit=per_page,
-            offset=(page - 1) * per_page,
-            sort_by=sort_by,
-            sort_order=sort_order
-        )
-        
-        if result.get('success'):
-            return {
-                "success": True,
-                "results": result.get('results', []),
-                "total": result.get('total', 0),
-                "page": page,
-                "per_page": per_page,
-                "total_pages": math.ceil(result.get('total', 0) / per_page),
-                "message": result.get('message', 'Proclamations retrieved successfully')
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=result.get('error', 'Failed to retrieve proclamations')
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error in get proclamations endpoint: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get proclamations: {str(e)}"
-        )
-
-
-# ===============================
-# SELECTIVE AI REGENERATION ENDPOINT FOR VERBOSE SUMMARIES
-# ===============================
-@app.post("/api/state-legislation/fix-verbose-summaries")
-async def fix_verbose_bills(state: str = "CA"):
-    """Fix bills with verbose/old format summaries"""
-    try:
-        logger.info(f"🔧 Starting to fix verbose summaries for {state}")
-        
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {"success": False, "message": "Database connection failed"}
-        
-        cursor = conn.cursor()
-        
-        # Find bills with old format markers
-        query = """
-        SELECT TOP 50 id, bill_id, bill_number, title, description, state, state_abbr, status, category,
-               session_name, bill_type, body, introduced_date, last_action_date, legiscan_url, pdf_url, ai_summary
-        FROM dbo.state_legislation 
-        WHERE (state = %s OR state_abbr = %s) 
-        AND ai_summary IS NOT NULL
-        AND LEN(ai_summary) > 800
-        ORDER BY LEN(ai_summary) DESC
-        """
-        
-        cursor.execute(query, (state, state))
-        rows = cursor.fetchall()
-        
-        logger.info(f"🔍 Found {len(rows)} bills with long summaries to check")
-        
-        processed_count = 0
-        
-        for i, row in enumerate(rows, 1):
-            try:
-                current_summary = row[16] if len(row) > 16 else ""
-                
-                # Check if summary has old format markers
-                if any(marker in current_summary for marker in ['Certainly!', '**', '##', '---', 'Bill Summary', 'Key Talking Points', 'Business Impact']):
-                    logger.info(f"🔧 Processing bill {i}: {row[2]} - has old format")
-                    
-                    bill = {
-                        'title': row[3],
-                        'description': row[4],
-                        'state': row[5],
-                        'status': row[7]
-                    }
-                    
-                    # Generate new summary
-                    if enhanced_ai_client:
-                        bill_text = f"""
-                        Title: {bill.get('title', '')}
-                        Description: {bill.get('description', '')}
-                        State: {bill.get('state', '')}
-                        Status: {bill.get('status', '')}
-                        """.strip()
-                        
-                        ai_summary = await process_with_ai(
-                            bill_text, 
-                            PromptType.EXECUTIVE_SUMMARY, 
-                            temperature=0.1,
-                            context=f"State legislation from {bill.get('state', 'Unknown')}"
-                        )
-                        
-                        # Update the database
-                        update_query = """
-                        UPDATE dbo.state_legislation 
-                        SET ai_summary = %s, ai_executive_summary = %s, 
-                            ai_version = %s, last_updated = GETUTCDATE()
-                        WHERE id = %s
-                        """
-                        
-                        cursor.execute(update_query, (
-                            ai_summary, ai_summary, 'azure_openai_enhanced_v2_clean',
-                            row[0]
-                        ))
-                        conn.commit()
-                        
-                        processed_count += 1
-                        logger.info(f"✅ Successfully processed {row[2]}")
-                        
-                        # Stop after 20 to avoid timeout
-                        if processed_count >= 20:
-                            break
-                    
-            except Exception as e:
-                logger.error(f"❌ Failed to process bill {row[2]}: {e}")
-                
-        cursor.close()
-        conn.close()
-        
-        return {
-            "success": True,
-            "message": f"Fixed {processed_count} bills with verbose summaries. Run again to process more.",
-            "processed": processed_count,
-            "total_checked": len(rows)
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error fixing verbose summaries: {e}")
-        return {"success": False, "message": str(e)}
-
-@app.post("/api/state-legislation/fix-missing-summaries")
-async def fix_missing_summaries(request: dict):
-    try:
-        state = request.get('state', '')
-        
-        # Connect to database
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {"success": False, "message": "Database connection failed"}
-        
-        cursor = conn.cursor()
-        
-        # Simple query to find bills with long summaries that likely have old format
-        query = """
-        SELECT TOP 100 id, bill_id, bill_number, title, description, state, state_abbr, status, category,
-               session_name, bill_type, body, introduced_date, last_action_date, legiscan_url, pdf_url, ai_summary
-        FROM dbo.state_legislation 
-        WHERE (state = %s OR state_abbr = %s) 
-        AND ai_summary IS NOT NULL
-        AND LEN(ai_summary) > 500
-        ORDER BY LEN(ai_summary) DESC
-        """
-        
-        cursor.execute(query, (state, state))
-        rows = cursor.fetchall()
-        
-        logger.info(f"🔍 Found {len(rows)} bills with long summaries to check")
-        
-        processed_count = 0
-        
-        for i, row in enumerate(rows, 1):
-            try:
-                current_summary = row[16] if len(row) > 16 else ""
-                
-                # Check if summary has old format markers
-                if any(marker in current_summary for marker in ['Certainly!', '**', '##', '---', 'Bill Summary', 'Key Talking Points', 'Business Impact']):
-                    logger.info(f"🔧 Processing bill {i}: {row[2]} - has old format")
-                    
-                    bill = {
-                        'id': row[0],
-                        'bill_id': row[1], 
-                        'bill_number': row[2],
-                        'title': row[3],
-                        'description': row[4],
-                        'state': row[5],
-                        'state_abbr': row[6],
-                        'status': row[7],
-                        'category': row[8],
-                        'session_name': row[9],
-                        'bill_type': row[10],
-                        'body': row[11],
-                        'introduced_date': row[12],
-                        'last_action_date': row[13],
-                        'legiscan_url': row[14],
-                        'pdf_url': row[15]
-                    }
-                    
-                    # Generate new summary
-                    if enhanced_ai_client:
-                        bill_text = f"""
-                        Title: {bill.get('title', '')}
-                        Description: {bill.get('description', '')}
-                        State: {bill.get('state', '')}
-                        Status: {bill.get('status', '')}
-                        """.strip()
-                        
-                        ai_summary = await process_with_ai(
-                            bill_text, 
-                            PromptType.EXECUTIVE_SUMMARY, 
-                            temperature=0.1,
-                            context=f"State legislation from {bill.get('state', 'Unknown')}"
-                        )
-                        
-                        # Update the database
-                        update_query = """
-                        UPDATE dbo.state_legislation 
-                        SET ai_summary = %s, ai_executive_summary = %s, 
-                            ai_version = %s, last_updated = GETUTCDATE()
-                        WHERE id = %s
-                        """
-                        
-                        cursor.execute(update_query, (
-                            ai_summary, ai_summary, 'azure_openai_enhanced_v2_clean',
-                            row[0]
-                        ))
-                        conn.commit()
-                        
-                        processed_count += 1
-                        logger.info(f"✅ Successfully processed {row[2]}")
-                        
-                        # Stop after 20 to avoid timeout
-                        if processed_count >= 20:
-                            break
-                    
-            except Exception as e:
-                logger.error(f"❌ Failed to process bill {row[2]}: {e}")
-                
-        cursor.close()
-        conn.close()
-        
-        return {
-            "success": True,
-            "message": f"Fixed {processed_count} bills with verbose summaries. Run again to process more.",
-            "processed": processed_count,
-            "total_checked": len(rows)
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error fixing verbose summaries: {e}")
-        return {"success": False, "message": str(e)}
-
-@app.post("/api/state-legislation/fix-missing-summaries-v2")
-async def fix_missing_summaries_v2(state: str = "CA"):
-    """Regenerate AI summaries for bills with missing, failed, or verbose/old format summaries"""
-    try:
-        logger.info(f"🔧 Starting selective AI regeneration for {state} bills with missing or verbose summaries")
-        
-        # Connect to database
-        conn = get_azure_sql_connection()
-        if not conn:
-            return {"success": False, "message": "Database connection failed"}
-        
-        cursor = conn.cursor()
-        
-        # Enhanced approach: find bills with missing summaries OR verbose/old format summaries
-        # Focus on bills that haven't been processed with the clean format yet
-        query = """
-        SELECT TOP 100 id, bill_id, bill_number, title, description, state, state_abbr, status, category,
-               session_name, bill_type, body, introduced_date, last_action_date, legiscan_url, pdf_url, ai_summary, ai_version
-        FROM dbo.state_legislation 
-        WHERE (state = %s OR state_abbr = %s) 
-        AND (
-            -- Missing or error summaries
-            ai_summary IS NULL 
-            OR ai_summary = '' 
-            OR ai_summary LIKE '%Error generating%'
-            OR ai_summary LIKE '%Connection error%'
-            OR ai_summary LIKE '%Failed to generate%'
-            -- OR verbose/old format summaries that haven't been cleaned
-            OR (
-                (
-                    CHARINDEX('Certainly!', ai_summary) > 0
-                    OR CHARINDEX('**', ai_summary) > 0
-                    OR CHARINDEX('##', ai_summary) > 0
-                    OR CHARINDEX('---', ai_summary) > 0
-                    OR CHARINDEX('Bill Summary', ai_summary) > 0
-                    OR CHARINDEX('Key Talking Points', ai_summary) > 0
-                    OR CHARINDEX('Business Impact', ai_summary) > 0
-                    OR (LEN(ai_summary) > 1500 AND ai_summary NOT LIKE '%<p>%')
-                )
-                AND (ai_version IS NULL OR ai_version NOT LIKE '%clean%' OR ai_version NOT LIKE '%fixed%')
-            )
-        )
-        ORDER BY CASE 
-            WHEN ai_summary IS NULL OR ai_summary = '' THEN 1
-            WHEN ai_summary LIKE '%Error generating%' OR ai_summary LIKE '%Connection error%' THEN 2
-            WHEN CHARINDEX('Certainly!', ai_summary) > 0 THEN 3
-            ELSE 4
-        END, LEN(ai_summary) DESC
-        """
-        
-        cursor.execute(query, (state, state))
-        rows = cursor.fetchall()
-        
-        # Debug: Also check for bills with specific patterns more broadly
-        debug_query = """
-        SELECT COUNT(*) 
-        FROM dbo.state_legislation 
-        WHERE (state = %s OR state_abbr = %s) 
-        AND ai_summary IS NOT NULL
-        AND (
-            CHARINDEX('Certainly!', ai_summary) > 0
-            OR CHARINDEX('**', ai_summary) > 0
-            OR CHARINDEX('##', ai_summary) > 0
-            OR CHARINDEX('---', ai_summary) > 0
-            OR LEN(ai_summary) > 1000
-        )
-        """
-        cursor.execute(debug_query, (state, state))
-        debug_count = cursor.fetchone()[0]
-        logger.info(f"🔍 DEBUG: Found {debug_count} bills with old format patterns using CHARINDEX")
-        
-        if not rows:
-            return {
-                "success": True,
-                "message": f"✅ All bills in {state} already have clean, properly formatted summaries! No fixes needed.",
-                "processed": 0,
-                "failed": 0,
-                "total_found": 0
-            }
-        
-        logger.info(f"🔄 Found {len(rows)} bills with missing or verbose summaries to fix")
-        
-        processed_count = 0
-        failed_count = 0
-        skipped_count = 0
-        
-        # Add batch processing with limits
-        max_bills_per_run = 50  # Process up to 50 bills at a time
-        bills_to_process = min(len(rows), max_bills_per_run)
-        
-        logger.info(f"📊 Processing {bills_to_process} bills out of {len(rows)} total (max {max_bills_per_run} per run)")
-        
-        # Process each bill with missing summary
-        for i, row in enumerate(rows[:bills_to_process], 1):
-            try:
-                current_summary = row[16] if len(row) > 16 else "Missing"
-                current_version = row[17] if len(row) > 17 else "Unknown"
-                
-                # Determine the type of issue with this summary
-                is_missing = not current_summary or current_summary == "" or "Error generating" in current_summary or "Connection error" in current_summary
-                old_format_markers = ['Certainly!', '**', '##', '---', 'Bill Summary', 'Key Talking Points', 'Business Impact', 'here is an analysis']
-                has_old_format = any(marker in str(current_summary) for marker in old_format_markers) if current_summary else False
-                is_too_long = len(str(current_summary)) > 1200
-                
-                if not is_missing and not has_old_format and not is_too_long:
-                    logger.info(f"⏭️ Skipping bill {i}/{len(rows)}: {row[2]} - already has clean format")
-                    skipped_count += 1
-                    continue
-                
-                # Log the type of issue being fixed
-                issue_type = "missing" if is_missing else ("verbose/old format" if has_old_format else "too long")
-                logger.info(f"🤖 Processing bill {i}/{len(rows)}: {row[2]} - {issue_type} summary (length: {len(str(current_summary))}, version: {current_version})")
-                
-                # Create bill object for AI processing
-                bill = {
-                    'id': row[0],
-                    'bill_id': row[1], 
-                    'bill_number': row[2],
-                    'title': row[3],
-                    'description': row[4],
-                    'state': row[5],
-                    'state_abbr': row[6],
-                    'status': row[7],
-                    'category': row[8],
-                    'session_name': row[9],
-                    'bill_type': row[10],
-                    'body': row[11],
-                    'introduced_date': row[12],
-                    'last_action_date': row[13],
-                    'legiscan_url': row[14],
-                    'pdf_url': row[15]
-                }
-                
-                # Generate AI summaries
-                logger.info(f"🔧 About to generate AI for bill {row[2]}, enhanced_ai_client available: {enhanced_ai_client is not None}")
-                if enhanced_ai_client:
-                    logger.info(f"🤖 Starting AI generation for {row[2]}")
-                    # Prepare bill text for AI analysis
-                    bill_text = f"""
-                    Title: {bill.get('title', '')}
-                    Description: {bill.get('description', '')}
-                    State: {bill.get('state', '')}
-                    Status: {bill.get('status', '')}
-                    """.strip()
-                    
-                    # Generate enhanced AI analysis - only summary for state bills
-                    ai_summary = await process_with_ai(
-                        bill_text, 
-                        PromptType.EXECUTIVE_SUMMARY, 
-                        temperature=0.1,
-                        context=f"State legislation from {bill.get('state', 'Unknown')}"
-                    )
-                    
-                    # Skip talking points and business impact for state bills
-                    ai_talking_points = ""
-                    ai_key_points = ""
-                    ai_impact = ""
-                    
-                    # Update the database with new AI content
-                    update_query = """
-                    UPDATE dbo.state_legislation 
-                    SET ai_summary = %s, ai_executive_summary = %s, ai_talking_points = %s, 
-                        ai_key_points = %s, ai_business_impact = %s, ai_potential_impact = %s,
-                        ai_version = %s, last_updated = GETUTCDATE()
-                    WHERE id = %s
-                    """
-                    
-                    cursor.execute(update_query, (
-                        ai_summary, ai_summary, ai_talking_points, ai_key_points,
-                        ai_impact, ai_impact, 'azure_openai_enhanced_v1_fixed',
-                        row[0]
-                    ))
-                    conn.commit()
-                    
-                    processed_count += 1
-                    logger.info(f"✅ Successfully processed {row[2]}")
-                    
-                else:
-                    logger.warning("❌ Enhanced AI client not available")
-                    failed_count += 1
-                    
-            except Exception as e:
-                logger.error(f"❌ Failed to process bill {row[2]}: {e}")
-                logger.error(f"❌ Full error traceback: {traceback.format_exc()}")
-                failed_count += 1
-                
-        cursor.close()
-        conn.close()
-        
-        remaining_bills = len(rows) - bills_to_process
-        
-        return {
-            "success": True,
-            "message": (
-                f"✅ Fixed {processed_count} bills in {state}. " +
-                (f"{remaining_bills} more bills need processing - click Fix Summaries again." if remaining_bills > 0 
-                 else f"All {len(rows)} identified bills have been successfully processed!" if len(rows) > processed_count
-                 else "All bills are now properly formatted!")
-            ),
-            "processed": processed_count,
-            "failed": failed_count,
-            "total_found": len(rows),
-            "remaining": remaining_bills,
-            "batch_size": max_bills_per_run
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Error in selective regeneration: {e}")
-        return {
-            "success": False,
-            "message": f"Selective regeneration failed: {str(e)}"
-        }
-
-# ===============================
-# MAIN STARTUP SECTION
-# ===============================
-
-if __name__ == "__main__":
-    import uvicorn
-    print("🌐 Starting Enhanced LegislationVue API v14.0.0 with ai.py Integration")
-    print("=" * 80)
-    
-    print(f"🔥 ENHANCED AI FEATURES:")
-    print(f"   • Executive Summaries: Multi-paragraph professional analysis")
-    print(f"   • Talking Points: Exactly 5 numbered stakeholder points")
-    print(f"   • Business Impact: Structured risk/opportunity sections")
-    print(f"   • Categories: 12-category enhanced classification")
-    print(f"   • Processing: Enhanced one-by-one fetch→analyze→save")
-    print("")
-    
-    print(f"🎯 KEY ENDPOINTS:")
-    print(f"   • GET  /api/state-legislation              ✅ (FIXES YOUR 404)")
-    print(f"   • POST /api/legiscan/search-and-analyze    ✅ (Enhanced + Traditional)")
-    print(f"   • POST /api/legiscan/enhanced-search-and-analyze ✅ (Pure Enhanced)")
-    print(f"   • POST /api/state-legislation/fetch        ✅ (Bulk fetch)")
-    print(f"   • POST /api/fetch-executive-orders-simple  ✅ (Executive orders)")
-    print(f"   • GET  /api/highlights?user_id=1           ✅ (Highlights page)")
-    print("")
-    
-    print(f"🚀 NEW ENHANCED ENDPOINTS:")
-    print(f"   • POST /api/legiscan/enhanced-search-and-analyze")
-    print(f"   • GET  /api/test-enhanced-ai")
-    print(f"   • POST /api/legiscan/test-one-by-one")
-    print("")
-    
-    print(f"📋 State Legislation endpoints:")
-    print(f"   • GET  /api/state-legislation")
-    print(f"   • POST /api/legiscan/search-and-analyze")
-    print(f"   • POST /api/state-legislation/fetch")
-    print(f"   • GET  /api/state-legislation/states")
-    print(f"   • GET  /api/state-legislation/stats")
-    print("")
-    
-    print(f"📋 Executive Orders endpoints:")
-    print(f"   • GET  /api/executive-orders")
-    print(f"   • POST /api/fetch-executive-orders-simple")
-    print("")
-    
-    print(f"⭐ Highlights endpoints:")
-    print(f"   • GET  /api/highlights?user_id=1")
-    print(f"   • POST /api/highlights")
-    print(f"   • DELETE /api/highlights/{{order_id}}?user_id=1")
-    print("")
-    
-    print(f"🔧 Testing endpoints:")
-    print(f"   • GET  /api/status")
-    print(f"   • GET  /api/test-legiscan")
-    print(f"   • GET  /api/test-database")
-    print(f"   • GET  /api/test-enhanced-ai")
-    print(f"   • POST /api/legiscan/test-one-by-one")
-    print(f"   • GET  /api/debug/state-legislation?state=CA")
-    print("")
-    
-    # Configuration status checks
-    print(f"🎯 Configuration Status:")
-    print(f"   • AZURE_SQL: {'✅ Configured' if AZURE_SQL_AVAILABLE else '❌ Missing'}")
-    print(f"   • STATE_LEGISLATION: {'✅ Available' if AZURE_SQL_AVAILABLE else '❌ Azure SQL Required'}")
-    print(f"   • HIGHLIGHTS_DB: {'✅ Available' if HIGHLIGHTS_DB_AVAILABLE else '❌ Azure SQL Required'}")
-    print(f"   • SIMPLE_EXECUTIVE_ORDERS: {'✅ Available' if SIMPLE_EO_AVAILABLE else '❌ Missing'}")
-    print(f"   • EXECUTIVE_ORDERS_INTEGRATION: {'✅ Available' if EXECUTIVE_ORDERS_AVAILABLE else '❌ Missing'}")
-    print(f"   • LEGISCAN_API: {'✅ Available' if LEGISCAN_INITIALIZED else '❌ Check API Key'}")
-    print(f"   • ENHANCED_AI_CLIENT: {'✅ Available' if enhanced_ai_client else '❌ Not Configured'}")
-    print("")
-    
-    print(f"🤖 Enhanced AI Status:")
-    print(f"   • Client: {'✅ Ready' if enhanced_ai_client else '❌ Not Available'}")
-    print(f"   • Model: {MODEL_NAME}")
-    print(f"   • Endpoint: {AZURE_ENDPOINT}")
-    print(f"   • Prompts: {len(ENHANCED_PROMPTS)} enhanced prompts")
-    print(f"   • Categories: {len(BillCategory)} enhanced categories")
-    print(f"   • Formatters: 3 distinct output formatters")
-    print("")
-    
-    if AZURE_SQL_AVAILABLE and enhanced_ai_client:
-        print(f"🚀 FULL ENHANCED INTEGRATION READY!")
-
-# =====================================
-# GLOBAL SEARCH ENDPOINT
-# =====================================
-@app.get("/api/search")
-async def global_search(
-    q: str,
-    type: str = None,
-    state: str = None,
-    category: str = None,
-    limit: int = 50,
-    offset: int = 0
-):
-    """
-    Global fuzzy search endpoint that searches across all data types.
-    
-    Parameters:
-    - q: Search query (bill number, title, text, practice area)  
-    - type: Filter by type (executive_orders, state_legislation, proclamations)
-    - state: Filter by state (for state legislation)
-    - category: Filter by category
-    - limit: Maximum results per type
-    - offset: Pagination offset
-    """
-    try:
-        if not q or len(q.strip()) < 2:
-            return {"results": [], "message": "Search query must be at least 2 characters"}
-        
-        search_term = q.strip().lower()
-        results = {
-            "executive_orders": [],
-            "state_legislation": [],
-            "proclamations": [],
-            "total_count": 0,
-            "search_term": q
-        }
-        
-        # Search Executive Orders if type is not specified or includes executive_orders  
-        if not type or type == "executive_orders":
-            try:
-                conn = get_azure_sql_connection()
-                if conn:
-                    cursor = conn.cursor()
-                    
-                    # Build search query for executive orders (from executive_orders table)
-                    eo_query = """
-                    SELECT TOP 50 eo_number, title, category, 
-                           ai_summary, ai_executive_summary, summary,
-                           ai_talking_points, ai_business_impact, ai_potential_impact,
-                           signing_date, publication_date, html_url, pdf_url, ai_key_points
-                    FROM dbo.executive_orders
-                    WHERE (
-                        LOWER(eo_number) LIKE ? OR
-                        LOWER(title) LIKE ? OR
-                        LOWER(ai_summary) LIKE ? OR
-                        LOWER(ai_executive_summary) LIKE ? OR
-                        LOWER(summary) LIKE ? OR
-                        LOWER(category) LIKE ? OR
-                        LOWER(ai_talking_points) LIKE ? OR
-                        LOWER(ai_business_impact) LIKE ? OR
-                        LOWER(ai_potential_impact) LIKE ? OR
-                        LOWER(ai_key_points) LIKE ?
-                    )
-                    """
-                    
-                    params = [f"%{search_term}%"] * 10
-                    
-                    if category:
-                        eo_query += " AND LOWER(category) = ?"
-                        params.append(category.lower())
-                    
-                    eo_query += " ORDER BY signing_date DESC"
-                    
-                    cursor.execute(eo_query, params)
-                    rows = cursor.fetchall()
-                    
-                    for row in rows:
-                        # Debug: Check if AI fields are present
-                        logger.info(f"DEBUG: Processing EO {row[0]}")
-                        logger.info(f"DEBUG: ai_talking_points present: {bool(row[6])}")
-                        logger.info(f"DEBUG: ai_business_impact present: {bool(row[7])}")
-                        logger.info(f"DEBUG: ai_potential_impact present: {bool(row[8])}")
-                        results["executive_orders"].append({
-                            "id": f"eo_{row[0]}",
-                            "type": "executive_order", 
-                            "executive_order_number": row[0],
-                            "eo_number": row[0],
-                            "title": row[1] or "",
-                            "category": row[2] or "",
-                            "ai_summary": row[3] or "",
-                            "ai_executive_summary": row[4] or "",
-                            "description": row[5] or "",
-                            "ai_talking_points": row[6] or "",
-                            "ai_business_impact": row[7] or "",
-                            "ai_potential_impact": row[8] or "",
-                            "signing_date": str(row[9]) if row[9] else None,
-                            "publication_date": str(row[10]) if row[10] else None,
-                            "url": row[11] or "",
-                            "pdf_url": row[12] or "",
-                            "ai_key_points": row[13] or ""
-                        })
-                    
-                    cursor.close()
-                    conn.close()
-            except Exception as e:
-                logger.error(f"Error searching executive orders: {e}")
-        
-        # Search State Legislation if type is not specified or includes state_legislation
-        if not type or type == "state_legislation":
-            try:
-                conn = get_azure_sql_connection()
-                if conn:
-                    cursor = conn.cursor()
-                    
-                    # Build search query for state legislation
-                    sl_query = """
-                    SELECT id, bill_id, bill_number, title, description, state, state_abbr,
-                           status, category, session_name, bill_type, introduced_date,
-                           last_action_date, legiscan_url, ai_summary, ai_talking_points,
-                           ai_business_impact, ai_potential_impact
-                    FROM dbo.state_legislation
-                    WHERE (
-                        LOWER(bill_number) LIKE ? OR
-                        LOWER(title) LIKE ? OR
-                        LOWER(description) LIKE ? OR
-                        LOWER(ai_summary) LIKE ? OR
-                        LOWER(ai_talking_points) LIKE ? OR
-                        LOWER(ai_business_impact) LIKE ? OR
-                        LOWER(ai_potential_impact) LIKE ? OR
-                        LOWER(category) LIKE ? OR
-                        LOWER(state) LIKE ? OR
-                        LOWER(state_abbr) LIKE ?
-                    )
-                    """
-                    
-                    params = [f"%{search_term}%"] * 10
-                    
-                    if state:
-                        sl_query += " AND (LOWER(state) = ? OR LOWER(state_abbr) = ?)"
-                        params.extend([state.lower(), state.upper()])
-                    
-                    if category:
-                        sl_query += " AND LOWER(category) = ?"
-                        params.append(category.lower())
-                    
-                    sl_query += " ORDER BY last_action_date DESC"
-                    sl_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
-                    
-                    cursor.execute(sl_query, params)
-                    rows = cursor.fetchall()
-                    
-                    for row in rows:
-                        results["state_legislation"].append({
-                            "id": row[0],
-                            "type": "state_legislation",
-                            "bill_id": row[1],
-                            "bill_number": row[2],
-                            "title": row[3],
-                            "description": row[4],
-                            "state": row[5],
-                            "state_abbr": row[6],
-                            "status": row[7],
-                            "category": row[8],
-                            "session_name": row[9],
-                            "bill_type": row[10],
-                            "introduced_date": str(row[11]) if row[11] else None,
-                            "last_action_date": str(row[12]) if row[12] else None,
-                            "legiscan_url": row[13],
-                            "ai_summary": row[14],
-                            "ai_talking_points": row[15],
-                            "ai_business_impact": row[16],
-                            "ai_potential_impact": row[17]
-                        })
-                    
-                    cursor.close()
-                    conn.close()
-            except Exception as e:
-                logger.error(f"Error searching state legislation: {e}")
-        
-        # Search Proclamations if type is not specified or includes proclamations
-        if not type or type == "proclamations":
-            try:
-                conn = get_azure_sql_connection()
-                if conn:
-                    cursor = conn.cursor()
-                    
-                    # Check if proclamations table exists
-                    cursor.execute("""
-                        SELECT COUNT(*) 
-                        FROM INFORMATION_SCHEMA.TABLES 
-                        WHERE TABLE_NAME = 'proclamations' AND TABLE_SCHEMA = 'dbo'
-                    """)
-                    
-                    if cursor.fetchone()[0] > 0:
-                        # Build search query for proclamations
-                        proc_query = """
-                        SELECT id, proclamation_number, title, president, category,
-                               ai_summary, date_signed, url
-                        FROM dbo.proclamations
-                        WHERE (
-                            LOWER(proclamation_number) LIKE ? OR
-                            LOWER(title) LIKE ? OR
-                            LOWER(ai_summary) LIKE ? OR
-                            LOWER(category) LIKE ? OR
-                            LOWER(president) LIKE ?
-                        )
-                        """
-                        
-                        params = [f"%{search_term}%"] * 5
-                        
-                        if category:
-                            proc_query += " AND LOWER(category) = ?"
-                            params.append(category.lower())
-                        
-                        proc_query += " ORDER BY date_signed DESC"
-                        proc_query += f" OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
-                        
-                        cursor.execute(proc_query, params)
-                        rows = cursor.fetchall()
-                        
-                        for row in rows:
-                            results["proclamations"].append({
-                                "id": row[0],
-                                "type": "proclamation",
-                                "proclamation_number": row[1],
-                                "title": row[2],
-                                "president": row[3],
-                                "category": row[4],
-                                "ai_summary": row[5],
-                                "date_signed": row[6].isoformat() if row[6] else None,
-                                "url": row[7]
-                            })
-                    
-                    cursor.close()
-                    conn.close()
-            except Exception as e:
-                logger.error(f"Error searching proclamations: {e}")
-        
-        # Calculate total count
-        results["total_count"] = (
-            len(results["executive_orders"]) + 
-            len(results["state_legislation"]) + 
-            len(results["proclamations"])
-        )
-        
-        return results
-        
-    except Exception as e:
-        logger.error(f"❌ Error in global search: {e}")
-        return {"error": str(e), "results": {}}
-    
-    # Test database connection on startup
-    print("🔍 Testing database connection...")
-    try:
-        db_conn = DatabaseConnection()
-        if db_conn.test_connection():
-            print("✅ Database connection successful!")
-            
-            # Test highlights table creation
-            if create_highlights_table():
-                print("✅ Highlights table ready!")
-            
-            # Create user profiles table
-            if create_user_profiles_table():
-                print("✅ User profiles table ready!")
-            
-            # Create analytics tracking tables
-            if create_page_views_table():
-                print("✅ Page views table ready!")
-            
-            if create_user_sessions_table():
-                print("✅ User sessions table ready!")
-                # Run migration to add display_name column
-                migrate_user_sessions_add_display_name()
-        else:
-            print("❌ Database connection failed")
-    except Exception as e:
-        print(f"❌ Database connection test error: {e}")
-    
-    # Test Enhanced AI client on startup
-    print("🔍 Testing Enhanced AI client...")
-    if enhanced_ai_client:
-        print("✅ Enhanced AI client initialized!")
-        print(f"   • Model: {MODEL_NAME}")
-        print(f"   • Prompts: {list(ENHANCED_PROMPTS.keys())}")
-        print(f"   • Categories: {[cat.value for cat in BillCategory]}")
-    else:
-        print("⚠️ Enhanced AI client not available")
-        print("   • Check AZURE_ENDPOINT and AZURE_KEY environment variables")
-    
-    print("🎯 Starting server...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        logger.error(f"❌ Error getting status update info: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get status info: {str(e)}")

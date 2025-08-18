@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Search,
   X,
@@ -32,7 +31,7 @@ import { getCardClasses, getTextClasses, getButtonClasses } from '../utils/darkM
 import { getCategoryTagClass, SUPPORTED_STATES } from '../utils/constants';
 
 // Utility function to strip HTML tags and clean up text for display
-const stripHtmlAndClean = (html) => {
+const stripHtmlAndClean = (html, truncate = true) => {
   if (!html) return '';
   
   // Remove HTML tags
@@ -47,17 +46,36 @@ const stripHtmlAndClean = (html) => {
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ');
   
-  // Clean up extra whitespace
+  // Remove AI summary prefixes and clean up whitespace
   const cleaned = decoded
+    .replace(/^SUMMARY:\s*/i, '')
+    .replace(/^KEY_PROVISIONS:\s*/i, '')
+    .replace(/^TALKING_POINTS:\s*/i, '')
+    .replace(/^BUSINESS_IMPACT:\s*/i, '')
+    .replace(/^EXECUTIVE_SUMMARY:\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim();
   
-  // Truncate if too long
-  if (cleaned.length > 200) {
+  // Truncate if too long and truncation is enabled
+  if (truncate && cleaned.length > 200) {
     return cleaned.substring(0, 197) + '...';
   }
   
   return cleaned;
+};
+
+// Utility function to clean HTML content while preserving formatting
+const cleanAIContent = (html) => {
+  if (!html) return '';
+  
+  // Remove AI summary prefixes but keep HTML formatting
+  return html
+    .replace(/^<p>SUMMARY:\s*/i, '<p>')
+    .replace(/^SUMMARY:\s*/i, '')
+    .replace(/KEY_PROVISIONS:\s*/gi, '')
+    .replace(/TALKING_POINTS:\s*/gi, '')
+    .replace(/BUSINESS_IMPACT:\s*/gi, '')
+    .replace(/EXECUTIVE_SUMMARY:\s*/gi, '');
 };
 
 // Valid practice area categories - matching EditableCategoryTag component
@@ -330,7 +348,6 @@ const formatUniversalContent = (content) => {
 };
 
 const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
-  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [searchResults, setSearchResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -357,7 +374,6 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
   const performSearch = useCallback(async (query) => {
     if (!query || query.trim().length < 2) {
       setSearchResults(null);
-      setAllData([]);
       return;
     }
 
@@ -421,18 +437,6 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
     }
   };
 
-  // Navigate to item page and close modal
-  const handleNavigateToItem = (item) => {
-    if (item.type === 'executive_order') {
-      navigate(`/executive-orders#${item.executive_order_number || item.eo_number}`);
-    } else if (item.type === 'state_legislation') {
-      const statePath = item.state.toLowerCase().replace(' ', '-');
-      navigate(`/state/${statePath}#${item.bill_number}`);
-    } else if (item.type === 'proclamation') {
-      navigate(`/proclamations#${item.proclamation_number}`);
-    }
-    onClose();
-  };
 
   // Return to search results
   const handleBackToResults = () => {
@@ -762,6 +766,36 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
                           <h3 className="font-medium text-gray-900 dark:text-gray-100 line-clamp-1 flex-1">
                             {item.title}
                           </h3>
+                          {/* Star highlight button */}
+                          <button
+                            type="button"
+                            className={`p-2 rounded-lg transition-all duration-300 flex-shrink-0 ${
+                              isItemHighlighted(item)
+                                ? 'text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30'
+                                : 'text-gray-400 dark:text-gray-500 hover:text-yellow-500 dark:hover:text-yellow-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            } ${isItemHighlightLoading(item) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (!isItemHighlightLoading(item)) {
+                                await handleItemHighlight(item);
+                              }
+                            }}
+                            disabled={isItemHighlightLoading(item)}
+                            title={
+                              isItemHighlightLoading(item) 
+                                ? "Processing..." 
+                                : isItemHighlighted(item) 
+                                  ? "Remove from highlights" 
+                                  : "Add to highlights"
+                            }
+                          >
+                            {isItemHighlightLoading(item) ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Star size={16} className={`${isItemHighlighted(item) ? 'fill-current' : ''}`} />
+                            )}
+                          </button>
                         </div>
                         {(item.ai_summary || item.description) && (
                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
@@ -942,7 +976,7 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
                               </div>
                               <div 
                                 className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed ai-content"
-                                dangerouslySetInnerHTML={{ __html: selectedItem.ai_executive_summary || selectedItem.ai_summary }}
+                                dangerouslySetInnerHTML={{ __html: cleanAIContent(selectedItem.ai_executive_summary || selectedItem.ai_summary) }}
                               />
                             </div>
                           </div>
@@ -1112,33 +1146,78 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
                         </div>
 
                         {/* AI Generated Summary */}
-                        {selectedItem.ai_summary && (
-                          <div className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-gray-800 dark:to-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-5">
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center gap-2">
-                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{selectedItem.bill_number || 'Bill'} AI Generated Summary</h3>
+                        {(selectedItem.ai_summary || selectedItem.ai_executive_summary) && (
+                          <div className="mb-4">
+                            <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Executive Summary</h3>
+                                </div>
+                                <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                  AI
+                                </div>
                               </div>
-                              <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
-                                AI
+                              <div 
+                                className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed ai-content"
+                                dangerouslySetInnerHTML={{ __html: cleanAIContent(selectedItem.ai_executive_summary || selectedItem.ai_summary) }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Key Talking Points */}
+                        {selectedItem.ai_talking_points && (
+                          <div className="mb-4">
+                            <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Key Talking Points</h3>
+                                </div>
+                                <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                  AI
+                                </div>
+                              </div>
+                              <div className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                                {formatTalkingPoints(selectedItem.ai_talking_points)}
                               </div>
                             </div>
-                            <div 
-                              className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
-                              dangerouslySetInnerHTML={{ __html: selectedItem.ai_summary }}
-                            />
-                            {selectedItem.legiscan_url && (
-                              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                                <a 
-                                  href={selectedItem.legiscan_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200"
-                                >
-                                  <ExternalLink size={14} />
-                                  <span>View Original Bill Information</span>
-                                </a>
+                          </div>
+                        )}
+
+                        {/* Business Impact Assessment */}
+                        {selectedItem.ai_business_impact && (
+                          <div className="mb-4">
+                            <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Business Impact Assessment</h3>
+                                </div>
+                                <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 dark:from-purple-500 dark:to-indigo-500 text-white rounded-lg text-xs font-bold">
+                                  AI
+                                </div>
                               </div>
-                            )}
+                              <div className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+                                {formatUniversalContent(selectedItem.ai_business_impact)}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Source Links */}
+                        {selectedItem.legiscan_url && (
+                          <div className="border-t pt-4">
+                            <div className="flex flex-wrap items-center gap-3 sm:gap-6">
+                              <a
+                                href={selectedItem.legiscan_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span>View Original Bill Information</span>
+                                <ExternalLink size={14} />
+                              </a>
+                            </div>
                           </div>
                         )}
                       </div>

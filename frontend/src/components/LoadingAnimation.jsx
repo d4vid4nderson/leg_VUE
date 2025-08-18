@@ -116,11 +116,11 @@ const LoadingAnimation = ({ type = "Executive Orders", onComplete }) => {
         <div className="text-center max-w-md mx-auto px-6">
           {/* Animated Logo/Icon */}
           <div className="mb-8 relative">
-            <div className="w-20 h-20 mx-auto bg-gradient-to-r from-violet-600 to-blue-600 rounded-lg flex items-center justify-center animate-pulse">
+            <div className="w-20 h-20 mx-auto flex items-center justify-center">
               <img
                 src="/favicon.png"
                 alt="Loading"
-                className="w-12 h-12 object-contain rounded-md drop-shadow-lg mix-blend-multiply"
+                className="w-16 h-16 object-contain drop-shadow-lg animate-pulse"
               />
             </div>
 
