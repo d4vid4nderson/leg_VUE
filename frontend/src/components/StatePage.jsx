@@ -19,6 +19,7 @@ import {
     CalendarDays,
     Hash,
     X,
+    Ban,
     LayoutGrid,
     Users,
     Vote,
@@ -159,6 +160,20 @@ const STATUS_FILTERS = [
         icon: FileCheck,
         type: 'bill_status',
         description: 'Bills that have been signed into law'
+    },
+    {
+        key: 'vetoed',
+        label: 'Vetoed',
+        icon: Ban,
+        type: 'bill_status',
+        description: 'Bills that have been vetoed by the governor'
+    },
+    {
+        key: 'failed',
+        label: 'Failed',
+        icon: X,
+        type: 'bill_status',
+        description: 'Bills that have failed or died in the legislative process'
     }
 ];
 
@@ -169,9 +184,28 @@ const getStatusStage = (billStatus) => {
     
     const statusLower = billStatus.toLowerCase();
     
+    // Failed/Dead bills
+    if (statusLower === 'failed' || 
+        statusLower === 'dead' ||
+        statusLower.includes('failed') ||
+        statusLower.includes('dead') ||
+        statusLower.includes('withdrawn') ||
+        statusLower.includes('defeated')) {
+        return 'failed';
+    }
+    
+    // Vetoed bills
+    if (statusLower === 'vetoed' || statusLower.includes('vetoed') || statusLower.includes('veto')) {
+        return 'vetoed';
+    }
+    
     // Exact matches for our database status values
     if (statusLower === 'enrolled') {
         return 'enacted';  // Enrolled bills are ready to be enacted
+    }
+    
+    if (statusLower === 'enacted') {
+        return 'enacted';
     }
     
     if (statusLower === 'passed') {
@@ -182,7 +216,7 @@ const getStatusStage = (billStatus) => {
         return 'floor';  // Engrossed bills are in floor process
     }
     
-    if (statusLower === 'introduced' || statusLower === 'pending' || statusLower === 'vetoed') {
+    if (statusLower === 'introduced' || statusLower === 'pending') {
         return 'introduced';
     }
     

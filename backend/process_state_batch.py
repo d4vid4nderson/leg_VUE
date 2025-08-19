@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Process state bills in batches with AI summaries
-Usage: python process_state_batch.py CA 50
+Usage: python process_state_batch.py KY 50
 """
 
 import sys
@@ -9,9 +9,9 @@ import asyncio
 import time
 from datetime import datetime
 from database_config import get_db_connection
-from ai import analyze_executive_order
+from ai import analyze_state_legislation
 
-# Practice area keywords mapping
+# Practice area keywords mapping - using existing categories only
 PRACTICE_AREA_KEYWORDS = {
     'healthcare': ['health', 'medical', 'hospital', 'insurance', 'medicare', 'patient', 'pharmacy'],
     'education': ['school', 'education', 'student', 'teacher', 'university', 'college'],
@@ -23,6 +23,11 @@ PRACTICE_AREA_KEYWORDS = {
     'transportation': ['transportation', 'highway', 'road', 'vehicle', 'traffic', 'transit'],
     'agriculture': ['agriculture', 'farm', 'crop', 'livestock', 'ranch'],
     'technology': ['technology', 'internet', 'digital', 'cyber', 'data', 'privacy'],
+    'business': ['business', 'commerce', 'trade', 'economic', 'commercial'],
+    'civic': ['civic', 'municipal', 'local', 'community', 'public'],
+    'civil-rights': ['civil', 'rights', 'discrimination', 'equality', 'voting'],
+    'consumer-protection': ['consumer', 'protection', 'fraud', 'safety'],
+    'finance': ['finance', 'financial', 'banking', 'investment', 'securities'],
 }
 
 def determine_practice_area(title, description):
@@ -41,23 +46,12 @@ async def process_bill(bill_data, state):
     id_val, bill_number, title, description, status = bill_data
     
     try:
-        # Create context
-        bill_context = f"""
-        Bill Number: {bill_number}
-        Title: {title or 'No title'}
-        Description: {description or 'No description'}
-        Status: {status or 'Unknown'}
-        State: {state}
-        """
-        
-        # Generate AI analysis
-        ai_result = await analyze_executive_order(bill_context)
+        # Generate AI analysis using state bill function
+        ai_result = await analyze_state_legislation(title, description, state, bill_number)
         
         if ai_result and isinstance(ai_result, dict):
             # Extract values
             executive_summary = ai_result.get('ai_executive_summary', '')
-            talking_points = ai_result.get('ai_talking_points', '')
-            business_impact = ai_result.get('ai_business_impact', '')
             
             # Determine practice area
             practice_area = determine_practice_area(title, description)
@@ -68,8 +62,6 @@ async def process_bill(bill_data, state):
                 cursor.execute("""
                     UPDATE dbo.state_legislation
                     SET ai_executive_summary = ?,
-                        ai_talking_points = ?,
-                        ai_business_impact = ?,
                         ai_summary = ?,
                         category = ?,
                         ai_version = '1.0',
@@ -77,8 +69,6 @@ async def process_bill(bill_data, state):
                     WHERE id = ?
                 """, (
                     str(executive_summary)[:2000],
-                    str(talking_points)[:2000],
-                    str(business_impact)[:2000],
                     str(executive_summary)[:2000],
                     practice_area,
                     datetime.now(),
@@ -99,22 +89,9 @@ async def process_bill(bill_data, state):
 async def process_batch(state, batch_size=50):
     """Process a batch of bills for a state"""
     print(f"\n🔄 Processing {state} bills (batch of {batch_size})")
-    print("=" * 60)
     
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        
-        # Get current status
-        cursor.execute("""
-            SELECT COUNT(*) as total,
-                   SUM(CASE WHEN ai_executive_summary IS NOT NULL AND ai_executive_summary != '' THEN 1 ELSE 0 END) as with_ai
-            FROM dbo.state_legislation
-            WHERE state = ?
-        """, (state,))
-        
-        total, with_ai = cursor.fetchone()
-        remaining = total - with_ai
-        print(f"📊 Status: {with_ai}/{total} complete ({with_ai/total*100:.1f}%), {remaining} remaining")
         
         # Get bills without AI summaries
         cursor.execute(f"""
@@ -131,46 +108,32 @@ async def process_batch(state, batch_size=50):
             print(f"✅ No bills to process for {state}")
             return 0
         
-        print(f"📦 Processing {len(bills)} bills...")
-        print("-" * 60)
+        print(f"📊 Processing {len(bills)} bills...")
         
         processed = 0
-        for i, bill in enumerate(bills, 1):
-            print(f"[{i}/{len(bills)}] Processing {bill[1]}...")
+        for bill in bills:
             success = await process_bill(bill, state)
             if success:
                 processed += 1
-            
-            # Progress update every 10 bills
-            if i % 10 == 0:
-                print(f"   Progress: {i}/{len(bills)} ({processed} successful)")
         
-        print("-" * 60)
-        print(f"✅ Batch complete: {processed}/{len(bills)} bills processed successfully")
+        print(f"✅ Processed {processed}/{len(bills)} bills")
         return processed
 
 async def main():
     if len(sys.argv) < 2:
         print("Usage: python process_state_batch.py STATE [batch_size]")
-        print("States: CA, TX, NV, KY, SC, CO")
+        print("States: CA, TX, NV, KY, SC")
         sys.exit(1)
     
     state = sys.argv[1].upper()
     batch_size = int(sys.argv[2]) if len(sys.argv) > 2 else 50
     
-    print(f"🌟 State Bill AI Processor")
-    print(f"State: {state}")
-    print(f"Batch size: {batch_size}")
-    
     start_time = time.time()
     processed = await process_batch(state, batch_size)
     elapsed = time.time() - start_time
     
-    if processed > 0:
-        print(f"\n📊 Performance Stats:")
-        print(f"  ⏱️ Time: {elapsed/60:.1f} minutes")
-        print(f"  📈 Rate: {processed/elapsed*60:.1f} bills/minute")
-        print(f"  ⚡ Avg: {elapsed/processed:.1f} seconds/bill")
+    print(f"\n⏱️ Time: {elapsed/60:.1f} minutes")
+    print(f"📈 Rate: {processed/elapsed*60:.1f} bills/minute")
 
 if __name__ == "__main__":
     asyncio.run(main())
