@@ -451,7 +451,9 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
         const response = await fetch(`${API_URL}/api/highlights?user_id=1`);
         if (response.ok) {
           const data = await response.json();
-          const highlights = Array.isArray(data) ? data : [];
+          const highlights = Array.isArray(data.highlights) ? data.highlights : 
+                           Array.isArray(data.results) ? data.results : 
+                           Array.isArray(data) ? data : [];
           
           const highlightIds = new Set();
           highlights.forEach(highlight => {
@@ -533,7 +535,7 @@ const GlobalSearch = ({ isOpen, onClose, initialQuery = '' }) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: 1,
+            user_id: "1",
             order_id: itemId,
             order_type: item.type,
             title: item.title,

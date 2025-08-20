@@ -415,6 +415,11 @@ def save_executive_orders_to_db(orders: List[Dict]) -> Dict:
                             insert_fields.append('last_updated')
                             params.append(datetime.now())
                         
+                        # Mark new orders as "new" for frontend notifications
+                        if 'is_new' not in insert_fields:
+                            insert_fields.append('is_new')
+                            params.append(True)
+                        
                         # Execute insert - database agnostic
                         placeholders = ', '.join([placeholder] * len(insert_fields))
                         insert_sql = f"INSERT INTO {table_name} ({', '.join(insert_fields)}) VALUES ({placeholders})"

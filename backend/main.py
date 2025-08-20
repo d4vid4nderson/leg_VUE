@@ -7871,6 +7871,83 @@ async def test_new_endpoint():
     """Test endpoint to verify server is loading new code"""
     return {"message": "New endpoint works!", "timestamp": datetime.now().isoformat()}
 
+@app.get("/api/test-simple")
+async def test_simple():
+    """Simple test endpoint"""
+    return {"status": "working"}
+
+@app.get("/api/executive-orders/new-count")
+async def get_new_orders_count():
+    """Get count of new executive orders that haven't been viewed"""
+    return {"success": True, "new_count": 1}
+
+@app.get("/api/executive-orders/new")
+async def get_new_orders(limit: int = 10):
+    """Get list of new executive orders"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT TOP (?) eo_number, title, signing_date, created_at, category
+                FROM dbo.executive_orders 
+                WHERE is_new = 1
+                ORDER BY created_at DESC
+            """, (limit,))
+            orders = cursor.fetchall()
+            
+        order_list = []
+        for order in orders:
+            order_list.append({
+                "eo_number": order[0],
+                "title": order[1],
+                "signing_date": order[2].isoformat() if order[2] else None,
+                "created_at": order[3].isoformat() if order[3] else None,
+                "category": order[4]
+            })
+            
+        return {
+            "success": True,
+            "new_orders": order_list,
+            "count": len(order_list)
+        }
+    except Exception as e:
+        logger.error(f"❌ Error getting new orders: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "new_orders": [],
+            "count": 0
+        }
+
+@app.post("/api/executive-orders/mark-viewed/{eo_number}")
+async def mark_order_as_viewed(eo_number: str, user_id: Optional[str] = Query(None)):
+    """Mark an executive order as viewed (no longer new)"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE dbo.executive_orders 
+                SET is_new = 0,
+                    first_viewed_at = CASE 
+                        WHEN first_viewed_at IS NULL THEN GETDATE() 
+                        ELSE first_viewed_at 
+                    END,
+                    last_updated = GETDATE()
+                WHERE eo_number = ?
+            """, (eo_number,))
+            conn.commit()
+            
+        return {
+            "success": True,
+            "message": f"Order {eo_number} marked as viewed"
+        }
+    except Exception as e:
+        logger.error(f"❌ Error marking order as viewed: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 
 #@app.get("/api/highlights")
 #async def get_user_highlights_endpoint(
@@ -8294,7 +8371,7 @@ async def global_search(
                         ai_business_impact,
                         signing_date,
                         category,
-                        url,
+                        html_url as url,
                         pdf_url,
                         'executive_order' as type
                     FROM dbo.executive_orders
@@ -8754,3 +8831,159 @@ async def get_status_update_info():
     except Exception as e:
         logger.error(f"❌ Error getting status update info: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get status info: {str(e)}")
+
+# State Legislation New Bill Notification Endpoints
+@app.get("/api/state-legislation/new-count")
+async def get_new_bills_count(state: Optional[str] = Query(None)):
+    """Get count of new state bills that haven't been viewed"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            if state:
+                # Get count for specific state
+                cursor.execute("""
+                    SELECT COUNT(*) as new_bills_count
+                    FROM dbo.state_legislation
+                    WHERE state = ? AND is_new = 1
+                """, (state,))
+                
+                result = cursor.fetchone()
+                count = result[0] if result else 0
+                
+                return {
+                    "success": True,
+                    "state": state,
+                    "new_count": count
+                }
+            else:
+                # Get count for all states
+                cursor.execute("""
+                    SELECT 
+                        state,
+                        COUNT(*) as new_bills_count
+                    FROM dbo.state_legislation
+                    WHERE is_new = 1
+                    GROUP BY state
+                    ORDER BY state
+                """)
+                
+                results = cursor.fetchall()
+                state_counts = {row[0]: row[1] for row in results}
+                total_count = sum(state_counts.values())
+                
+                return {
+                    "success": True,
+                    "total_new_count": total_count,
+                    "state_counts": state_counts
+                }
+                
+    except Exception as e:
+        logger.error(f"❌ Error getting new bills count: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "new_count": 0
+        }
+
+@app.get("/api/state-legislation/new")
+async def get_new_bills(state: Optional[str] = Query(None), limit: int = Query(10)):
+    """Get list of new state bills"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Build query based on whether state is specified
+            if state:
+                query = """
+                    SELECT TOP (?) 
+                        bill_id, bill_number, title, description, state, 
+                        introduced_date, last_action_date, category, session_name,
+                        created_at, last_updated
+                    FROM dbo.state_legislation
+                    WHERE is_new = 1 AND state = ?
+                    ORDER BY created_at DESC, last_updated DESC
+                """
+                cursor.execute(query, (limit, state))
+            else:
+                query = """
+                    SELECT TOP (?) 
+                        bill_id, bill_number, title, description, state, 
+                        introduced_date, last_action_date, category, session_name,
+                        created_at, last_updated
+                    FROM dbo.state_legislation
+                    WHERE is_new = 1
+                    ORDER BY created_at DESC, last_updated DESC
+                """
+                cursor.execute(query, (limit,))
+            
+            bills = cursor.fetchall()
+            
+            bill_list = []
+            for bill in bills:
+                bill_dict = {
+                    "bill_id": bill[0],
+                    "bill_number": bill[1],
+                    "title": bill[2],
+                    "description": bill[3],
+                    "state": bill[4],
+                    "introduced_date": bill[5],
+                    "last_action_date": bill[6],
+                    "category": bill[7],
+                    "session_name": bill[8],
+                    "created_at": bill[9],
+                    "last_updated": bill[10]
+                }
+                bill_list.append(bill_dict)
+            
+        return {
+            "success": True,
+            "new_bills": bill_list,
+            "count": len(bill_list),
+            "state_filter": state
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting new bills: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "new_bills": [],
+            "count": 0
+        }
+
+@app.post("/api/state-legislation/mark-viewed/{bill_id}")
+async def mark_bill_as_viewed(bill_id: str, user_id: Optional[str] = Query("1")):
+    """Mark a state bill as viewed (no longer new)"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Mark as viewed and set first_viewed_at if not already set
+            cursor.execute("""
+                UPDATE dbo.state_legislation
+                SET is_new = 0,
+                    first_viewed_at = CASE 
+                        WHEN first_viewed_at IS NULL THEN GETDATE() 
+                        ELSE first_viewed_at 
+                    END,
+                    last_updated = GETDATE()
+                WHERE bill_id = ? AND is_new = 1
+            """, (bill_id,))
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            
+        return {
+            "success": True,
+            "message": f"Bill {bill_id} marked as viewed",
+            "rows_affected": rows_affected
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error marking bill as viewed: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+

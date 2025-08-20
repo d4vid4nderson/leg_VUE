@@ -1,9 +1,9 @@
 // Utility functions for consistent dark mode styling
 
 export const getCardClasses = (additional = '') => `
-  bg-white dark:bg-dark-bg-secondary 
-  border-gray-200 dark:border-dark-border
-  text-gray-900 dark:text-dark-text
+  bg-white dark:bg-gray-800 
+  border-gray-200 dark:border-gray-600
+  text-gray-900 dark:text-gray-100
   ${additional}
 `;
 
@@ -15,9 +15,9 @@ export const getButtonClasses = (variant = 'primary', additional = '') => {
       text-white
     `,
     secondary: `
-      bg-gray-200 dark:bg-dark-bg-tertiary
-      hover:bg-gray-300 dark:hover:bg-dark-border
-      text-gray-700 dark:text-dark-text-secondary
+      bg-gray-200 dark:bg-gray-700
+      hover:bg-gray-300 dark:hover:bg-gray-600
+      text-gray-700 dark:text-gray-200
     `,
     danger: `
       bg-red-600 dark:bg-red-700
@@ -30,24 +30,24 @@ export const getButtonClasses = (variant = 'primary', additional = '') => {
 };
 
 export const getInputClasses = (additional = '') => `
-  bg-white dark:bg-dark-bg-tertiary
-  border-gray-300 dark:border-dark-border
-  text-gray-900 dark:text-dark-text
-  placeholder-gray-400 dark:placeholder-dark-text-secondary
+  bg-white dark:bg-gray-700
+  border-gray-300 dark:border-gray-600
+  text-gray-900 dark:text-gray-100
+  placeholder-gray-400 dark:placeholder-gray-400
   focus:border-blue-500 dark:focus:border-blue-400
   ${additional}
 `;
 
 export const getModalClasses = (additional = '') => `
-  bg-white dark:bg-dark-bg-secondary
-  border-gray-200 dark:border-dark-border
+  bg-white dark:bg-gray-800
+  border-gray-200 dark:border-gray-600
   ${additional}
 `;
 
 export const getTextClasses = (variant = 'primary', additional = '') => {
   const variants = {
-    primary: 'text-gray-900 dark:text-dark-text',
-    secondary: 'text-gray-600 dark:text-dark-text-secondary',
+    primary: 'text-gray-900 dark:text-gray-100',
+    secondary: 'text-gray-600 dark:text-gray-300',
     muted: 'text-gray-500 dark:text-gray-400'
   };
   
@@ -55,14 +55,14 @@ export const getTextClasses = (variant = 'primary', additional = '') => {
 };
 
 export const getHeaderClasses = (additional = '') => `
-  bg-white dark:bg-dark-bg
-  border-gray-200 dark:border-dark-border
+  bg-white dark:bg-gray-900
+  border-gray-200 dark:border-gray-700
   ${additional}
 `;
 
 export const getPageContainerClasses = (additional = '') => `
   bg-gradient-to-br from-blue-50 via-white to-purple-50
-  dark:from-dark-bg dark:via-dark-bg-secondary dark:to-dark-bg-tertiary
+  dark:from-gray-900 dark:via-gray-800 dark:to-gray-900
   ${additional}
 `;
 

@@ -50,63 +50,6 @@ import { getPageContainerClasses, getCardClasses, getButtonClasses, getTextClass
 const CATEGORY_FILTERS = FILTERS;
 
 
-// =====================================
-// SIMPLE FETCH BUTTON COMPONENT
-// =====================================
-const FetchButtonGroup = ({ onFetch, isLoading, updateInfo, newOrdersAvailable, newOrdersCount, filteredCount = 0 }) => {
-  const handleFetch = () => {
-    onFetch('executive_orders');
-  };
-
-  const hasUpdates = updateInfo?.has_updates;
-  const updateCount = updateInfo?.update_count || 0;
-  const showNotification = newOrdersAvailable || hasUpdates;
-  const notificationCount = newOrdersCount || updateCount || 0;
-
-  return (
-    <div className="flex items-center gap-3 w-full sm:w-auto">
-      <div className="relative flex-1 sm:flex-initial">
-        <button
-        onClick={handleFetch}
-        disabled={isLoading}
-        className={`flex items-center justify-center gap-2 px-5 sm:px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 whitespace-nowrap w-full sm:w-auto min-h-[48px] sm:min-h-[44px] ${
-          isLoading 
-            ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 cursor-not-allowed'
-            : showNotification
-            ? 'bg-orange-600 dark:bg-orange-700 text-white border-orange-600 dark:border-orange-700 hover:bg-orange-700 dark:hover:bg-orange-600 hover:border-orange-700 dark:hover:border-orange-600'
-            : 'bg-blue-600 dark:bg-blue-700 text-white border-blue-600 dark:border-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 hover:border-blue-700 dark:hover:border-blue-600'
-        }`}
-      >
-        {isLoading ? (
-          <RefreshIcon size={16} className="animate-spin flex-shrink-0" />
-        ) : showNotification ? (
-          <Download size={16} className="animate-bounce flex-shrink-0" />
-        ) : (
-          <Download size={16} className="flex-shrink-0" />
-        )}
-        <span>
-          {isLoading ? 'Checking...' : showNotification ? `${notificationCount} New Orders` : 'Fetch'}
-        </span>
-      </button>
-      
-      {/* Red Notification Badge */}
-      {showNotification && !isLoading && (
-        <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[24px] h-6 px-1 flex items-center justify-center animate-pulse shadow-lg">
-          {notificationCount > 99 ? '99+' : notificationCount}
-        </div>
-      )}
-      </div>
-      
-      {/* Bill Count Display */}
-      <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-xs">
-        <FileText size={12} className="text-gray-500 dark:text-gray-400" />
-        <span className="font-medium text-gray-700 dark:text-gray-300">
-          {filteredCount.toLocaleString()}
-        </span>
-      </div>
-    </div>
-  );
-};
 
 // RegenerateAIButton component removed - individual order regeneration only
 
@@ -355,6 +298,42 @@ const cleanCategory = (category) => {
 const formatTalkingPoints = (content) => {
     if (!content) return null;
     
+    // Check if content contains HTML (specifically list items)
+    if (content.includes('<li>') && content.includes('</li>')) {
+        // Parse HTML list items directly
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(content, 'text/html');
+        const listItems = doc.querySelectorAll('li');
+        
+        if (listItems.length > 0) {
+            const points = Array.from(listItems).map(li => {
+                // Get text content and clean up any remaining numbered prefixes
+                let text = li.textContent.trim();
+                // Remove leading numbers and dots if they exist
+                text = text.replace(/^\d+\.\s*/, '');
+                return text;
+            }).filter(point => point.length > 10);
+            
+            if (points.length > 0) {
+                return (
+                    <div className="space-y-2">
+                        {points.slice(0, 5).map((point, idx) => (
+                            <div key={idx} className="flex gap-2">
+                                <div className="flex-shrink-0 w-4 flex items-start justify-start text-sm font-bold">
+                                    {idx + 1}.
+                                </div>
+                                <p className="text-sm leading-snug flex-1">
+                                    {point}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                );
+            }
+        }
+    }
+    
+    // Fallback to original parsing for non-HTML content
     let textContent = content.replace(/<[^>]*>/g, '');
     const numberedMatches = textContent.match(/\d+\.\s*[^.]*(?:\.[^0-9][^.]*)*(?=\s*\d+\.|$)/g);
     const points = [];
@@ -906,6 +885,41 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   }, [allOrders, categoryUpdateTrigger]);
 
 
+
+  // =====================================
+  // API FUNCTIONS
+  // =====================================
+  
+  const markOrderAsViewed = async (eoNumber) => {
+    try {
+      const response = await fetch(`${API_URL}/api/executive-orders/mark-viewed/${eoNumber}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        // Update the local state to remove the "new" flag
+        setAllOrders(prevOrders => 
+          prevOrders.map(order => 
+            (order.eo_number === eoNumber || order.executive_order_number === eoNumber) 
+              ? { ...order, is_new: false }
+              : order
+          )
+        );
+        setOrders(prevOrders => 
+          prevOrders.map(order => 
+            (order.eo_number === eoNumber || order.executive_order_number === eoNumber) 
+              ? { ...order, is_new: false }
+              : order
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error marking order as viewed:', error);
+    }
+  };
 
   // =====================================
   // FETCH FUNCTIONS
@@ -1498,7 +1512,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: 1,
+            user_id: "1",
             order_id: orderId,
             order_type: 'executive_order',
             notes: null,
@@ -1814,94 +1828,91 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
             <div className="p-4 sm:p-6">
               {/* Controls Bar - Mobile Responsive */}
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
-                {/* Left side - FetchButtonGroup only */}
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <FetchButtonGroup 
-                onFetch={(docType) => fetchExecutiveOrders(docType)} 
-                isLoading={fetchingData}
-                updateInfo={updateInfo}
-                newOrdersAvailable={newOrdersAvailable}
-                newOrdersCount={newOrdersCount}
-                filteredCount={filteredOrders.length}
-              />
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-2 sm:items-center lg:justify-end pb-2 lg:pb-0" style={{overflow: 'visible'}}>
-              {/* Highlight Filter Button */}
-              <button
-                type="button"
-                onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
-                className={`flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
-                  showHighlightsOnly
-                    ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
-                    : 'bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary'
-                }`}
-              >
-                <Star size={16} className={showHighlightsOnly ? 'fill-current' : ''} />
-                <span className="whitespace-nowrap">{showHighlightsOnly ? 'Highlights' : 'All Items'}</span>
-              </button>
-
-              {/* Sort Button - Mobile Optimized */}
-              <button
-                type="button"
-                onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
-                className="flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary min-h-[48px] sm:min-h-[44px] w-full sm:w-auto"
-              >
-                {sortOrder === 'latest' ? (
-                  <>
-                    <ArrowDown size={16} className="flex-shrink-0" />
-                    <span className="whitespace-nowrap">Latest Date</span>
-                  </>
-                ) : (
-                  <>
-                    <ArrowUp size={16} className="flex-shrink-0" />
-                    <span className="whitespace-nowrap">Earliest Date</span>
-                  </>
-                )}
-              </button>
-              
-              {/* Filter Dropdown */}
-              <div className="relative z-[90]" ref={filterDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                  className={`flex items-center justify-center sm:justify-between px-6 py-3 sm:py-2.5 border border-gray-300 dark:border-dark-border rounded-lg text-sm sm:text-base font-medium bg-white dark:bg-dark-bg-secondary text-gray-700 dark:text-dark-text hover:bg-gray-50 dark:hover:bg-dark-bg-tertiary transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-auto ${
-                    selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      if (selectedFilters.length > 0) {
-                        const selectedFilter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
-                        if (selectedFilter) {
-                          const IconComponent = selectedFilter.icon;
-                          return <IconComponent size={16} className="text-gray-500 dark:text-gray-400" />;
-                        }
-                      }
-                      return <LayoutGrid size={16} className="text-gray-500 dark:text-gray-400" />;
-                    })()}
-                    <span className="truncate">
-                      {selectedFilters.length > 0 ? (
-                        (() => {
-                          const selectedFilter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
-                          return selectedFilter ? selectedFilter.label : 'All Practice Areas';
-                        })()
-                      ) : 'All Practice Areas'}
-                    </span>
+                {/* Left side - Orders Count */}
+                <div className="flex items-center">
+                  <div className="px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 min-h-[44px] flex items-center justify-center">
+                    {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
                   </div>
-                  <ChevronDown 
-                    size={16} 
-                    className={`transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
-                  />
-                </button>
+                </div>
+                
+                {/* Right side - All Filters */}
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-2 sm:items-center lg:justify-end pb-2 lg:pb-0" style={{overflow: 'visible'}}>
+                  
+                  {/* Highlight Filter Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowHighlightsOnly(!showHighlightsOnly)}
+                    className={`flex items-center justify-center gap-2 px-4 py-3 border rounded-lg text-sm font-medium transition-all duration-300 min-h-[44px] w-full xl:w-[130px] ${
+                      showHighlightsOnly
+                        ? 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <Star size={16} className={showHighlightsOnly ? 'fill-current' : ''} />
+                    <span className="whitespace-nowrap">{showHighlightsOnly ? 'Highlights' : 'All Items'}</span>
+                  </button>
+                  
+                  {/* Sort Button - Mobile Optimized */}
+                  <button
+                    type="button"
+                    onClick={() => setSortOrder(sortOrder === 'latest' ? 'earliest' : 'latest')}
+                    className="flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 border rounded-lg text-sm sm:text-base font-medium transition-all duration-300 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[48px] sm:min-h-[44px] w-full sm:w-40"
+                  >
+                    {sortOrder === 'latest' ? (
+                      <>
+                        <ArrowDown size={16} className="flex-shrink-0" />
+                        <span className="whitespace-nowrap">Latest Date</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowUp size={16} className="flex-shrink-0" />
+                        <span className="whitespace-nowrap">Earliest Date</span>
+                      </>
+                    )}
+                  </button>
+                  
+                  {/* Filter Dropdown */}
+                  <div className="relative z-[90]" ref={filterDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                      className={`flex items-center justify-center sm:justify-between px-6 py-3 sm:py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm sm:text-base font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 min-h-[48px] sm:min-h-[44px] w-full sm:w-56 ${
+                        selectedFilters.length > 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-500 dark:border-blue-400' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          if (selectedFilters.length > 0) {
+                            const selectedFilter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
+                            if (selectedFilter) {
+                              const IconComponent = selectedFilter.icon;
+                              return <IconComponent size={16} className="text-gray-500 dark:text-gray-400" />;
+                            }
+                          }
+                          return <LayoutGrid size={16} className="text-gray-500 dark:text-gray-400" />;
+                        })()}
+                        <span className="truncate">
+                          {selectedFilters.length > 0 ? (
+                            (() => {
+                              const selectedFilter = CATEGORY_FILTERS.find(f => f.key === selectedFilters[0]);
+                              return selectedFilter ? selectedFilter.label : 'All Practice Areas';
+                            })()
+                          ) : 'All Practice Areas'}
+                        </span>
+                      </div>
+                      <ChevronDown 
+                        size={16} 
+                        className={`transition-transform duration-200 flex-shrink-0 ${showFilterDropdown ? 'rotate-180' : ''}`}
+                      />
+                    </button>
 
                 {/* Dropdown content - Match StatePage structure exactly */}
                 {showFilterDropdown && (
-                  <div className="absolute top-full mt-2 w-full sm:w-72 bg-white dark:bg-dark-bg-secondary rounded-lg shadow-xl border border-gray-200 dark:border-dark-border z-[95] left-0 sm:left-auto sm:right-0 max-h-[60vh] sm:max-h-96 overflow-hidden flex flex-col" style={{transform: 'translateZ(0)'}}>
+                  <div className="absolute top-full mt-2 w-full sm:w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 z-[95] left-0 sm:left-auto sm:right-0 max-h-[60vh] sm:max-h-96 overflow-hidden flex flex-col" style={{transform: 'translateZ(0)'}}>
                     {/* Header */}
-                    <div className="bg-gray-50 dark:bg-dark-bg-tertiary px-4 py-2 border-b border-gray-200 dark:border-dark-border">
+                    <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-gray-700 dark:text-dark-text">
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-200">
                           Filter by Practice Area
                         </span>
                         {selectedFilters.length > 0 && (
@@ -1978,9 +1989,9 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
 
                   </div>
                 )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
           {loading ? (
             <div className="space-y-6">
@@ -2011,9 +2022,9 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
           
           {orders.length === 0 ? (
             <div className="text-center py-12">
-              <Database size={48} className="mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">No Presidential Documents Found</h3>
-              <p className="text-gray-600 mb-4">
+              <Database size={48} className="mx-auto mb-4 text-gray-400 dark:text-gray-500" />
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">No Presidential Documents Found</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
                 {selectedFilters.length > 0 
                   ? `No executive orders match your current filter criteria.` 
                   : "No executive orders are loaded in the database yet."
@@ -2023,7 +2034,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 {selectedFilters.length > 0 && (
                   <button
                     onClick={clearAllFilters}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300"
+                    className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-all duration-300"
                   >
                     Clear Filters
                   </button>
@@ -2032,7 +2043,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                   <button
                     onClick={fetchExecutiveOrders}
                     disabled={fetchingData}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-300 flex items-center gap-2"
+                    className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-all duration-300 flex items-center gap-2"
                   >
                     <Sparkles size={16} />
                     Check for New Orders
@@ -2060,14 +2071,21 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                 const isExpanded = expandedOrders.has(orderId);
                 
                 return (
-                  <div key={`order-${orderId}-${index}`} className="bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg transition-all duration-300 hover:shadow-md relative" style={{ zIndex: 50 - index }}>
+                  <div key={`order-${orderId}-${index}`} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 rounded-lg transition-all duration-300 hover:shadow-md relative" style={{ zIndex: 50 - index }}>
                     <div className="p-4 sm:p-6">
 
-                      {/* Header with Title and Star */}
+                      {/* Header with Title, NEW badge, and Star */}
                       <div className="flex items-start justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
-                        <h3 className={getTextClasses('primary', 'text-base sm:text-lg font-semibold leading-relaxed flex-1')}>
-                          {cleanOrderTitle(order.title)}
-                        </h3>
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <h3 className={getTextClasses('primary', 'text-base sm:text-lg font-semibold leading-relaxed flex-1 min-w-0')}>
+                            {cleanOrderTitle(order.title)}
+                          </h3>
+                          {(order?.is_new === true || order?.is_new === 1) && (
+                            <span className="inline-flex items-center px-2 py-1 text-xs font-bold text-white bg-red-500 rounded-full animate-pulse shadow-sm flex-shrink-0">
+                              NEW
+                            </span>
+                          )}
+                        </div>
                         <button
                           type="button"
                           className={`p-2.5 sm:p-2 rounded-md transition-all duration-300 flex-shrink-0 min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] flex items-center justify-center ${
@@ -2125,7 +2143,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                       {/* AI Summary Preview */}
                       {order.ai_processed && order.ai_summary && !isExpanded && (
                         <div className="mb-4">
-                          <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
+                          <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-2">
                                 <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Executive Summary</h3>
@@ -2138,7 +2156,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               {stripHtmlTags(order.ai_summary)}
                             </div>
                           </div>
-                          <div className="border-b border-gray-200 dark:border-dark-border mt-4"></div>
+                          <div className="border-b border-gray-200 dark:border-gray-600 mt-4"></div>
                           
                           {/* Source and PDF Links with Read More Button */}
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-4">
@@ -2148,7 +2166,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   href={order.html_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View Source Page</span>
@@ -2161,7 +2179,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   href={order.pdf_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View PDF Document</span>
@@ -2181,11 +2199,18 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                     newSet.delete(orderId);
                                   } else {
                                     newSet.add(orderId);
+                                    // Mark as viewed when expanded for the first time
+                                    if (order?.is_new === true || order?.is_new === 1) {
+                                      const eoNumber = order?.eo_number || order?.executive_order_number;
+                                      if (eoNumber) {
+                                        markOrderAsViewed(eoNumber);
+                                      }
+                                    }
                                   }
                                   return newSet;
                                 });
                               }}
-                              className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm sm:text-base flex items-center gap-1 px-3 py-2 -mx-3 -my-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 min-h-[44px]"
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200 text-sm sm:text-base flex items-center gap-1 px-3 py-2 -mx-3 -my-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 min-h-[44px]"
                             >
                               {isExpanded ? 'Read Less' : 'Read More'}
                               <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -2201,7 +2226,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           {/* Full Executive Summary */}
                           {order.ai_processed && order.ai_summary && (
                             <div className="mb-4">
-                              <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
+                              <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
                                     <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Executive Summary</h3>
@@ -2220,7 +2245,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           {/* Azure AI Talking Points */}
                           {order.ai_processed && order.ai_talking_points && (
                             <div className="mb-4">
-                              <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
+                              <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
                                     <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Key Talking Points</h3>
@@ -2239,7 +2264,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           {/* Azure AI Business Impact */}
                           {order.ai_processed && order.ai_business_impact && (
                             <div className="mb-4">
-                              <div className="bg-gray-100 dark:bg-dark-bg-secondary border border-gray-200 dark:border-dark-border rounded-lg p-4">
+                              <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
                                   <div className="flex items-center gap-2">
                                     <h3 className={getTextClasses('primary', 'text-base font-semibold')}>Business Impact Assessment</h3>
@@ -2285,7 +2310,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   href={order.html_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View Source Page</span>
@@ -2298,7 +2323,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                   href={order.pdf_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                  className="inline-flex items-center gap-2 text-xs sm:text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200 px-2 py-1 -mx-2 -my-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <span>View PDF Document</span>
@@ -2323,7 +2348,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                                     return newSet;
                                   });
                                 }}
-                                className="text-blue-600 hover:text-blue-800 transition-colors duration-200 text-sm sm:text-base flex items-center gap-1 px-3 py-2 -mx-3 -my-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 min-h-[44px]"
+                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200 text-sm sm:text-base flex items-center gap-1 px-3 py-2 -mx-3 -my-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/20 min-h-[44px]"
                               >
                                 {isExpanded ? 'Read Less' : 'Read More'}
                                 <ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />

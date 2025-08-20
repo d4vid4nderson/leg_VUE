@@ -1,5 +1,5 @@
 // src/components/OrderCard.jsx - More resilient version
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, HeartPulse, GraduationCap, Building, Wrench, X as XIcon, ScrollText, FileDown, Clipboard, Key, TrendingUp, Scale, ChevronDown } from 'lucide-react';
 
 // Sparkle SVG component
@@ -13,7 +13,7 @@ const SparkleIcon = ({ className }) => (
   </svg>
 );
 
-export default function OrderCard({ order, isExpanded, onToggle }) {
+export default function OrderCard({ order, isExpanded, onToggle, onMarkViewed }) {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [toEmail, setToEmail] = useState('');
   
@@ -21,12 +21,31 @@ export default function OrderCard({ order, isExpanded, onToggle }) {
   console.log("Rendering OrderCard with order:", order);
 
   // Safely access order properties with fallbacks
-  const orderNumber = order?.executive_order_number || 'N/A';
+  const orderNumber = order?.executive_order_number || order?.eo_number || 'N/A';
   const title = order?.title || 'Untitled Order';
   const category = order?.category || 'not-applicable';
   const htmlUrl = order?.html_url || '';
   const pdfUrl = order?.pdf_url || '';
   const signingDate = order?.signing_date ? new Date(order.signing_date).toLocaleDateString() : 'N/A';
+  const isNew = order?.is_new === true || order?.is_new === 1;
+  
+  // Handle marking order as viewed
+  const handleMarkAsViewed = async () => {
+    if (isNew && onMarkViewed) {
+      try {
+        await onMarkViewed(orderNumber);
+      } catch (error) {
+        console.error('Error marking order as viewed:', error);
+      }
+    }
+  };
+  
+  // Mark as viewed when expanded
+  useEffect(() => {
+    if (isExpanded && isNew) {
+      handleMarkAsViewed();
+    }
+  }, [isExpanded, isNew]);
   
   // Safely get AI content
   const getAISummary = () => {
@@ -167,12 +186,19 @@ export default function OrderCard({ order, isExpanded, onToggle }) {
   return (
     <div className="bg-white border rounded-md shadow-sm overflow-hidden">
       <div className="p-4 flex justify-between items-center">
-        <h3 className="font-semibold text-xl text-gray-800">
-          {title}
-        </h3>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <h3 className="font-semibold text-xl text-gray-800 flex-1 min-w-0">
+            {title}
+          </h3>
+          {isNew && (
+            <span className="inline-flex items-center px-2 py-1 text-xs font-bold text-white bg-red-500 rounded-full animate-pulse shadow-sm">
+              NEW
+            </span>
+          )}
+        </div>
         <button
           onClick={onToggle}
-          className="p-2 hover:bg-gray-100 rounded-full transition-all duration-200"
+          className="p-2 hover:bg-gray-100 rounded-full transition-all duration-200 flex-shrink-0"
           aria-label={isExpanded ? 'Collapse' : 'Expand'}
         >
           <ChevronDown
