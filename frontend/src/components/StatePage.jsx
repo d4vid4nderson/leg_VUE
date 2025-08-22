@@ -2226,7 +2226,7 @@ const StatePage = ({ stateName }) => {
                   <div className="px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 min-h-[44px] flex items-center justify-center">
                     {loading
                       ? "..."
-                      : `${(actualBillCount !== null ? actualBillCount : filteredStateOrders.length).toLocaleString()}`}{" "}
+                      : `${filteredStateOrders.length.toLocaleString()}`}{" "}
                     {filteredStateOrders.length === 1 ? "Bill" : "Bills"}
                   </div>
                 </div>

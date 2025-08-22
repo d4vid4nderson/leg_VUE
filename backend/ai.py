@@ -19,8 +19,7 @@ class PromptType(Enum):
     BUSINESS_IMPACT = "business_impact"
     # State Bill specific prompts
     STATE_BILL_SUMMARY = "state_bill_summary"
-    STATE_BILL_TALKING_POINTS = "state_bill_talking_points"
-    STATE_BILL_IMPACT = "state_bill_impact"
+
 
 try:
     from utils import format_text_as_html, parse_ai_response, Category
@@ -31,6 +30,7 @@ except ImportError:
         HEALTHCARE = "healthcare"
         EDUCATION = "education"
         CIVIC = "civic"
+        ENGINEERING = "engineering"
         NOT_APPLICABLE = "not_applicable"
     
     def format_text_as_html(text: str, prompt_type: PromptType) -> str:
@@ -238,21 +238,17 @@ Executive Order Content: {text}
 
     # State Bill specific prompts
     PromptType.STATE_BILL_SUMMARY: """
-    Write a clear, natural summary of this state bill that sounds like it was written by a knowledgeable policy analyst, not an AI.
+    Write a comprehensive, clear summary of this bill in 5-7 sentences.
     
-    CRITICAL INSTRUCTIONS:
-    - Write in simple, everyday English that anyone can understand
-    - Vary your sentence structure and opening - DO NOT use formulaic patterns
-    - Avoid AI-sounding phrases like "This legislation aims to..." or "The bill seeks to..."
-    - Don't use overly formal or robotic language
-    - Write as if explaining to a neighbor what this bill actually does
-    - Be specific about the actual changes, not vague generalizations
-    - Use active voice when possible
-    - Keep it between 4-6 sentences (100-150 words)
+    Requirements:
+    - Write 5-7 complete sentences (approximately 120-150 words)
+    - Plain language that anyone can understand
+    - No headers, titles, or formatting
+    - No bullet points or sections
+    - Form a cohesive paragraph
+    - Cover what the bill does, who it affects, key provisions, and potential impact
     
-    Focus on: What problem does this solve? What specific changes will happen? Who will notice the difference? When would this take effect?
-    
-    Write naturally - each summary should sound unique based on what the specific bill actually does.
+    Structure: Start with what the bill does, explain who it affects, describe key provisions or changes, mention implementation details if relevant, and conclude with the broader impact or significance.
     
     State Bill Content: {text}
     """,
@@ -306,7 +302,7 @@ SYSTEM_MESSAGES = {
     PromptType.KEY_TALKING_POINTS: "You are an elite strategic communications consultant who has advised presidents, CEOs, and world leaders on complex policy communications. You excel at creating sophisticated talking points that demonstrate policy expertise while remaining accessible to diverse stakeholder audiences. Your talking points are used in congressional hearings, board meetings, and high-stakes negotiations. You understand the nuanced interests of different stakeholder groups and can articulate complex policy positions with precision and authority.",
     
     PromptType.BUSINESS_IMPACT: "You are a premier management consultant specializing in regulatory strategy and business impact analysis, with extensive experience at McKinsey, BCG, and Bain. You advise Fortune 100 companies on navigating complex regulatory environments and capitalizing on policy changes. Your analysis combines deep regulatory knowledge with practical business acumen, helping companies transform regulatory challenges into competitive advantages. You understand market dynamics, competitive positioning, operational implications, and strategic opportunities that emerge from policy changes.",
-    PromptType.STATE_BILL_SUMMARY: "You are a local policy expert who explains legislation to community members in plain English. You write naturally and conversationally, like you're talking to a neighbor over coffee. You avoid formulaic AI patterns and corporate jargon. Each summary you write sounds unique and human, focusing on what actually matters to regular people. You never use templates or robotic phrases.",
+    PromptType.STATE_BILL_SUMMARY: "You are a legislative analyst who writes comprehensive yet accessible summaries. You write exactly 5-7 complete sentences that form a cohesive paragraph. You use plain, everyday language that anyone can understand while avoiding technical jargon and legal terminology. You NEVER use headers, sections, bullet points, or special formatting.",
     PromptType.STATE_BILL_TALKING_POINTS: "You are a community engagement specialist helping elected officials communicate with constituents. Create talking points that are accessible, relevant, and useful for public discussions.",
     PromptType.STATE_BILL_IMPACT: "You are a civic policy analyst who evaluates how state legislation affects communities and residents. Focus on practical, real-world implications for everyday citizens.",
 }
@@ -738,8 +734,8 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
             max_tokens = 600  # Increased for comprehensive executive analysis
             temperature = 0.2  # Slightly higher for more sophisticated language
         elif prompt_type == PromptType.STATE_BILL_SUMMARY:
-            max_tokens = 250  # Increased for natural, conversational summaries
-            temperature = 0.7  # Higher temperature for more natural, varied language
+            max_tokens = 200  # Increased for 5-7 sentence comprehensive summaries
+            temperature = 0.1
         elif prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS]:
             max_tokens = 800  # Significantly increased for detailed talking points
             temperature = 0.3  # Higher for more nuanced communications
@@ -883,29 +879,41 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         # Categorize the bill
         category = categorize_bill(title, description)
         
-        # Run AI analysis - only generate executive summary for state bills
+        # Run AI analysis tasks with state bill specific prompts
         try:
-            summary_result = await get_state_bill_summary(content, f"State Bill - {base_context}")
+            summary_task = get_state_bill_summary(content, f"State Bill Summary - {base_context}")
+            talking_points_task = get_state_bill_talking_points(content, f"Constituent Discussion - {base_context}")
+            business_impact_task = get_state_bill_impact(content, f"Community Impact - {base_context}")
+            
+            summary_result, talking_points_result, business_impact_result = await asyncio.gather(
+                summary_task, talking_points_task, business_impact_task, return_exceptions=True
+            )
             
             # Handle potential exceptions
             if isinstance(summary_result, Exception):
                 summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
+            if isinstance(talking_points_result, Exception):
+                talking_points_result = f"<p>Error generating talking points: {str(talking_points_result)}</p>"
+            if isinstance(business_impact_result, Exception):
+                business_impact_result = f"<p>Error generating business impact: {str(business_impact_result)}</p>"
                 
         except Exception as e:
-            print(f"❌ Error in AI analysis task: {e}")
+            print(f"❌ Error in AI analysis tasks: {e}")
             summary_result = f"<p>Error generating summary: {str(e)}</p>"
+            talking_points_result = f"<p>Error generating talking points: {str(e)}</p>"
+            business_impact_result = f"<p>Error generating business impact: {str(e)}</p>"
         
         # Return results with both old and new field names for compatibility
         return {
             'summary': summary_result,  # New simple overview for summary column
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
-            'ai_talking_points': '',  # Empty - not needed for state bills
-            'ai_key_points': '',  # Empty - not needed for state bills
-            'ai_business_impact': '',  # Empty - not needed for state bills
-            'ai_potential_impact': '',  # Empty - not needed for state bills
+            'ai_talking_points': talking_points_result,
+            'ai_key_points': talking_points_result,
+            'ai_business_impact': business_impact_result,
+            'ai_potential_impact': business_impact_result,
             'category': category.value,
-            'ai_version': 'azure_openai_v2_simplified',
+            'ai_version': 'azure_openai_enhanced_v1',
             'analysis_timestamp': datetime.now().isoformat()
         }
         
@@ -917,10 +925,10 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
             'summary': error_msg,  # New simple overview for summary column
             'ai_summary': error_msg,
             'ai_executive_summary': error_msg,
-            'ai_talking_points': '',  # Empty - not needed for state bills
-            'ai_key_points': '',  # Empty - not needed for state bills
-            'ai_business_impact': '',  # Empty - not needed for state bills
-            'ai_potential_impact': '',  # Empty - not needed for state bills
+            'ai_talking_points': error_msg,
+            'ai_key_points': error_msg,
+            'ai_business_impact': error_msg,
+            'ai_potential_impact': error_msg,
             'category': BillCategory.NOT_APPLICABLE.value,
             'ai_version': 'error',
             'analysis_timestamp': datetime.now().isoformat()
@@ -1069,7 +1077,7 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
         }
 
 async def analyze_state_legislation(title: str, description: str = "", state: str = "", bill_number: str = "") -> Dict[str, str]:
-    """Simple executive summary for state legislation in natural language"""
+    """Comprehensive analysis for state legislation with distinct content"""
     try:
         context = f"{state} {bill_number}" if state and bill_number else f"{state} Legislation" if state else "State Legislation"
         content = f"Title: {title}"
@@ -1082,22 +1090,30 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
         
         print(f"🔍 Analyzing {state} legislation: {title[:50]}...")
         
-        # Only generate the executive summary for state bills
-        summary_result = await get_state_bill_summary(content, f"State Bill - {context}")
+        # Run enhanced AI analysis with state bill specific prompts
+        summary_result, talking_points_result, business_impact_result = await asyncio.gather(
+            get_state_bill_summary(content, f"State Bill Summary - {context}"),
+            get_state_bill_talking_points(content, f"Constituent Discussion - {context}"),
+            get_state_bill_impact(content, f"Community Impact - {context}"),
+            return_exceptions=True
+        )
         
         if isinstance(summary_result, Exception):
             summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
+        if isinstance(talking_points_result, Exception):
+            talking_points_result = f"<p>Error generating talking points: {str(talking_points_result)}</p>"
+        if isinstance(business_impact_result, Exception):
+            business_impact_result = f"<p>Error generating business impact: {str(business_impact_result)}</p>"
         
-        # Return empty strings for talking points and business impact
         return {
             'summary': summary_result,  # New simple overview for summary column
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
-            'ai_talking_points': '',  # Empty - not needed for state bills
-            'ai_key_points': '',  # Empty - not needed for state bills
-            'ai_business_impact': '',  # Empty - not needed for state bills
-            'ai_potential_impact': '',  # Empty - not needed for state bills
-            'ai_version': 'azure_openai_v2_simplified'
+            'ai_talking_points': talking_points_result,
+            'ai_key_points': talking_points_result,
+            'ai_business_impact': business_impact_result,
+            'ai_potential_impact': business_impact_result,
+            'ai_version': 'azure_openai_enhanced_v1'
         }
         
     except Exception as e:
