@@ -253,46 +253,6 @@ Executive Order Content: {text}
     State Bill Content: {text}
     """,
         
-    PromptType.STATE_BILL_TALKING_POINTS: """
-    Create exactly 5 distinct talking points for discussing this state bill with constituents and stakeholders.
-    Each point should be ONE complete sentence and focus on different aspects:
-
-    1. [What problem this bill aims to solve or address]
-    2. [Who would be most directly affected by this legislation]  
-    3. [The most significant change or new requirement it creates]
-    4. [How and when this would be implemented if passed]
-    5. [Potential benefits or concerns for the average citizen]
-
-    Format as numbered list exactly as shown above.
-    Make each point suitable for town halls, community meetings, or constituent communications.
-    Use bold formatting for important terms: **term**
-    Avoid legislative jargon - use plain language.
-    
-    State Bill Content: {text}
-    """,
-    
-    PromptType.STATE_BILL_IMPACT: """
-Analyze the potential impact of this state bill using clear, accessible language:
-
-Community Impact:
-Local Effects and Considerations
-• [Describe how this bill would affect local communities and residents in one clear sentence]
-• [Describe any economic or social impacts on the state in one clear sentence]
-
-Implementation Considerations:
-Practical Effects and Requirements
-• [Describe what would need to change or be established for implementation in one clear sentence]
-• [Describe any costs, benefits, or administrative changes in one clear sentence]
-
-Summary:
-[Provide a balanced 1-2 sentence summary of what this bill would mean for the state and its residents]
-
-Use simple bullet points with • character only. 
-Avoid asterisks (**) and dashes (---) in your response.
-Focus on practical, real-world implications for constituents.
-
-State Bill Content: {text}
-"""
 }
 
 # Enhanced system messages for each type
@@ -303,8 +263,6 @@ SYSTEM_MESSAGES = {
     
     PromptType.BUSINESS_IMPACT: "You are a premier management consultant specializing in regulatory strategy and business impact analysis, with extensive experience at McKinsey, BCG, and Bain. You advise Fortune 100 companies on navigating complex regulatory environments and capitalizing on policy changes. Your analysis combines deep regulatory knowledge with practical business acumen, helping companies transform regulatory challenges into competitive advantages. You understand market dynamics, competitive positioning, operational implications, and strategic opportunities that emerge from policy changes.",
     PromptType.STATE_BILL_SUMMARY: "You are a legislative analyst who writes comprehensive yet accessible summaries. You write exactly 5-7 complete sentences that form a cohesive paragraph. You use plain, everyday language that anyone can understand while avoiding technical jargon and legal terminology. You NEVER use headers, sections, bullet points, or special formatting.",
-    PromptType.STATE_BILL_TALKING_POINTS: "You are a community engagement specialist helping elected officials communicate with constituents. Create talking points that are accessible, relevant, and useful for public discussions.",
-    PromptType.STATE_BILL_IMPACT: "You are a civic policy analyst who evaluates how state legislation affects communities and residents. Focus on practical, real-world implications for everyday citizens.",
 }
 
 # Enums and classes
@@ -736,10 +694,10 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
         elif prompt_type == PromptType.STATE_BILL_SUMMARY:
             max_tokens = 200  # Increased for 5-7 sentence comprehensive summaries
             temperature = 0.1
-        elif prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS]:
+        elif prompt_type == PromptType.KEY_TALKING_POINTS:
             max_tokens = 800  # Significantly increased for detailed talking points
             temperature = 0.3  # Higher for more nuanced communications
-        elif prompt_type in [PromptType.BUSINESS_IMPACT, PromptType.STATE_BILL_IMPACT]:
+        elif prompt_type == PromptType.BUSINESS_IMPACT:
             max_tokens = 1000  # Doubled for comprehensive business analysis
             temperature = 0.25  # Balanced for analytical depth
         
@@ -754,7 +712,7 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
                 top_p=0.95,
                 frequency_penalty=0.3,
                 presence_penalty=0.2,
-                stop=["6.", "7.", "8.", "9."] if prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS] else None
+                stop=["6.", "7.", "8.", "9."] if prompt_type == PromptType.KEY_TALKING_POINTS else None
             )
             print(f"✅ Azure API call successful for {prompt_type.value}")
         except Exception as api_error:
@@ -771,10 +729,10 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
         if prompt_type in [PromptType.EXECUTIVE_SUMMARY, PromptType.STATE_BILL_SUMMARY]:
             # Keep as paragraph, clean up any unwanted formatting
             formatted_response = clean_summary_format(raw_response)
-        elif prompt_type in [PromptType.KEY_TALKING_POINTS, PromptType.STATE_BILL_TALKING_POINTS]:
+        elif prompt_type == PromptType.KEY_TALKING_POINTS:
             # Ensure proper numbered list format
             formatted_response = format_talking_points(raw_response)
-        elif prompt_type in [PromptType.BUSINESS_IMPACT, PromptType.STATE_BILL_IMPACT]:
+        elif prompt_type == PromptType.BUSINESS_IMPACT:
             # Ensure proper business impact structure
             formatted_response = format_business_impact(raw_response)
         else:
@@ -827,11 +785,6 @@ async def get_business_impact(text: str, context: str = "") -> str:
 async def get_state_bill_summary(text: str, context: str = "") -> str:
     return await process_with_ai(text, PromptType.STATE_BILL_SUMMARY, context=context)
 
-async def get_state_bill_talking_points(text: str, context: str = "") -> str:
-    return await process_with_ai(text, PromptType.STATE_BILL_TALKING_POINTS, context=context)
-
-async def get_state_bill_impact(text: str, context: str = "") -> str:
-    return await process_with_ai(text, PromptType.STATE_BILL_IMPACT, context=context)
 
 # Main analysis functions - ENHANCED
 async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) -> Dict[str, str]:
@@ -882,36 +835,27 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         # Run AI analysis tasks with state bill specific prompts
         try:
             summary_task = get_state_bill_summary(content, f"State Bill Summary - {base_context}")
-            talking_points_task = get_state_bill_talking_points(content, f"Constituent Discussion - {base_context}")
-            business_impact_task = get_state_bill_impact(content, f"Community Impact - {base_context}")
+            # Removed talking points and impact tasks
             
-            summary_result, talking_points_result, business_impact_result = await asyncio.gather(
-                summary_task, talking_points_task, business_impact_task, return_exceptions=True
-            )
+            summary_result = await summary_task
             
             # Handle potential exceptions
             if isinstance(summary_result, Exception):
                 summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
-            if isinstance(talking_points_result, Exception):
-                talking_points_result = f"<p>Error generating talking points: {str(talking_points_result)}</p>"
-            if isinstance(business_impact_result, Exception):
-                business_impact_result = f"<p>Error generating business impact: {str(business_impact_result)}</p>"
                 
         except Exception as e:
             print(f"❌ Error in AI analysis tasks: {e}")
             summary_result = f"<p>Error generating summary: {str(e)}</p>"
-            talking_points_result = f"<p>Error generating talking points: {str(e)}</p>"
-            business_impact_result = f"<p>Error generating business impact: {str(e)}</p>"
         
         # Return results with both old and new field names for compatibility
         return {
             'summary': summary_result,  # New simple overview for summary column
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
-            'ai_talking_points': talking_points_result,
-            'ai_key_points': talking_points_result,
-            'ai_business_impact': business_impact_result,
-            'ai_potential_impact': business_impact_result,
+            'ai_talking_points': "",  # Removed
+            'ai_key_points': "",  # Removed
+            'ai_business_impact': "",  # Removed
+            'ai_potential_impact': "",  # Removed
             'category': category.value,
             'ai_version': 'azure_openai_enhanced_v1',
             'analysis_timestamp': datetime.now().isoformat()
@@ -1048,18 +992,14 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
         
         if isinstance(summary_result, Exception):
             summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
-        if isinstance(talking_points_result, Exception):
-            talking_points_result = f"<p>Error generating talking points: {str(talking_points_result)}</p>"
-        if isinstance(business_impact_result, Exception):
-            business_impact_result = f"<p>Error generating business impact: {str(business_impact_result)}</p>"
         
         return {
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
-            'ai_talking_points': talking_points_result,
-            'ai_key_points': talking_points_result,
-            'ai_business_impact': business_impact_result,
-            'ai_potential_impact': business_impact_result,
+            'ai_talking_points': "",  # Removed
+            'ai_key_points': "",  # Removed
+            'ai_business_impact': "",  # Removed
+            'ai_potential_impact': "",  # Removed
             'ai_version': 'azure_openai_enhanced_v1'
         }
         
@@ -1091,28 +1031,19 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
         print(f"🔍 Analyzing {state} legislation: {title[:50]}...")
         
         # Run enhanced AI analysis with state bill specific prompts
-        summary_result, talking_points_result, business_impact_result = await asyncio.gather(
-            get_state_bill_summary(content, f"State Bill Summary - {context}"),
-            get_state_bill_talking_points(content, f"Constituent Discussion - {context}"),
-            get_state_bill_impact(content, f"Community Impact - {context}"),
-            return_exceptions=True
-        )
+        summary_result = await get_state_bill_summary(content, f"State Bill Summary - {context}")
         
         if isinstance(summary_result, Exception):
             summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
-        if isinstance(talking_points_result, Exception):
-            talking_points_result = f"<p>Error generating talking points: {str(talking_points_result)}</p>"
-        if isinstance(business_impact_result, Exception):
-            business_impact_result = f"<p>Error generating business impact: {str(business_impact_result)}</p>"
         
         return {
             'summary': summary_result,  # New simple overview for summary column
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
-            'ai_talking_points': talking_points_result,
-            'ai_key_points': talking_points_result,
-            'ai_business_impact': business_impact_result,
-            'ai_potential_impact': business_impact_result,
+            'ai_talking_points': "",  # Removed
+            'ai_key_points': "",  # Removed
+            'ai_business_impact': "",  # Removed
+            'ai_potential_impact': "",  # Removed
             'ai_version': 'azure_openai_enhanced_v1'
         }
         

@@ -4498,130 +4498,113 @@ async def get_admin_analytics_optimized(cleanup_test_users: bool = False):
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # Single optimized query to get all analytics data at once
+            # Get general stats first
+            print("🔍 DEBUG: Executing general stats query...")
             cursor.execute("""
-                WITH UserStats AS (
-                    SELECT TOP 10 
-                        p.user_id,
-                        p.display_name,
-                        p.login_count,
-                        p.last_login,
-                        ISNULL(h.highlight_count, 0) as highlight_count,
-                        ISNULL(h.active_days, 0) as active_days,
-                        ISNULL(pv.page_views, 0) as page_views,
-                        ISNULL(pv.most_active_page, 'N/A') as most_active_page
-                    FROM dbo.user_profiles p
-                    LEFT JOIN (
-                        SELECT 
-                            CAST(user_id AS NVARCHAR(50)) as user_id,
-                            COUNT(*) as highlight_count,
-                            COUNT(DISTINCT CAST(highlighted_at AS DATE)) as active_days
-                        FROM dbo.user_highlights 
-                        WHERE is_archived = 0
-                        GROUP BY user_id
-                    ) h ON p.user_id = h.user_id
-                    LEFT JOIN (
-                        SELECT 
-                            user_id,
-                            COUNT(*) as page_views,
-                            (SELECT TOP 1 page_name FROM dbo.page_views pv2 
-                             WHERE pv2.user_id = pv1.user_id 
-                             GROUP BY page_name 
-                             ORDER BY COUNT(*) DESC) as most_active_page
-                        FROM dbo.page_views pv1
-                        GROUP BY user_id
-                    ) pv ON p.user_id = pv.user_id
-                    WHERE p.is_active = 1
-                    ORDER BY p.login_count DESC, h.highlight_count DESC
-                ),
-                GeneralStats AS (
-                    SELECT 
-                        (SELECT COUNT(*) FROM executive_orders) as eo_count,
-                        (SELECT COUNT(*) FROM state_legislation) as sl_count,
-                        (SELECT COUNT(*) FROM dbo.user_profiles WHERE is_active = 1) as unique_users,
-                        (SELECT COUNT(*) FROM dbo.page_views) as total_page_views,
-                        (SELECT COUNT(DISTINCT session_id) FROM dbo.user_sessions) as unique_sessions,
-                        (SELECT COUNT(DISTINCT user_id) FROM dbo.user_sessions 
-                         WHERE CAST(started_at AS DATE) = CAST(GETDATE() AS DATE)) as active_today
-                ),
-                TopPages AS (
-                    SELECT TOP 5 page_name, COUNT(*) as view_count
-                    FROM dbo.page_views 
-                    GROUP BY page_name 
-                    ORDER BY COUNT(*) DESC
-                )
                 SELECT 
-                    'USER' as data_type,
-                    user_id, display_name, login_count, last_login, 
-                    highlight_count, active_days, page_views, most_active_page,
-                    NULL as stat_name, NULL as stat_value
-                FROM UserStats
-                UNION ALL
-                SELECT 
-                    'GENERAL' as data_type,
-                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                    'stats' as stat_name,
-                    CONCAT(eo_count, '|', sl_count, '|', unique_users, '|', 
-                           total_page_views, '|', unique_sessions, '|', active_today) as stat_value
-                FROM GeneralStats
-                UNION ALL
-                SELECT 
-                    'PAGE' as data_type,
-                    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                    page_name as stat_name, CAST(view_count AS NVARCHAR) as stat_value
-                FROM TopPages
-                ORDER BY data_type, ISNULL(login_count, 0) DESC
+                    (SELECT COUNT(*) FROM executive_orders) as eo_count,
+                    (SELECT COUNT(*) FROM state_legislation) as sl_count,
+                    (SELECT COUNT(*) FROM dbo.user_profiles WHERE is_active = 1 AND msi_email LIKE '%@%' AND msi_email NOT LIKE 'anonymous-%@local.app') as unique_users,
+                    (SELECT COUNT(*) FROM dbo.page_views) as total_page_views,
+                    (SELECT COUNT(DISTINCT session_id) FROM dbo.user_sessions) as unique_sessions,
+                    (SELECT COUNT(DISTINCT s.user_id) FROM dbo.user_sessions s
+                     INNER JOIN dbo.user_profiles p ON s.user_id = p.user_id
+                     WHERE CAST(s.started_at AS DATE) = CAST(GETDATE() AS DATE)
+                     AND p.msi_email LIKE '%@%' 
+                     AND p.msi_email NOT LIKE 'anonymous-%@local.app') as active_today
             """)
             
-            # Process the combined results efficiently
-            results = cursor.fetchall()
-            
-            top_users = []
-            general_stats = {}
-            top_pages = []
-            
-            for row in results:
-                data_type = row[0]
+            general_row = cursor.fetchone()
+            print(f"🔍 DEBUG: General stats query completed: {general_row}")
+            if general_row:
+                general_stats = {
+                    "eo_count": general_row[0] or 0,
+                    "sl_count": general_row[1] or 0,
+                    "unique_users": general_row[2] or 0,
+                    "total_page_views": general_row[3] or 0,
+                    "unique_sessions": general_row[4] or 0,
+                    "active_today": general_row[5] or 0
+                }
+            else:
+                general_stats = {"eo_count": 0, "sl_count": 0, "unique_users": 0, "total_page_views": 0, "unique_sessions": 0, "active_today": 0}
                 
-                if data_type == 'USER' and row[1]:  # user_id is not None
-                    user_dict = {
-                        "userId": str(row[1]),
-                        "displayName": row[2] or "Unknown User",
-                        "loginCount": row[3] or 0,
-                        "lastLogin": row[4].isoformat() if row[4] else None,
-                        "highlightCount": row[5] or 0,
-                        "activeDays": row[6] or 0,
-                        "pageViewCount": row[7] or 0,
-                        "mostActivePage": row[8] or "N/A"
-                    }
-                    top_users.append(user_dict)
-                    
-                elif data_type == 'GENERAL':
-                    # Parse the concatenated stats
-                    stats_str = row[10]  # stat_value
-                    if stats_str:
-                        stats = stats_str.split('|')
-                        if len(stats) >= 6:
-                            general_stats = {
-                                "eo_count": int(stats[0]),
-                                "sl_count": int(stats[1]), 
-                                "unique_users": int(stats[2]),
-                                "total_page_views": int(stats[3]),
-                                "unique_sessions": int(stats[4]),
-                                "active_today": int(stats[5])
-                            }
-                            
-                elif data_type == 'PAGE':
-                    page_dict = {
-                        "pageName": row[9],  # stat_name 
-                        "viewCount": int(row[10])  # stat_value
-                    }
-                    top_pages.append(page_dict)
+            print(f"🔍 DEBUG: general_stats = {general_stats}")
             
-            # Build response efficiently
+            # Get top users with their activity - separate query (authenticated users only)
+            print("🔍 DEBUG: UPDATED - Executing user stats query for authenticated AD users only [v2]...")
+            cursor.execute("""
+                SELECT TOP 10 
+                    p.user_id,
+                    p.display_name,
+                    p.login_count,
+                    p.last_login,
+                    ISNULL(h.highlight_count, 0) as highlight_count,
+                    ISNULL(h.active_days, 0) as active_days,
+                    ISNULL(pv.page_views, 0) as page_views,
+                    COALESCE(pv.most_active_page, 'N/A') as most_active_page
+                FROM dbo.user_profiles p
+                LEFT JOIN (
+                    SELECT 
+                        CAST(user_id AS NVARCHAR(50)) as user_id,
+                        COUNT(*) as highlight_count,
+                        COUNT(DISTINCT CAST(highlighted_at AS DATE)) as active_days
+                    FROM dbo.user_highlights 
+                    WHERE is_archived = 0
+                    GROUP BY user_id
+                ) h ON p.user_id = h.user_id
+                LEFT JOIN (
+                    SELECT 
+                        user_id,
+                        COUNT(*) as page_views,
+                        (SELECT TOP 1 page_name FROM dbo.page_views pv2 
+                         WHERE pv2.user_id = pv1.user_id 
+                         GROUP BY page_name) as most_active_page
+                    FROM dbo.page_views pv1
+                    GROUP BY user_id
+                ) pv ON p.user_id = pv.user_id
+                WHERE p.is_active = 1 
+                AND p.msi_email LIKE '%@%' 
+                AND p.msi_email NOT LIKE 'anonymous-%@local.app'
+                ORDER BY p.login_count DESC, h.highlight_count DESC
+            """)
+            
+            user_results = cursor.fetchall()
+            top_users = []
+            for row in user_results:
+                user_dict = {
+                    "userId": str(row[0]),
+                    "displayName": row[1] or "Unknown User",
+                    "loginCount": row[2] or 0,
+                    "lastLogin": row[3].isoformat() if row[3] else None,
+                    "highlightCount": row[4] or 0,
+                    "activeDays": row[5] or 0,
+                    "pageViewCount": row[6] or 0,
+                    "mostActivePage": row[7] or "N/A"
+                }
+                top_users.append(user_dict)
+            
+            # Get top pages - separate query
+            print("🔍 DEBUG: Executing top pages query...")
+            cursor.execute("""
+                SELECT TOP 5 page_name, COUNT(*) as view_count
+                FROM dbo.page_views 
+                GROUP BY page_name 
+                ORDER BY COUNT(*) DESC
+            """)
+            
+            page_results = cursor.fetchall()
+            top_pages = []
+            for row in page_results:
+                top_pages.append({
+                    "pageName": row[0],
+                    "viewCount": row[1]
+                })
+            
+            # Build response using the data we collected
             analytics_data = {
                 "totalPageViews": general_stats.get("total_page_views", 0),
                 "uniqueSessions": general_stats.get("unique_sessions", 0),
+                "uniqueUsers": general_stats.get("unique_users", 0),
                 "activeToday": general_stats.get("active_today", 0),
                 "topUsers": top_users[:5],  # Top 5 users
                 "topPages": top_pages,
