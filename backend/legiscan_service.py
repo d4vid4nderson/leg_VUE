@@ -309,35 +309,22 @@ class EnhancedLegiScanClient:
                         year = session_info.get('year_start', 0)
                         current_year = datetime.now().year
                         
-                        # Debug logging for Texas sessions
-                        if state == 'TX':
-                            print(f"🤠 Texas session found: {session_name} (year: {year})")
+                        # Session processing for all states
                         
-                        # Consider a session active if:
-                        # 1. It's from current year or recent years
-                        # 2. It doesn't have an explicit end marker
-                        is_recent = (current_year - int(year)) <= 1 if year else False
+                        # Check if session is actually active using LegiScan API sine_die flag
+                        # sine_die = 0 means session is active, sine_die = 1 means session is closed
+                        sine_die = session_info.get('sine_die', 0)
+                        is_session_closed = sine_die == 1
                         
-                        # Check if this is a special session that's prefileable or upcoming
-                        is_special = session_info.get('special', 0) == 1
-                        is_prefile = session_info.get('prefile', 0) == 1
+                        # Session activity is determined solely by LegiScan API sine_die flag
                         
-                        # Additional heuristics for active sessions
-                        is_likely_active = (
-                            is_recent and (
-                                # Regular sessions from current/recent years
-                                ('special' not in session_name.lower()) or
-                                # Special sessions that are marked as prefile (upcoming)
-                                (is_special and is_prefile) or
-                                # Special sessions with current year
-                                (is_special and str(current_year) in session_name)
-                            )
-                        )
+                        # Session is active ONLY if LegiScan API shows it's not closed (sine_die != 1)
+                        # If sine_die = 1, session is DEFINITIVELY CLOSED per LegiScan API
+                        is_likely_active = not is_session_closed
                         
-                        # Special handling for Texas 89th Legislature sessions
-                        if state == 'TX' and '89th' in session_name:
-                            is_likely_active = True
-                            print(f"🤠 Including Texas 89th Legislature session: {session_name}")
+                        # Debug logging for session status  
+                        status_msg = "CLOSED" if is_session_closed else "ACTIVE"
+                        print(f"🔍 {state} session: {session_name} - {status_msg} (sine_die: {sine_die})")
                         
                         session_entry = {
                             'session_id': session_key,
@@ -347,12 +334,17 @@ class EnhancedLegiScanClient:
                             'session_start_date': session_info.get('session_start_date', ''),
                             'session_end_date': session_info.get('session_end_date', ''),
                             'sine_die': session_info.get('sine_die', ''),
+                            'is_active': not is_session_closed,  # True if session is not closed per LegiScan
                             'is_likely_active': is_likely_active,
                             'session_info': session_info
                         }
                         
-                        if is_likely_active:
+                        # ONLY add to active sessions if sine_die is NOT 1
+                        if is_likely_active and not is_session_closed:
                             state_active_sessions.append(session_entry)
+                            print(f"✅ Adding ACTIVE session: {session_name} (sine_die={sine_die})")
+                        elif is_session_closed:
+                            print(f"❌ Skipping CLOSED session: {session_name} (sine_die={sine_die})")
                         
                         # Store all session details for reference
                         if state not in session_details:
@@ -365,49 +357,7 @@ class EnhancedLegiScanClient:
                 else:
                     print(f"📭 No active sessions detected in {state}")
                 
-                print(f"🚨 About to check manual override for state: {state}")
-                # Manual override for Texas 89th Legislature 1st Special Session
-                if state == 'TX':
-                    print(f"🤠 Processing Texas manual override - current active sessions: {len(state_active_sessions)}")
-                    # Check if 89th Legislature 1st Special Session is already included
-                    has_89th_special = any(
-                        '89th' in s.get('session_name', '') and 
-                        'special' in s.get('session_name', '').lower() 
-                        for s in state_active_sessions
-                    )
-                    
-                    print(f"🤠 Has 89th special session already: {has_89th_special}")
-                    
-                    if not has_89th_special:
-                        print("🤠 Manually adding Texas 89th Legislature 1st Special Session")
-                        special_session = {
-                            'session_id': 'tx_89th_special_1',
-                            'session_name': '89th Legislature - 1st Special Session',
-                            'year_start': 2025,
-                            'year_end': 2025,
-                            'session_start_date': '2025-01-01',
-                            'session_end_date': '',
-                            'sine_die': '',
-                            'is_likely_active': True,
-                            'is_active': True,
-                            'state': 'TX',
-                            'session_info': {
-                                'session_name': '89th Legislature - 1st Special Session',
-                                'year_start': 2025,
-                                'special': 1
-                            }
-                        }
-                        
-                        if state not in active_sessions:
-                            active_sessions[state] = []
-                        active_sessions[state].append(special_session)
-                        state_active_sessions.append(special_session)  # Also add to local list for count
-                        
-                        if state not in session_details:
-                            session_details[state] = []
-                        session_details[state].append(special_session)
-                        
-                        print(f"🤠 Added special session - new total: {len(active_sessions[state])}")
+                # No manual overrides - rely solely on LegiScan API data
             
             return {
                 'success': True,

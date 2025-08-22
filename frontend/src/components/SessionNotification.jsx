@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { AlertCircle, X, Calendar, MapPin, ExternalLink, RotateCw, Clock, ChevronUp, ChevronDown, CalendarDays } from 'lucide-react';
 import API_URL from '../config/api';
 
+console.log('📦 SessionNotification.jsx module loaded');
+
 const SessionNotification = ({ 
     stateName, 
     stateAbbr, 
@@ -11,6 +13,8 @@ const SessionNotification = ({
     onSessionRefresh = null,
     sessionRefreshing = false
 }) => {
+  console.log('🚀 SessionNotification component called with:', { stateName, stateAbbr, visible });
+  
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -51,39 +55,38 @@ const SessionNotification = ({
 
   // Helper function to determine if session is currently active
   const isSessionCurrentlyActive = (session) => {
-    const now = new Date();
-    const startDate = session.session_start_date ? new Date(session.session_start_date) : null;
-    const endDate = session.session_end_date ? new Date(session.session_end_date) : null;
-    const sineDate = session.sine_die ? new Date(session.sine_die) : null;
+    // IMPORTANT: Check sine_die flag first - if it's 1, session is CLOSED
+    if (session.sine_die === 1 || session.sine_die === '1') {
+      console.log(`Session ${session.session_name} is CLOSED (sine_die=1)`);
+      return false; // Session is closed per LegiScan API
+    }
     
     // Check if session has is_active flag from backend
-    if (session.is_active !== undefined) {
+    if (session.is_active !== undefined && session.is_active !== null) {
+      console.log(`Session ${session.session_name} is_active flag: ${session.is_active}`);
       return session.is_active;
     }
     
-    // If we have specific dates, use them
-    if (startDate && !isNaN(startDate.getTime())) {
-      if (endDate && !isNaN(endDate.getTime())) {
-        return now >= startDate && now <= endDate;
-      } else if (sineDate && !isNaN(sineDate.getTime())) {
-        return now >= startDate && now <= sineDate;
-      } else {
-        // Only start date available, assume ongoing if started
-        return now >= startDate;
-      }
+    // For sessions with sine_die = 0, they are active
+    if (session.sine_die === 0 || session.sine_die === '0') {
+      console.log(`Session ${session.session_name} is ACTIVE (sine_die=0)`);
+      return true;
     }
     
-    // Special handling for Texas special sessions (often don't have dates)
-    if (session.state === 'TX' && session.session_name && session.session_name.toLowerCase().includes('special')) {
-      // Check if it's a recent special session (within current year)
-      const currentYear = now.getFullYear();
-      return session.year_start === currentYear || 
-             (session.year_start === currentYear - 1 && now.getMonth() < 6); // Allow previous year if in first half of current year
-    }
-    
-    // Fallback: assume active if it's in the current year
+    // Fallback for sessions without sine_die info
+    const now = new Date();
     const currentYear = now.getFullYear();
-    return session.year_start === currentYear || session.year_start === currentYear - 1;
+    const isRecent = session.year_start === currentYear || session.year_start === currentYear - 1;
+    console.log(`Session ${session.session_name} fallback: isRecent=${isRecent}`);
+    return isRecent;
+  };
+  
+  // Helper function to determine if session is closed
+  const isSessionClosed = (session) => {
+    // Session is closed if sine_die flag is 1
+    const isClosed = session.sine_die === 1 || session.sine_die === '1';
+    console.log(`Session ${session.session_name} closed check: sine_die=${session.sine_die}, isClosed=${isClosed}`);
+    return isClosed;
   };
 
   // Check for active sessions when component mounts or state changes
@@ -134,6 +137,7 @@ const SessionNotification = ({
 
   // Don't render if dismissed, not visible, or no state
   if (dismissed || !visible || !stateAbbr) {
+    console.log('❌ SessionNotification early return:', { dismissed, visible, stateAbbr });
     return null;
   }
 
@@ -176,18 +180,35 @@ const SessionNotification = ({
     );
   }
 
-  // Don't render if no session data or no active sessions
-  if (!sessionData || !sessionData.active_sessions || Object.keys(sessionData.active_sessions).length === 0) {
+  // Debug logging to see what data we have
+  console.log('SessionNotification sessionData:', sessionData);
+  console.log('stateAbbr:', stateAbbr);
+  if (sessionData) {
+    console.log('active_sessions keys:', Object.keys(sessionData.active_sessions || {}));
+    console.log('all_sessions keys:', Object.keys(sessionData.all_sessions || {}));
+    console.log(`Sessions for ${stateAbbr}:`, {
+      active: sessionData.active_sessions?.[stateAbbr],
+      all: sessionData.all_sessions?.[stateAbbr]
+    });
+  }
+
+  // Don't render if no session data
+  if (!sessionData) {
+    console.log('No sessionData - returning null');
     return null;
   }
 
-  const activeSessions = sessionData.active_sessions[stateAbbr] || [];
+  // Get all sessions (both active and closed) to display them properly
+  const activeSessions = sessionData.active_sessions?.[stateAbbr] || [];
+  const allSessions = sessionData.all_sessions?.[stateAbbr] || [];
   
-  // Removed verbose logging for performance
+  // Use all_sessions if available (includes both active and closed), otherwise fall back to active_sessions
+  const sessionsToDisplay = allSessions.length > 0 ? allSessions : activeSessions;
   
-  if (activeSessions.length === 0) {
-    return null;
-  }
+  console.log(`Sessions to display for ${stateAbbr}:`, sessionsToDisplay);
+  
+  // Show a message when there are no sessions instead of hiding component
+  const showNoSessionsMessage = sessionsToDisplay.length === 0;
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -198,7 +219,7 @@ const SessionNotification = ({
   };
 
   // Check if any session is currently active
-  const hasActiveSession = activeSessions.some(session => isSessionCurrentlyActive(session));
+  const hasActiveSession = sessionsToDisplay.some(session => isSessionCurrentlyActive(session));
   
   return (
     <div className="bg-gray-50 dark:bg-slate-700 border-gray-300 dark:border-slate-500 border rounded-lg p-4 mb-6">
@@ -210,18 +231,18 @@ const SessionNotification = ({
           </div>
           <div className="flex flex-col gap-1">
             <h3 className="text-sm font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-              Active Legislative Session{activeSessions.length > 1 ? 's' : ''}
+              Legislative Session{sessionsToDisplay.length > 1 ? 's' : ''} Status
             </h3>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1" title={hasActiveSession ? "Legislative session is currently in progress" : "Legislative session is scheduled/planned"}>
                 <div className={`w-2 h-2 rounded-full ${hasActiveSession ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
                 <span className={`text-xs font-medium ${hasActiveSession ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                  {hasActiveSession ? 'IN SESSION' : 'SCHEDULED'}
+                  {hasActiveSession ? 'ACTIVE SESSIONS' : 'SESSIONS'}
                 </span>
               </div>
-              {activeSessions.length > 1 && (
+              {sessionsToDisplay.length > 1 && (
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  ({activeSessions.length} sessions)
+                  ({sessionsToDisplay.length} sessions)
                 </span>
               )}
             </div>
@@ -245,26 +266,71 @@ const SessionNotification = ({
       {expanded && (
         <div className="mt-4">
           <div className="space-y-2">
-                {activeSessions.map((session, index) => (
+            {showNoSessionsMessage ? (
+              <div className="text-sm text-gray-600 dark:text-gray-300 text-center py-4">
+                <Calendar size={16} className="mx-auto mb-2 text-gray-400" />
+                <p>No legislative sessions detected for {stateName}</p>
+                <p className="text-xs mt-1">Sessions may not be available in our current data</p>
+              </div>
+            ) : (
+              sessionsToDisplay.map((session, index) => {
+                  // Debug logging
+                  console.log(`Session ${session.session_name}: sine_die=${session.sine_die}, is_active=${session.is_active}, closed=${isSessionClosed(session)}, active=${isSessionCurrentlyActive(session)}`);
+                  
+                  return (
                   <div key={session.session_id || index} className="text-sm text-gray-700 dark:text-gray-200">
                     <div className="flex items-center gap-2 mb-1">
                       <MapPin size={12} className="text-gray-600 dark:text-gray-300" />
                       <span className="font-medium">{stateName}</span>
-                      <span className={session.session_name.toLowerCase().includes('special') ? 'text-purple-600' : 'text-blue-600'}>•</span>
                       <span className={session.session_name.toLowerCase().includes('special') ? 'text-purple-700 dark:text-purple-300' : 'text-blue-700 dark:text-blue-300'}>{session.session_name}</span>
                     </div>
                     
                     <div className="ml-5 space-y-1">
-                      {/* Session Status Indicator */}
+                      {/* Session Status Indicator with colored dots */}
                       <div className="flex items-center gap-2 text-xs">
-                        <Clock size={10} />
+                        {/* Bigger status dot with better alignment */}
+                        <div className="flex items-center justify-center w-4 h-4">
+                          <div 
+                            className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                              isSessionClosed(session) 
+                                ? 'bg-red-500' 
+                                : isSessionCurrentlyActive(session)
+                                  ? session.session_name.toLowerCase().includes('special') 
+                                    ? 'bg-purple-500' 
+                                    : 'bg-green-500'
+                                  : 'bg-gray-400'
+                            }`}
+                            style={{
+                              animation: isSessionCurrentlyActive(session) && !isSessionClosed(session) 
+                                ? 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' 
+                                : 'none'
+                            }}
+                            title={
+                            isSessionClosed(session) 
+                              ? 'Session closed' 
+                              : isSessionCurrentlyActive(session) 
+                                ? 'Session active' 
+                                : 'Session scheduled'
+                          }></div>
+                        </div>
+                        
                         <span className="font-medium text-gray-700 dark:text-gray-200">Status:</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          isSessionCurrentlyActive(session) 
-                            ? session.session_name.toLowerCase().includes('special') ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' 
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                          isSessionClosed(session)
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
+                            : isSessionCurrentlyActive(session) 
+                              ? session.session_name.toLowerCase().includes('special') 
+                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200' 
+                                : 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' 
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
                         }`}>
-                          {isSessionCurrentlyActive(session) ? 'Currently Active' : 'Scheduled/Planned'}
+                          {isSessionClosed(session) 
+                            ? 'CLOSED' 
+                            : isSessionCurrentlyActive(session) 
+                              ? session.session_name.toLowerCase().includes('special')
+                                ? 'ACTIVE (Special)'
+                                : 'ACTIVE' 
+                              : 'SCHEDULED'}
                         </span>
                       </div>
 
@@ -315,18 +381,22 @@ const SessionNotification = ({
                       ) : null}
                     </div>
                   </div>
-                ))}
+                  );
+              })
+            )}
                 
-                {/* End of session details - ensure no stray content below */}
-                <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
-                  <p>
-                    📋 Legislative activity is currently ongoing. 
-                    {activeSessions.length > 1 
-                      ? ` ${activeSessions.length} active sessions detected.`
-                      : ' New bills and updates may be available.'
-                    }
-                  </p>
-                </div>
+            {/* Show session summary only if there are sessions */}
+            {!showNoSessionsMessage && (
+              <div className="mt-3 text-xs text-gray-600 dark:text-gray-300">
+                <p>
+                  📋 Legislative activity is currently ongoing. 
+                  {sessionsToDisplay.length > 1 
+                    ? ` ${sessionsToDisplay.length} sessions detected.`
+                    : ' New bills and updates may be available.'
+                  }
+                </p>
+              </div>
+            )}
             
             {/* Refresh invitation when updates available */}
             {hasUpdates && onRefreshNeeded && (
