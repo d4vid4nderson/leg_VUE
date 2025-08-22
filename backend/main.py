@@ -5338,11 +5338,20 @@ async def track_user_login(request: UserLoginRequest):
         
         create_user_profiles_table()
         
-        # Normalize user ID to handle both email and numeric IDs
-        normalized_user_id = normalize_user_id(request.user_id)
-        
         with get_db_connection() as conn:
             cursor = conn.cursor()
+            
+            # For login tracking, check if user exists by email first
+            if request.email:
+                # Try to find existing user by email
+                cursor.execute("SELECT user_id FROM dbo.user_profiles WHERE msi_email = ?", (request.email,))
+                existing_user = cursor.fetchone()
+                if existing_user:
+                    normalized_user_id = existing_user[0]
+                else:
+                    normalized_user_id = normalize_user_id(request.user_id)
+            else:
+                normalized_user_id = normalize_user_id(request.user_id)
             
             # Update or create user profile with login tracking
             if request.email and request.display_name:
