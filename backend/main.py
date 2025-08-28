@@ -5099,6 +5099,510 @@ async def list_upload_jobs_endpoint():
     """List all upload jobs (last 50)"""
     return await list_upload_jobs()
 
+def merge_manual_executions_with_job(job_data, job_name_map):
+    """Merge manual executions with Azure job data"""
+    global MANUAL_JOB_EXECUTIONS
+    
+    # Map Azure job names to manual job names
+    manual_name = job_name_map.get(job_data["name"])
+    if not manual_name:
+        return job_data
+    
+    # Get manual executions for this job
+    manual_executions = [
+        exec for exec in MANUAL_JOB_EXECUTIONS 
+        if exec["job_name"] == manual_name
+    ]
+    
+    # Convert manual executions to the same format as Azure executions
+    for manual_exec in manual_executions:
+        formatted_exec = {
+            "execution_name": manual_exec["execution_name"],
+            "status": manual_exec["status"],
+            "start_time": manual_exec["start_time"],
+            "end_time": manual_exec["end_time"],
+            "duration": manual_exec["duration"],
+            "is_manual": True,
+            "error": manual_exec.get("error"),
+            "process_id": manual_exec.get("process_id")
+        }
+        job_data["executions"].append(formatted_exec)
+    
+    # Sort all executions by start time (most recent first)
+    job_data["executions"].sort(
+        key=lambda x: x["start_time"] or "", 
+        reverse=True
+    )
+    
+    # Limit to 10 most recent executions
+    job_data["executions"] = job_data["executions"][:10]
+    
+    return job_data
+
+@app.get("/api/admin/automation-report")
+async def get_automation_report():
+    """Get automation job execution report for Azure Container Apps and manual executions"""
+    try:
+        import subprocess
+        import json
+        from datetime import datetime, timedelta
+        import os
+        
+        global MANUAL_JOB_EXECUTIONS
+        
+        report = {
+            "success": True,
+            "timestamp": datetime.utcnow().isoformat(),
+            "jobs": [],
+            "summary": {
+                "total_executions": 0,
+                "successful": 0,
+                "failed": 0,
+                "running": 0,
+                "recent_failures": []
+            }
+        }
+        
+        # Check if Azure CLI is available and authenticated
+        azure_cli_available = os.system("which az > /dev/null 2>&1") == 0
+        azure_authenticated = False
+        
+        if azure_cli_available:
+            # Check if Azure CLI is authenticated
+            auth_check = os.system("az account show > /dev/null 2>&1")
+            azure_authenticated = auth_check == 0
+        
+        # Define the jobs to check
+        jobs = [
+            {"name": "job-executive-orders-nightly", "description": "Executive Orders Nightly Fetch", "schedule": "2:00 AM UTC"},
+            {"name": "job-state-bills-nightly", "description": "State Bills Nightly Update", "schedule": "3:00 AM UTC"}
+        ]
+        
+        # Map Azure job names to manual job names
+        job_name_map = {
+            "job-executive-orders-nightly": "executive-orders",
+            "job-state-bills-nightly": "state-bills"
+        }
+        
+        # Use mock data if Azure CLI is not available or not authenticated
+        if not azure_cli_available or not azure_authenticated:
+            # Provide mock data when Azure CLI is not available (local development)
+            # Using current date for more realistic mock data
+            today = datetime.utcnow().date()
+            yesterday = today - timedelta(days=1)
+            two_days_ago = today - timedelta(days=2)
+            
+            mock_jobs = [
+                {
+                    "name": "job-executive-orders-nightly",
+                    "description": "Executive Orders Nightly Fetch",
+                    "schedule": "2:00 AM UTC",
+                    "executions": [
+                        {"execution_name": f"job-executive-orders-nightly-{today}", "status": "Failed", 
+                         "start_time": f"{today}T02:00:00+00:00", "end_time": f"{today}T02:30:00+00:00", "duration": "30m 0s"},
+                        {"execution_name": f"job-executive-orders-nightly-{yesterday}", "status": "Failed", 
+                         "start_time": f"{yesterday}T02:00:00+00:00", "end_time": f"{yesterday}T02:30:00+00:00", "duration": "30m 0s"},
+                        {"execution_name": f"job-executive-orders-nightly-{two_days_ago}", "status": "Succeeded", 
+                         "start_time": f"{two_days_ago}T02:00:00+00:00", "end_time": f"{two_days_ago}T02:15:00+00:00", "duration": "15m 0s"}
+                    ]
+                },
+                {
+                    "name": "job-state-bills-nightly",
+                    "description": "State Bills Nightly Update",
+                    "schedule": "3:00 AM UTC",
+                    "executions": [
+                        {"execution_name": f"job-state-bills-nightly-{today}", "status": "Failed", 
+                         "start_time": f"{today}T03:00:00+00:00", "end_time": f"{today}T03:01:00+00:00", "duration": "1m 0s"},
+                        {"execution_name": f"job-state-bills-nightly-{yesterday}", "status": "Failed", 
+                         "start_time": f"{yesterday}T03:00:00+00:00", "end_time": f"{yesterday}T03:01:00+00:00", "duration": "1m 0s"},
+                        {"execution_name": f"job-state-bills-nightly-{two_days_ago}", "status": "Succeeded", 
+                         "start_time": f"{two_days_ago}T03:00:00+00:00", "end_time": f"{two_days_ago}T03:05:00+00:00", "duration": "5m 0s"}
+                    ]
+                }
+            ]
+            
+            # Merge manual executions with mock data
+            for job_data in mock_jobs:
+                job_data = merge_manual_executions_with_job(job_data, job_name_map)
+                report["jobs"].append(job_data)
+            
+            # Calculate summary from merged data
+            for job_data in report["jobs"]:
+                for exec_data in job_data["executions"]:
+                    report["summary"]["total_executions"] += 1
+                    if exec_data["status"] == "Succeeded":
+                        report["summary"]["successful"] += 1
+                    elif exec_data["status"] == "Failed":
+                        report["summary"]["failed"] += 1
+                        # Add to recent failures if within last 24 hours
+                        if exec_data["start_time"]:
+                            try:
+                                start_time = datetime.fromisoformat(exec_data["start_time"].replace("+00:00", "").replace("Z", ""))
+                                if datetime.utcnow() - start_time < timedelta(days=1):
+                                    report["summary"]["recent_failures"].append({
+                                        "job": job_data["description"],
+                                        "time": exec_data["start_time"],
+                                        "execution": exec_data["execution_name"],
+                                        "is_manual": exec_data.get("is_manual", False)
+                                    })
+                            except:
+                                pass
+                    elif exec_data["status"] == "Running":
+                        report["summary"]["running"] += 1
+            
+            # Calculate success rate
+            if report["summary"]["total_executions"] > 0:
+                report["summary"]["success_rate"] = round(
+                    (report["summary"]["successful"] / report["summary"]["total_executions"]) * 100, 1
+                )
+            else:
+                report["summary"]["success_rate"] = 0
+            
+            report["message"] = f"Using mock data (Azure CLI not available) + {len(MANUAL_JOB_EXECUTIONS)} manual executions"
+            return report
+        
+        for job_config in jobs:
+            try:
+                # Get recent executions for this job using Azure CLI
+                cmd = [
+                    "az", "containerapp", "job", "execution", "list",
+                    "--name", job_config["name"],
+                    "--resource-group", "rg-legislation-tracker",
+                    "--query", "[0:10].{name:name, status:properties.status, startTime:properties.startTime, endTime:properties.endTime}",
+                    "-o", "json"
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                
+                if result.returncode == 0:
+                    executions = json.loads(result.stdout)
+                    
+                    job_data = {
+                        "name": job_config["name"],
+                        "description": job_config["description"],
+                        "schedule": job_config["schedule"],
+                        "executions": []
+                    }
+                    
+                    for execution in executions:
+                        exec_data = {
+                            "execution_name": execution.get("name", ""),
+                            "status": execution.get("status", "Unknown"),
+                            "start_time": execution.get("startTime", ""),
+                            "end_time": execution.get("endTime", ""),
+                            "duration": None,
+                            "is_manual": False
+                        }
+                        
+                        # Calculate duration if both times are available
+                        if exec_data["start_time"] and exec_data["end_time"]:
+                            try:
+                                start = datetime.fromisoformat(exec_data["start_time"].replace("+00:00", ""))
+                                end = datetime.fromisoformat(exec_data["end_time"].replace("+00:00", ""))
+                                duration = (end - start).total_seconds()
+                                exec_data["duration"] = f"{int(duration // 60)}m {int(duration % 60)}s"
+                            except:
+                                pass
+                        
+                        job_data["executions"].append(exec_data)
+                    
+                    # Merge with manual executions
+                    job_data = merge_manual_executions_with_job(job_data, job_name_map)
+                    
+                    report["jobs"].append(job_data)
+                else:
+                    # Command failed, create job with just manual executions
+                    job_data = {
+                        "name": job_config["name"],
+                        "description": job_config["description"],
+                        "schedule": job_config["schedule"],
+                        "error": "Failed to fetch execution history",
+                        "executions": []
+                    }
+                    job_data = merge_manual_executions_with_job(job_data, job_name_map)
+                    report["jobs"].append(job_data)
+                    
+            except subprocess.TimeoutExpired:
+                job_data = {
+                    "name": job_config["name"],
+                    "description": job_config["description"],
+                    "schedule": job_config["schedule"],
+                    "error": "Azure CLI timeout",
+                    "executions": []
+                }
+                job_data = merge_manual_executions_with_job(job_data, job_name_map)
+                report["jobs"].append(job_data)
+            except Exception as e:
+                job_data = {
+                    "name": job_config["name"],
+                    "description": job_config["description"],
+                    "schedule": job_config["schedule"],
+                    "error": str(e),
+                    "executions": []
+                }
+                job_data = merge_manual_executions_with_job(job_data, job_name_map)
+                report["jobs"].append(job_data)
+        
+        # Recalculate summary from merged data
+        report["summary"] = {
+            "total_executions": 0,
+            "successful": 0,
+            "failed": 0,
+            "running": 0,
+            "recent_failures": []
+        }
+        
+        for job_data in report["jobs"]:
+            for exec_data in job_data["executions"]:
+                report["summary"]["total_executions"] += 1
+                if exec_data["status"] == "Succeeded":
+                    report["summary"]["successful"] += 1
+                elif exec_data["status"] == "Failed":
+                    report["summary"]["failed"] += 1
+                    # Add to recent failures if within last 24 hours
+                    if exec_data["start_time"]:
+                        try:
+                            start_time = datetime.fromisoformat(exec_data["start_time"].replace("+00:00", "").replace("Z", ""))
+                            if datetime.utcnow() - start_time < timedelta(days=1):
+                                report["summary"]["recent_failures"].append({
+                                    "job": job_data["description"],
+                                    "time": exec_data["start_time"],
+                                    "execution": exec_data["execution_name"],
+                                    "is_manual": exec_data.get("is_manual", False)
+                                })
+                        except:
+                            pass
+                elif exec_data["status"] == "Running":
+                    report["summary"]["running"] += 1
+        
+        # Calculate success rate
+        if report["summary"]["total_executions"] > 0:
+            report["summary"]["success_rate"] = round(
+                (report["summary"]["successful"] / report["summary"]["total_executions"]) * 100, 1
+            )
+        else:
+            report["summary"]["success_rate"] = 0
+        
+        report["message"] = f"Azure data + {len(MANUAL_JOB_EXECUTIONS)} manual executions"
+        return report
+        
+    except Exception as e:
+        logger.error(f"Error getting automation report: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to fetch automation report. Azure CLI may not be available."
+        }
+
+# Local job execution tracking
+MANUAL_JOB_EXECUTIONS = []
+
+@app.post("/api/admin/clear-manual-executions")
+async def clear_manual_executions():
+    """Clear all manual job execution tracking data (for debugging)"""
+    global MANUAL_JOB_EXECUTIONS
+    count = len(MANUAL_JOB_EXECUTIONS)
+    MANUAL_JOB_EXECUTIONS.clear()
+    return {"success": True, "message": f"Cleared {count} manual executions"}
+
+def track_manual_job_execution(job_name: str, status: str, start_time: str, end_time: str = None, error: str = None, process_id: int = None):
+    """Track manual job execution in memory"""
+    global MANUAL_JOB_EXECUTIONS
+    
+    execution_id = f"manual-{job_name}-{start_time.replace(':', '').replace('.', '').replace('T', '-').replace('+', '').replace('Z', '')}"
+    
+    # Look for existing execution with same ID to update
+    existing_execution = None
+    for i, exec in enumerate(MANUAL_JOB_EXECUTIONS):
+        if exec["execution_name"] == execution_id:
+            existing_execution = i
+            break
+    
+    execution = {
+        "execution_name": execution_id,
+        "job_name": job_name,
+        "status": status,
+        "start_time": start_time,
+        "end_time": end_time,
+        "duration": None,
+        "error": error,
+        "process_id": process_id,
+        "is_manual": True
+    }
+    
+    if start_time and end_time:
+        try:
+            start = datetime.fromisoformat(start_time.replace("+00:00", "").replace("Z", ""))
+            end = datetime.fromisoformat(end_time.replace("+00:00", "").replace("Z", ""))
+            duration = (end - start).total_seconds()
+            execution["duration"] = f"{int(duration // 60)}m {int(duration % 60)}s"
+        except:
+            pass
+    
+    if existing_execution is not None:
+        # Update existing execution
+        MANUAL_JOB_EXECUTIONS[existing_execution] = execution
+    else:
+        # Add new execution
+        # Remove old executions if we have too many (keep last 50)
+        if len(MANUAL_JOB_EXECUTIONS) >= 50:
+            MANUAL_JOB_EXECUTIONS = MANUAL_JOB_EXECUTIONS[-40:]
+        
+        MANUAL_JOB_EXECUTIONS.append(execution)
+    
+    return execution_id
+
+async def monitor_manual_job(process, job_name: str, start_time: str, execution_id: str):
+    """Monitor a manual job execution and update its status"""
+    try:
+        # Wait for the process to complete
+        stdout, stderr = await asyncio.create_task(
+            asyncio.to_thread(process.communicate)
+        )
+        
+        end_time = datetime.utcnow().isoformat() + "Z"
+        
+        if process.returncode == 0:
+            # Job succeeded
+            track_manual_job_execution(
+                job_name=job_name,
+                status="Succeeded", 
+                start_time=start_time,
+                end_time=end_time,
+                process_id=process.pid
+            )
+            logger.info(f"Manual job {job_name} completed successfully")
+        else:
+            # Job failed
+            error_msg = stderr[:500] if stderr else "Unknown error"
+            track_manual_job_execution(
+                job_name=job_name,
+                status="Failed",
+                start_time=start_time, 
+                end_time=end_time,
+                error=error_msg,
+                process_id=process.pid
+            )
+            logger.error(f"Manual job {job_name} failed: {error_msg}")
+            
+    except Exception as e:
+        # Job errored
+        end_time = datetime.utcnow().isoformat() + "Z"
+        track_manual_job_execution(
+            job_name=job_name,
+            status="Failed",
+            start_time=start_time,
+            end_time=end_time,
+            error=str(e),
+            process_id=process.pid if process else None
+        )
+        logger.error(f"Manual job {job_name} monitoring error: {e}")
+
+@app.post("/api/admin/run-job")
+async def run_job_manually(job_name: str):
+    """Manually trigger a nightly job"""
+    try:
+        import subprocess
+        import asyncio
+        from datetime import datetime
+        
+        logger.info(f"Manual job execution requested: {job_name}")
+        
+        if job_name not in ["executive-orders", "state-bills"]:
+            return {
+                "success": False,
+                "error": "Invalid job name. Must be 'executive-orders' or 'state-bills'"
+            }
+        
+        # Map job names to script paths
+        job_scripts = {
+            "executive-orders": "/app/tasks/nightly_executive_orders.py",
+            "state-bills": "/app/tasks/nightly_state_bills.py"
+        }
+        
+        script_path = job_scripts[job_name]
+        script_name = f"nightly_{job_name.replace('-', '_')}.py"
+        
+        # Check if job is already running using pgrep (simpler approach)
+        try:
+            check_process = subprocess.run(
+                ["pgrep", "-f", script_name], 
+                capture_output=True, 
+                text=True
+            )
+            if check_process.returncode == 0:
+                running_pids = check_process.stdout.strip().split('\n')
+                logger.warning(f"Job {job_name} is already running (PIDs: {running_pids})")
+                return {
+                    "success": False,
+                    "error": f"Job {job_name} is already running",
+                    "running_pids": running_pids
+                }
+        except Exception as e:
+            logger.warning(f"Could not check for running processes: {e}")
+        
+        # Run the job in background
+        logger.info(f"Starting manual execution of {job_name} job...")
+        start_time = datetime.utcnow().isoformat() + "Z"
+        
+        try:
+            # Start the process but don't wait for completion
+            process = subprocess.Popen(
+                ["python", script_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd="/app"
+            )
+            
+            logger.info(f"Manual job {job_name} started with PID: {process.pid}")
+            
+            # Track the initial execution
+            execution_id = track_manual_job_execution(
+                job_name=job_name,
+                status="Running",
+                start_time=start_time,
+                process_id=process.pid
+            )
+            
+            # Start monitoring the job in the background
+            asyncio.create_task(monitor_manual_job(process, job_name, start_time, execution_id))
+            
+            return {
+                "success": True,
+                "job_name": job_name,
+                "message": f"Manual {job_name} job started successfully",
+                "started_at": start_time,
+                "process_id": process.pid,
+                "execution_id": execution_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to start manual job {job_name}: {e}")
+            
+            # Track the failed start
+            track_manual_job_execution(
+                job_name=job_name,
+                status="Failed",
+                start_time=start_time,
+                end_time=datetime.utcnow().isoformat() + "Z",
+                error=str(e)
+            )
+            
+            return {
+                "success": False,
+                "error": str(e),
+                "message": f"Failed to start {job_name} job"
+            }
+        
+    except Exception as e:
+        logger.error(f"Error in manual job execution: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to execute job manually"
+        }
+
 # ===============================
 # ANALYTICS TRACKING ENDPOINTS
 # ===============================

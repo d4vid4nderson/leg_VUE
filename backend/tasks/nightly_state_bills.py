@@ -28,6 +28,9 @@ async def check_and_process_state_updates():
     logger.info("🔍 Checking for state bill updates...")
     
     try:
+        # Add parent directory to path for imports
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
         from database_config import get_db_connection
         
         # Test database connection

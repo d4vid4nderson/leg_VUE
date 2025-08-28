@@ -17,7 +17,13 @@ RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor
     apt-get install -y unixodbc-dev && \
     apt-get install -y libgssapi-krb5-2
 
+# Install Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
 ENV PATH="$PATH:/opt/mssql-tools18/bin"
+
+# Set working directory
+WORKDIR /app
 
 # Copy requirements and install dependencies
 COPY requirements.txt .

@@ -26,10 +26,13 @@ import {
     TrendingUp,
     User,
     Lock,
-    MapPin
+    MapPin,
+    Clock,
+    AlertCircle,
+    Play
 } from 'lucide-react';
 
-import API_URL from '../config/api';
+import API_URL, { fetchWithErrorHandling } from '../config/api';
 import { getTextClasses, getPageContainerClasses, getCardClasses } from '../utils/darkModeClasses';
 import { usePageTracking } from '../hooks/usePageTracking';
 import DataUploadSection from './DataUploadSection';
@@ -107,6 +110,21 @@ const SettingsPage = ({
     });
     const [activeJob, setActiveJob] = useState(null);
     const [jobPolling, setJobPolling] = useState(null);
+    
+    // Automation report state
+    const [automationReport, setAutomationReport] = useState({
+        loading: false,
+        data: null,
+        error: null,
+        lastUpdated: null
+    });
+
+    // Manual job execution state
+    const [manualJobExecution, setManualJobExecution] = useState({
+        loading: false,
+        runningJob: null,
+        lastExecution: null
+    });
 
     // Track page view
     usePageTracking('Settings');
@@ -138,6 +156,119 @@ const SettingsPage = ({
     const handleCancelVersionEdit = () => {
         setTempVersion(appVersion);
         setIsEditingVersion(false);
+    };
+
+    // Fetch automation report
+    const fetchAutomationReport = async () => {
+        setAutomationReport(prev => ({ ...prev, loading: true, error: null }));
+        
+        try {
+            const response = await fetch(`${API_URL}/api/admin/automation-report`);
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch automation report: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            setAutomationReport({
+                loading: false,
+                data: data,
+                error: null,
+                lastUpdated: new Date()
+            });
+        } catch (error) {
+            console.error('Failed to fetch automation report:', error);
+            setAutomationReport(prev => ({
+                ...prev,
+                loading: false,
+                error: error.message
+            }));
+        }
+    };
+
+    // Manual job execution - runs both jobs
+    const runAllJobsManually = async () => {
+        // Prevent multiple executions
+        if (manualJobExecution.loading) {
+            return;
+        }
+        
+        setManualJobExecution(prev => ({ ...prev, loading: true, runningJob: 'all' }));
+        
+        try {
+            console.log('Starting manual job execution...');
+            console.log('API_URL:', API_URL);
+            
+            // Test connection first
+            console.log('Testing API connection...');
+            const testResponse = await fetchWithErrorHandling('/api/status');
+            console.log('API connection test successful:', testResponse);
+            
+            // Run executive orders job
+            console.log('Starting executive orders job...');
+            const eoResult = await fetchWithErrorHandling('/api/admin/run-job?job_name=executive-orders', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            console.log('Executive Orders result:', eoResult);
+            
+            // Small delay between jobs
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Run state bills job
+            console.log('Starting state bills job...');
+            const sbResult = await fetchWithErrorHandling('/api/admin/run-job?job_name=state-bills', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            console.log('State Bills result:', sbResult);
+            
+            const bothSuccessful = eoResult.success && sbResult.success;
+            
+            setManualJobExecution(prev => ({
+                ...prev,
+                loading: false,
+                runningJob: null,
+                lastExecution: {
+                    jobName: 'both jobs',
+                    startedAt: new Date().toISOString(),
+                    status: bothSuccessful ? 'running' : 'partially-failed',
+                    error: bothSuccessful ? null : 'One or both jobs failed to start'
+                }
+            }));
+            
+            // Refresh automation report after a short delay
+            setTimeout(() => {
+                fetchAutomationReport();
+            }, 3000);
+            
+        } catch (error) {
+            console.error('Failed to run jobs manually:', error);
+            
+            let errorMessage = error.message;
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                errorMessage = 'Cannot connect to backend server. Please check if the backend is running.';
+            } else if (error.name === 'AbortError') {
+                errorMessage = 'Request timed out after 30 seconds.';
+            }
+            
+            setManualJobExecution(prev => ({
+                ...prev,
+                loading: false,
+                runningJob: null,
+                lastExecution: {
+                    jobName: 'both jobs',
+                    startedAt: new Date().toISOString(),
+                    status: 'failed',
+                    error: errorMessage
+                }
+            }));
+        }
     };
 
     // Fetch analytics data with retry
@@ -1366,6 +1497,214 @@ const SettingsPage = ({
                                     <p>• <strong>AI Engine:</strong> Azure OpenAI GPT-4 integration</p>
                                     <p>• <strong>Data Sources:</strong> Federal Register API, LegiScan API</p>
                                 </div>
+                            </div>
+
+                            {/* Automation Report */}
+                            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md p-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 h-8">
+                                        <Clock size={16} className="text-gray-600 dark:text-gray-400" />
+                                        <h4 className="font-semibold text-gray-800 dark:text-gray-200 leading-none text-sm">
+                                            Automation Report
+                                        </h4>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={fetchAutomationReport}
+                                            disabled={automationReport.loading}
+                                            className={`px-3 py-2 text-xs rounded-md transition-colors h-8 flex items-center justify-center ${
+                                                automationReport.loading 
+                                                    ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                                                    : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
+                                            }`}
+                                        >
+                                            {automationReport.loading ? (
+                                                <div className="flex items-center gap-1">
+                                                    <RotateCw size={10} className="animate-spin" />
+                                                    Loading...
+                                                </div>
+                                            ) : (
+                                                'Load Report'
+                                            )}
+                                        </button>
+                                        
+                                        {/* Manual trigger button */}
+                                        <button
+                                            onClick={runAllJobsManually}
+                                            disabled={manualJobExecution.loading}
+                                            title="Run both automation jobs now"
+                                            className={`px-3 py-2 text-xs rounded-md transition-colors h-8 flex items-center justify-center gap-1 ${
+                                                manualJobExecution.loading
+                                                    ? 'bg-orange-300 dark:bg-orange-600 text-orange-800 dark:text-orange-200 cursor-not-allowed'
+                                                    : 'bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-400'
+                                            }`}
+                                        >
+                                            {manualJobExecution.loading ? (
+                                                <div className="flex items-center gap-1">
+                                                    <RotateCw size={10} className="animate-spin" />
+                                                    Running...
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1">
+                                                    <Play size={10} />
+                                                    Run Now
+                                                </div>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                {automationReport.lastUpdated && (
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 mt-3">
+                                        Last updated: {automationReport.lastUpdated.toLocaleTimeString()}
+                                    </div>
+                                )}
+                                
+                                {manualJobExecution.lastExecution && (
+                                    <div className={`text-xs p-2 rounded mb-2 ${automationReport.lastUpdated ? '' : 'mt-3'} ${
+                                        manualJobExecution.lastExecution.status === 'running'
+                                            ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                                            : manualJobExecution.lastExecution.status === 'failed'
+                                            ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300'
+                                            : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300'
+                                    }`}>
+                                        Manual execution: {manualJobExecution.lastExecution.jobName} {manualJobExecution.lastExecution.status}
+                                        {manualJobExecution.lastExecution.error && ` - ${manualJobExecution.lastExecution.error}`}
+                                    </div>
+                                )}
+                                
+                                {automationReport.error && (
+                                    <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300 mt-3">
+                                        Error: {automationReport.error}
+                                    </div>
+                                )}
+                                
+                                {automationReport.data && (
+                                    <div className="space-y-3">
+                                        {/* Summary */}
+                                        {automationReport.data.summary && (
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                                                <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600">
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">Total Runs</p>
+                                                    <p className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                                                        {automationReport.data.summary.total_executions}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded border border-green-200 dark:border-green-700">
+                                                    <p className="text-xs text-green-600 dark:text-green-400">Successful</p>
+                                                    <p className="text-sm font-bold text-green-800 dark:text-green-300">
+                                                        {automationReport.data.summary.successful}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-700">
+                                                    <p className="text-xs text-red-600 dark:text-red-400">Failed</p>
+                                                    <p className="text-sm font-bold text-red-800 dark:text-red-300">
+                                                        {automationReport.data.summary.failed}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded border border-blue-200 dark:border-blue-700">
+                                                    <p className="text-xs text-blue-600 dark:text-blue-400">Success Rate</p>
+                                                    <p className="text-sm font-bold text-blue-800 dark:text-blue-300">
+                                                        {automationReport.data.summary.success_rate}%
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Job Details */}
+                                        {automationReport.data.jobs && automationReport.data.jobs.map((job, index) => (
+                                            <div key={index} className="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded p-3">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div>
+                                                        <h5 className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                                            {job.description}
+                                                        </h5>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                            Schedule: {job.schedule} (Runs at {
+                                                                job.schedule === "2:00 AM UTC" ? "9:00 PM CDT / 8:00 PM CST" :
+                                                                job.schedule === "3:00 AM UTC" ? "10:00 PM CDT / 9:00 PM CST" :
+                                                                job.schedule
+                                                            })
+                                                        </p>
+                                                    </div>
+                                                    {job.executions && job.executions.length > 0 && (
+                                                        <span className={`text-xs px-2 py-1 rounded ${
+                                                            job.executions[0].status === 'Succeeded' 
+                                                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                                                : job.executions[0].status === 'Failed'
+                                                                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                                                                : job.executions[0].status === 'Running'
+                                                                ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
+                                                                : 'bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+                                                        }`}>
+                                                            {job.executions[0].status}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                
+                                                {job.error ? (
+                                                    <p className="text-xs text-red-600 dark:text-red-400">
+                                                        <AlertCircle size={12} className="inline mr-1" />
+                                                        {job.error}
+                                                    </p>
+                                                ) : job.executions && job.executions.length > 0 ? (
+                                                    <div className="space-y-1">
+                                                        <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mb-1">
+                                                            Recent Executions:
+                                                        </p>
+                                                        {job.executions.slice(0, 3).map((exec, execIndex) => (
+                                                            <div key={execIndex} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-800 p-1.5 rounded">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className={`w-2 h-2 rounded-full ${
+                                                                        exec.status === 'Succeeded' ? 'bg-green-500'
+                                                                        : exec.status === 'Failed' ? 'bg-red-500'
+                                                                        : exec.status === 'Running' ? 'bg-yellow-500 animate-pulse'
+                                                                        : 'bg-gray-400'
+                                                                    }`} />
+                                                                    <span className="text-gray-600 dark:text-gray-400">
+                                                                        {exec.start_time ? new Date(exec.start_time).toLocaleString('en-US', {
+                                                                            month: 'short',
+                                                                            day: 'numeric',
+                                                                            hour: '2-digit',
+                                                                            minute: '2-digit'
+                                                                        }) : 'N/A'}
+                                                                    </span>
+                                                                </div>
+                                                                {exec.duration && (
+                                                                    <span className="text-gray-500 dark:text-gray-400">
+                                                                        {exec.duration}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                        No execution history available
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ))}
+                                        
+                                        {/* Recent Failures Alert */}
+                                        {automationReport.data.summary && automationReport.data.summary.recent_failures && 
+                                         automationReport.data.summary.recent_failures.length > 0 && (
+                                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded p-3">
+                                                <h5 className="text-sm font-medium text-red-800 dark:text-red-300 mb-2 flex items-center gap-1">
+                                                    <AlertTriangle size={14} />
+                                                    Recent Failures (Last 24 Hours)
+                                                </h5>
+                                                <div className="space-y-1">
+                                                    {automationReport.data.summary.recent_failures.map((failure, idx) => (
+                                                        <p key={idx} className="text-xs text-red-700 dark:text-red-300">
+                                                            • {failure.job} - {new Date(failure.time).toLocaleString()}
+                                                        </p>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                         </div>

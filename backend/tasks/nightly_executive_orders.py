@@ -26,6 +26,9 @@ async def main():
     logger.info(f"🌐 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
     
     try:
+        # Add parent directory to path for imports
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
         # Import here to ensure all dependencies are available
         from simple_executive_orders import fetch_executive_orders_simple_integration
         from database_config import get_db_connection
@@ -47,8 +50,6 @@ async def main():
             end_date=None,
             with_ai=True,     # Enable AI foundry processing
             limit=None,
-            session_name=None,
-            user_id="azure-scheduler",
             save_to_db=True,  # Save to database
             only_new=True     # Only process new orders
         )
