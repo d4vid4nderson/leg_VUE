@@ -17,7 +17,6 @@ import AzureADLoginModal from './components/AzureADLoginModal';
 const Homepage = lazy(() => import('./components/Homepage'));
 const ExecutiveOrdersPage = lazy(() => import('./components/ExecutiveOrdersPage'));
 const FederalLegislationPage = lazy(() => import('./components/FederalLegislationPage'));
-const StateLegislationPage = lazy(() => import('./components/StateLegislationPage'));
 const StatePage = lazy(() => import('./components/StatePage'));
 const SettingsPage = lazy(() => import('./components/SettingsPage'));
 const AuthRedirect = lazy(() => import('./components/AuthRedirect'));
@@ -32,7 +31,6 @@ console.log('🔍 Component imports check:', {
   Homepage: 'Lazy loaded',
   ExecutiveOrdersPage: 'Lazy loaded',
   FederalLegislationPage: 'Lazy loaded',
-  StateLegislationPage: 'Lazy loaded',
   StatePage: 'Lazy loaded',
   SettingsPage: 'Lazy loaded',
   AuthRedirect: 'Lazy loaded',
@@ -92,8 +90,6 @@ const AppContent = () => {
   
   // Header dropdown state
   const [showDropdown, setShowDropdown] = useState(false);
-  const [desktopFederalExpanded, setDesktopFederalExpanded] = useState(false);
-  const [desktopStateExpanded, setDesktopStateExpanded] = useState(false);
   const dropdownRef = useRef(null);
 
   // Global highlights state for sharing between pages
@@ -386,10 +382,6 @@ const AppContent = () => {
           fallbackName="Header"
           showDropdown={showDropdown}
           setShowDropdown={setShowDropdown}
-          desktopFederalExpanded={desktopFederalExpanded}
-          setDesktopFederalExpanded={setDesktopFederalExpanded}
-          desktopStateExpanded={desktopStateExpanded}
-          setDesktopStateExpanded={setDesktopStateExpanded}
           dropdownRef={dropdownRef}
           currentPage={location.pathname}
           isAuthenticated={isAuthenticated}
@@ -451,19 +443,6 @@ const AppContent = () => {
                 } 
               />
 
-              {/* State Legislation Route */}
-              <Route 
-                path="/state-legislation" 
-                element={
-                  <SafeComponent
-                    component={StateLegislationPage}
-                    fallbackName="StateLegislationPage"
-                    makeApiCall={makeApiCall}
-                    copyToClipboard={copyToClipboard}
-                    stableHandlers={stableHandlers}
-                  />
-                } 
-              />
 
               {/* Settings Route */}
               <Route 

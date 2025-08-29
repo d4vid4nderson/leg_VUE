@@ -246,7 +246,8 @@ class SimpleExecutiveOrders:
                 education_terms = [
                     'education', 'school', 'student', 'university', 'college', 'campus',
                     'academic', 'learning', 'teaching', 'curriculum', 'classroom',
-                    'scholarship', 'student loan', 'educational', 'accreditation'
+                    'scholarship', 'student loan', 'educational', 'accreditation',
+                    'property tax', 'property taxes', 'ad valorem', 'school district', 'school funding'
                 ]
                 
                 # Engineering/Infrastructure keywords

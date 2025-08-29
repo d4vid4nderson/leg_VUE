@@ -34,44 +34,18 @@ except ImportError:
         NOT_APPLICABLE = "not_applicable"
     
     def format_text_as_html(text: str, prompt_type: PromptType) -> str:
-        """Fallback HTML formatter"""
+        """Fallback plain text formatter (no HTML)"""
         if not text:
-            return "<p>No content available</p>"
+            return "No content available"
         
-        lines = text.strip().split('\n')
-        formatted_lines = []
+        # Remove any HTML tags that might be present
+        text = re.sub(r'<[^>]+>', '', text)
         
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            if re.match(r'^\d+\.', line):
-                formatted_lines.append(f"<li>{line[line.find('.')+1:].strip()}</li>")
-            elif line.startswith('•') or line.startswith('-'):
-                formatted_lines.append(f"<li>{line[1:].strip()}</li>")
-            else:
-                formatted_lines.append(f"<p>{line}</p>")
+        # Clean up extra whitespace
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
         
-        result = []
-        in_list = False
-        
-        for line in formatted_lines:
-            if line.startswith('<li>'):
-                if not in_list:
-                    result.append('<ol>')
-                    in_list = True
-                result.append(line)
-            else:
-                if in_list:
-                    result.append('</ol>')
-                    in_list = False
-                result.append(line)
-        
-        if in_list:
-            result.append('</ol>')
-        
-        return '\n'.join(result)
+        return text
     
     def parse_ai_response(text: str) -> Dict:
         """Fallback response parser"""
@@ -287,25 +261,22 @@ class BillCategory(Enum):
 
 # Enhanced formatting functions for distinct content types
 def clean_summary_format(text: str) -> str:
-    """Clean and format executive summary"""
+    """Clean and format executive summary as plain text"""
     if not text:
-        return "<p>No summary available</p>"
+        return "No summary available"
     
     # Remove any bullet points or numbering that might have crept in
     text = re.sub(r'^\s*[•\-\*]\s*', '', text, flags=re.MULTILINE)
     text = re.sub(r'^\s*\d+\.\s*', '', text, flags=re.MULTILINE)
     
-    # Split into sentences and rejoin as paragraphs
-    sentences = text.strip().split('. ')
+    # Remove any HTML tags that might be present
+    text = re.sub(r'<[^>]+>', '', text)
     
-    # Group sentences into 1-2 paragraphs
-    if len(sentences) <= 3:
-        return f"<p>{'. '.join(sentences)}</p>"
-    else:
-        mid = len(sentences) // 2
-        para1 = '. '.join(sentences[:mid]) + '.'
-        para2 = '. '.join(sentences[mid:])
-        return f"<p>{para1}</p><p>{para2}</p>"
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    
+    return text
 
 def format_talking_points(text: str) -> str:
     """Format talking points as proper numbered list"""
@@ -770,7 +741,7 @@ async def process_with_ai(text: str, prompt_type: PromptType, temperature: float
             import traceback
             print(f"❌ Full traceback: {traceback.format_exc()}")
         
-        return f"<p>Error generating {prompt_type.value.replace('_', ' ')}: {error_msg}</p>"
+        return f"Error generating {prompt_type.value.replace('_', ' ')}: {error_msg}"
 
 async def get_executive_summary(text: str, context: str = "") -> str:
     return await process_with_ai(text, PromptType.EXECUTIVE_SUMMARY, context=context)
@@ -841,11 +812,11 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
             
             # Handle potential exceptions
             if isinstance(summary_result, Exception):
-                summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
+                summary_result = f"Error generating summary: {str(summary_result)}</p>"
                 
         except Exception as e:
             print(f"❌ Error in AI analysis tasks: {e}")
-            summary_result = f"<p>Error generating summary: {str(e)}</p>"
+            summary_result = f"Error generating summary: {str(e)}</p>"
         
         # Return results with both old and new field names for compatibility
         return {
@@ -864,7 +835,7 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
     except Exception as e:
         print(f"❌ Error analyzing LegiScan bill: {e}")
         traceback.print_exc()
-        error_msg = f"<p>AI analysis failed: {str(e)}</p>"
+        error_msg = f"AI analysis failed: {str(e)}"
         return {
             'summary': error_msg,  # New simple overview for summary column
             'ai_summary': error_msg,
@@ -991,7 +962,7 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
         )
         
         if isinstance(summary_result, Exception):
-            summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
+            summary_result = f"Error generating summary: {str(summary_result)}</p>"
         
         return {
             'ai_summary': summary_result,
@@ -1005,7 +976,7 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
         
     except Exception as e:
         print(f"❌ Error analyzing executive order: {e}")
-        error_msg = f"<p>AI analysis failed: {str(e)}</p>"
+        error_msg = f"AI analysis failed: {str(e)}"
         return {
             'ai_summary': error_msg,
             'ai_executive_summary': error_msg,
@@ -1034,7 +1005,7 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
         summary_result = await get_state_bill_summary(content, f"State Bill Summary - {context}")
         
         if isinstance(summary_result, Exception):
-            summary_result = f"<p>Error generating summary: {str(summary_result)}</p>"
+            summary_result = f"Error generating summary: {str(summary_result)}</p>"
         
         return {
             'summary': summary_result,  # New simple overview for summary column
@@ -1049,7 +1020,7 @@ async def analyze_state_legislation(title: str, description: str = "", state: st
         
     except Exception as e:
         print(f"❌ Error analyzing legislation: {e}")
-        error_msg = f"<p>AI analysis failed: {str(e)}</p>"
+        error_msg = f"AI analysis failed: {str(e)}"
         return {
             'summary': error_msg,  # New simple overview for summary column
             'ai_summary': error_msg,

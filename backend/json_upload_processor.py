@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Practice area keywords for categorization
 PRACTICE_AREA_KEYWORDS = {
     'healthcare': ['health', 'medical', 'hospital', 'insurance', 'medicare', 'patient', 'pharmacy'],
-    'education': ['school', 'education', 'student', 'teacher', 'university', 'college'],
+    'education': ['school', 'education', 'student', 'teacher', 'university', 'college', 'property tax', 'property taxes', 'ad valorem', 'school district', 'school funding'],
     'tax': ['tax', 'revenue', 'fiscal', 'budget', 'appropriation', 'finance'],
     'environment': ['environment', 'climate', 'pollution', 'renewable', 'conservation'],
     'criminal-justice': ['criminal', 'crime', 'police', 'prison', 'sentence', 'conviction'],

@@ -20,12 +20,7 @@ import {
   CalendarDays,
   Hash,
   X,
-  Ban,
   LayoutGrid,
-  Users,
-  Vote,
-  Trophy,
-  FileCheck,
 } from "lucide-react";
 
 import { FILTERS, SUPPORTED_STATES } from "../utils/constants";
@@ -35,10 +30,8 @@ import useReviewStatus from "../hooks/useReviewStatus";
 import { usePageTracking } from "../hooks/usePageTracking";
 import { trackPageView } from "../utils/analytics";
 import BillCardSkeleton from "../components/BillCardSkeleton";
-import BillProgressBar from "../components/BillProgressBar";
 import SessionNotification from "../components/SessionNotification";
 import SessionFilter from "../components/SessionFilter";
-import StatusFilter from "../components/StatusFilter";
 import API_URL from "../config/api";
 import {
   getTextClasses,
@@ -126,165 +119,12 @@ const cachedFetch = async (url, options = {}) => {
 
   return response;
 };
-import {
-  getCurrentStatus,
-  mapLegiScanStatus,
-  getStatusDescription,
-} from "../utils/statusUtils";
 
 // Pagination configuration
 const ITEMS_PER_PAGE = 25;
 
-// Bill status filter options
-const STATUS_FILTERS = [
-  {
-    key: "introduced",
-    label: "Introduced",
-    icon: FileText,
-    type: "bill_status",
-    description: "Bills that have been introduced to the legislature",
-  },
-  {
-    key: "committee",
-    label: "Committee",
-    icon: Users,
-    type: "bill_status",
-    description: "Bills in committee review",
-  },
-  {
-    key: "floor",
-    label: "Floor Vote",
-    icon: Vote,
-    type: "bill_status",
-    description: "Bills in floor debate and voting",
-  },
-  {
-    key: "passed",
-    label: "Passed",
-    icon: Trophy,
-    type: "bill_status",
-    description: "Bills that have passed one or both chambers",
-  },
-  {
-    key: "enacted",
-    label: "Enacted",
-    icon: FileCheck,
-    type: "bill_status",
-    description: "Bills that have been signed into law",
-  },
-  {
-    key: "vetoed",
-    label: "Vetoed",
-    icon: Ban,
-    type: "bill_status",
-    description: "Bills that have been vetoed by the governor",
-  },
-  {
-    key: "failed",
-    label: "Failed",
-    icon: X,
-    type: "bill_status",
-    description: "Bills that have failed or died in the legislative process",
-  },
-];
 
 // Helper Functions
-// Get status stage matching progress bar logic
-const getStatusStage = (billStatus) => {
-  if (!billStatus) return "introduced";
-
-  const statusLower = billStatus.toLowerCase();
-
-  // Failed/Dead bills
-  if (
-    statusLower === "failed" ||
-    statusLower === "dead" ||
-    statusLower.includes("failed") ||
-    statusLower.includes("dead") ||
-    statusLower.includes("withdrawn") ||
-    statusLower.includes("defeated")
-  ) {
-    return "failed";
-  }
-
-  // Vetoed bills
-  if (
-    statusLower === "vetoed" ||
-    statusLower.includes("vetoed") ||
-    statusLower.includes("veto")
-  ) {
-    return "vetoed";
-  }
-
-  // Exact matches for our database status values
-  if (statusLower === "enrolled") {
-    return "enacted"; // Enrolled bills are ready to be enacted
-  }
-
-  if (statusLower === "enacted") {
-    return "enacted";
-  }
-
-  if (statusLower === "passed") {
-    return "passed";
-  }
-
-  if (statusLower === "engrossed") {
-    return "floor"; // Engrossed bills are in floor process
-  }
-
-  if (statusLower === "introduced" || statusLower === "pending") {
-    return "introduced";
-  }
-
-  // Enacted/Signed into law
-  if (
-    statusLower.includes("enacted") ||
-    statusLower.includes("signed") ||
-    statusLower.includes("law") ||
-    statusLower.includes("approved by governor") ||
-    statusLower.includes("chaptered")
-  ) {
-    return "enacted";
-  }
-
-  // Passed one chamber
-  if (
-    statusLower.includes("passed") ||
-    statusLower.includes("enrolled") ||
-    statusLower.includes("concurred") ||
-    statusLower.includes("sent to governor")
-  ) {
-    return "passed";
-  }
-
-  // Floor action/voting
-  if (
-    statusLower.includes("floor") ||
-    statusLower.includes("vote") ||
-    statusLower.includes("reading") ||
-    statusLower.includes("debate") ||
-    statusLower.includes("amended") ||
-    statusLower.includes("engrossed") ||
-    statusLower.includes("calendar")
-  ) {
-    return "floor";
-  }
-
-  // Committee review
-  if (
-    statusLower.includes("committee") ||
-    statusLower.includes("referred") ||
-    statusLower.includes("hearing") ||
-    statusLower.includes("markup") ||
-    statusLower.includes("reported")
-  ) {
-    return "committee";
-  }
-
-  // Default to introduced
-  return "introduced";
-};
 
 const cleanCategory = (category) => {
   if (!category || typeof category !== "string") return "not-applicable";
@@ -612,112 +452,6 @@ const ScrollToTopButton = () => {
   );
 };
 
-// Status Tooltip Component
-const StatusHelperTooltip = ({ status, isOpen, onClose, position }) => {
-  if (!isOpen) return null;
-
-  const statusText = mapLegiScanStatus(status);
-  const statusDescription = getStatusDescription(status);
-
-  // Calculate position to keep tooltip within viewport
-  const calculatePosition = () => {
-    const tooltipWidth = 256; // w-64 = 16rem = 256px
-    const viewportWidth = window.innerWidth;
-    const containerPadding = 32; // Approximate container padding
-
-    let left = position?.left || 0;
-    let transform = "translate(-50%, 8px)";
-
-    // Check if we're in the left third of the viewport (likely left side of container)
-    const isLeftSide = left < viewportWidth / 3;
-    // Check if we're in the right third of the viewport (likely right side of container)
-    const isRightSide = left > (viewportWidth * 2) / 3;
-
-    if (isLeftSide) {
-      // For left side elements, align tooltip to the right of the trigger
-      left = left;
-      transform = "translate(0, 8px)";
-    } else if (isRightSide) {
-      // For right side elements, align tooltip to the left of the trigger
-      left = left - tooltipWidth;
-      transform = "translate(0, 8px)";
-    } else {
-      // For center elements, keep centered
-      left = left;
-      transform = "translate(-50%, 8px)";
-    }
-
-    // Final boundary checks to ensure tooltip stays within viewport
-    if (left < containerPadding) {
-      left = containerPadding;
-      transform = "translate(0, 8px)";
-    }
-    if (left + tooltipWidth > viewportWidth - containerPadding) {
-      left = viewportWidth - tooltipWidth - containerPadding;
-      transform = "translate(0, 8px)";
-    }
-
-    return {
-      top: position?.top || 0,
-      left: left,
-      transform: transform,
-    };
-  };
-
-  const calculatedPosition = calculatePosition();
-
-  // Determine arrow position based on tooltip positioning
-  const getArrowPosition = () => {
-    const originalLeft = position?.left || 0;
-    const tooltipLeft = calculatedPosition.left;
-    const tooltipWidth = 256;
-
-    // Calculate where the arrow should point (relative to tooltip)
-    const arrowLeft = Math.max(
-      16,
-      Math.min(tooltipWidth - 16, originalLeft - tooltipLeft),
-    );
-
-    return {
-      left: `${arrowLeft}px`,
-    };
-  };
-
-  const arrowPosition = getArrowPosition();
-
-  return (
-    <div
-      className="status-tooltip fixed sm:absolute bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3 w-64 z-[120]"
-      style={calculatedPosition}
-    >
-      <div
-        className="absolute bottom-full transform -translate-y-0"
-        style={arrowPosition}
-      >
-        <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-200 dark:border-b-gray-600"></div>
-        <div className="w-0 h-0 border-l-[3px] border-r-[3px] border-b-[3px] border-transparent border-b-white dark:border-b-gray-800 absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-px"></div>
-      </div>
-
-      <div className="flex justify-between items-start mb-2">
-        <h4
-          className={`text-sm font-semibold flex-1 ${getTextClasses("primary")}`}
-        >
-          {statusText}
-        </h4>
-        <button
-          onClick={onClose}
-          className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 ml-2 flex-shrink-0"
-        >
-          <X size={12} />
-        </button>
-      </div>
-
-      <p className={`text-xs leading-relaxed ${getTextClasses("secondary")}`}>
-        {statusDescription}
-      </p>
-    </div>
-  );
-};
 
 // AI Content Formatting Functions
 
@@ -750,7 +484,6 @@ const StatePage = ({ stateName }) => {
 
   // Filter state (matching ExecutiveOrdersPage pattern)
   const [selectedFilters, setSelectedFilters] = useState([]);
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState(null);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   // Removed showFetchDropdown - using single fetch button now
 
@@ -774,10 +507,6 @@ const StatePage = ({ stateName }) => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Status tooltip state
-  const [statusTooltipOpen, setStatusTooltipOpen] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState(null);
-  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
 
   // Filter counts state
   const [allFilterCounts, setAllFilterCounts] = useState({
@@ -866,33 +595,6 @@ const StatePage = ({ stateName }) => {
     [stateName],
   );
 
-  // Helper function to get bill status with proper database field mapping
-  const getBillStatus = useCallback(
-    (bill) => {
-      // Check all possible status fields from the database schema
-      const possibleStatus =
-        bill.status || // Primary status field
-        bill.legiscan_status || // LegiScan specific status
-        getCurrentStatus(bill) || // Utility function fallback
-        bill.bill_status || // Legacy field
-        null;
-
-      // Debug: log status for first few bills
-      if (stateOrders.length <= 3) {
-        console.log("🔍 Bill status debug:", {
-          billId: getStateBillId(bill),
-          status: bill.status,
-          legiscan_status: bill.legiscan_status,
-          getCurrentStatus: getCurrentStatus(bill),
-          final: possibleStatus,
-          billKeys: Object.keys(bill).filter((key) => key.includes("status")),
-        });
-      }
-
-      return possibleStatus;
-    },
-    [stateOrders.length, getStateBillId],
-  );
 
   const handleCategoryUpdate = useCallback(
     async (itemId, newCategory) => {
@@ -974,10 +676,6 @@ const StatePage = ({ stateName }) => {
     [getStateBillId],
   );
 
-  const closeStatusTooltip = () => {
-    setStatusTooltipOpen(false);
-    setSelectedStatus(null);
-  };
 
   // Filter helper functions
   const toggleFilter = (filterKey) => {
@@ -999,11 +697,6 @@ const StatePage = ({ stateName }) => {
     setCurrentPage(1);
   };
 
-  // Status filter handler
-  const handleStatusFilterChange = (statusKey) => {
-    setSelectedStatusFilter(statusKey);
-    setCurrentPage(1);
-  };
 
   const formatPracticeArea = (area) => {
     if (!area) return "Unknown";
@@ -1883,13 +1576,6 @@ const StatePage = ({ stateName }) => {
       );
     }
 
-    // Apply status filter
-    if (selectedStatusFilter) {
-      filtered = filtered.filter((bill) => {
-        const billStage = getStatusStage(bill.status);
-        return billStage === selectedStatusFilter;
-      });
-    }
 
     // Apply highlights filter
     if (isHighlightFilterActive) {
@@ -1976,7 +1662,6 @@ const StatePage = ({ stateName }) => {
   }, [
     stateOrders,
     selectedFilters,
-    selectedStatusFilter,
     sortOrder,
     selectedSessions,
     isHighlightFilterActive,
@@ -2066,20 +1751,6 @@ const StatePage = ({ stateName }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close status tooltip on any click
-  useEffect(() => {
-    const handleClickAnywhere = (event) => {
-      if (statusTooltipOpen && !event.target.closest(".status-tooltip")) {
-        closeStatusTooltip();
-      }
-    };
-
-    if (statusTooltipOpen) {
-      document.addEventListener("mousedown", handleClickAnywhere);
-      return () =>
-        document.removeEventListener("mousedown", handleClickAnywhere);
-    }
-  }, [statusTooltipOpen]);
 
   return (
     <div className={getPageContainerClasses()}>
@@ -2398,24 +2069,6 @@ const StatePage = ({ stateName }) => {
                     loading={loading}
                   />
 
-                  {/* Status Filter */}
-                  <StatusFilter
-                    statusOptions={STATUS_FILTERS}
-                    selectedStatus={selectedStatusFilter}
-                    onStatusChange={handleStatusFilterChange}
-                    disabled={loading || fetchLoading}
-                    loading={loading}
-                    statusCounts={(() => {
-                      const counts = {};
-                      STATUS_FILTERS.forEach((filter) => {
-                        counts[filter.key] = stateOrders.filter((bill) => {
-                          const billStage = getStatusStage(bill.status);
-                          return billStage === filter.key;
-                        }).length;
-                      });
-                      return counts;
-                    })()}
-                  />
 
                   {/* Practice Areas Filter Dropdown */}
                   <div className="relative" ref={filterDropdownRef}>
@@ -2752,13 +2405,6 @@ const StatePage = ({ stateName }) => {
                             </div>
                           </div>
 
-                          {/* Bill Progress Bar */}
-                          <div className="mb-6">
-                            <BillProgressBar
-                              status={getBillStatus(bill)}
-                              className="w-full"
-                            />
-                          </div>
 
                           {/* Simplified Summary */}
                           {bill.summary &&
@@ -2827,13 +2473,6 @@ const StatePage = ({ stateName }) => {
         </div>
       </section>
 
-      {/* Status Helper Tooltip */}
-      <StatusHelperTooltip
-        status={selectedStatus}
-        isOpen={statusTooltipOpen}
-        onClose={closeStatusTooltip}
-        position={tooltipPosition}
-      />
     </div>
   );
 };

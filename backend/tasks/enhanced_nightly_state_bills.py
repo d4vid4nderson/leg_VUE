@@ -356,7 +356,8 @@ async def ensure_practice_area_tags():
                 'school', 'education', 'student', 'teacher', 'university', 'college', 
                 'academic', 'curriculum', 'tuition', 'scholarship', 'classroom', 
                 'campus', 'diploma', 'degree', 'learning', 'instruction', 'educational',
-                'kindergarten', 'elementary', 'secondary', 'assessment instrument'
+                'kindergarten', 'elementary', 'secondary', 'assessment instrument',
+                'property tax', 'property taxes', 'ad valorem', 'school district', 'school funding'
             ],
             'Healthcare': [
                 'health', 'medical', 'hospital', 'insurance', 'medicare', 'medicaid', 
@@ -452,7 +453,8 @@ async def process_ai_queue():
                 'school', 'education', 'student', 'teacher', 'university', 'college', 
                 'academic', 'curriculum', 'tuition', 'scholarship', 'classroom', 
                 'campus', 'diploma', 'degree', 'learning', 'instruction', 'educational',
-                'kindergarten', 'elementary', 'secondary', 'assessment instrument'
+                'kindergarten', 'elementary', 'secondary', 'assessment instrument',
+                'property tax', 'property taxes', 'ad valorem', 'school district', 'school funding'
             ],
             'Healthcare': [
                 'health', 'medical', 'hospital', 'insurance', 'medicare', 'medicaid', 

@@ -240,22 +240,6 @@ const Homepage = () => {
               then uses advanced AI to deliver instant summaries and business impact analysis.
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center px-4 sm:px-0">
-              <button 
-                onClick={() => navigate('/executive-orders')}
-                className="gradient-button border-2 border-gray-300 dark:border-dark-border text-gray-700 dark:text-dark-text px-6 py-4 sm:py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2 w-full sm:w-auto justify-center text-sm sm:text-base"
-              >
-                <ScrollText size={18} />
-                Get Started with Executive Orders
-              </button>
-              <button 
-                onClick={() => navigate('/state-legislation')}
-                className="gradient-button border-2 border-gray-300 dark:border-dark-border text-gray-700 dark:text-dark-text px-6 py-4 sm:py-3 rounded-lg font-semibold hover:border-transparent hover:shadow-xl transition-all duration-300 transform hover:scale-105 flex items-center gap-2 w-full sm:w-auto justify-center text-sm sm:text-base"
-              >
-                <FileText size={18} />
-                Get Started with State Legislation
-              </button>
-            </div>
           </div>
           
           {/* Hero Dashboard Preview */}
@@ -317,15 +301,10 @@ const Homepage = () => {
                         <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-12"></div>
                       </div>
                       
-                      <div className="w-full mb-3">
-                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                          <div className="h-2 rounded-full bg-gradient-to-r from-cyan-600 to-teal-500" style={{ width: '75%' }}></div>
-                        </div>
-                      </div>
-                      
                       <div className="space-y-2">
                         <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
-                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-2/3"></div>
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-3/4"></div>
                       </div>
                     </div>
                   </div>
