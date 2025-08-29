@@ -203,7 +203,12 @@ const SessionNotification = ({
   const allSessions = sessionData.all_sessions?.[stateAbbr] || [];
   
   // Use all_sessions if available (includes both active and closed), otherwise fall back to active_sessions
-  const sessionsToDisplay = allSessions.length > 0 ? allSessions : activeSessions;
+  const rawSessions = allSessions.length > 0 ? allSessions : activeSessions;
+  
+  // Filter out specific closed sessions that we don't want to display
+  const sessionsToDisplay = rawSessions.filter(session => 
+    session.session_name !== '89th Legislature 1st Special Session'
+  );
   
   console.log(`Sessions to display for ${stateAbbr}:`, sessionsToDisplay);
   

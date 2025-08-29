@@ -3060,6 +3060,90 @@ async def quick_executive_orders_pipeline():
         }
 
 
+@app.post("/api/executive-orders/check-new-orders")
+async def check_for_new_executive_orders():
+    """
+    Check Federal Register for new executive orders, process with AI, and save to database
+    This is the endpoint called by the 'Check for New Orders' button
+    """
+    try:
+        logger.info("🚀 Starting check for new executive orders")
+        
+        # Lazy load executive orders module only when needed
+        if not load_executive_orders_module():
+            return {
+                "success": False,
+                "message": "Executive Orders API not available"
+            }
+        
+        # Get current database count
+        db_count = await get_database_count()
+        logger.info(f"📊 Database currently has {db_count} executive orders")
+        
+        # Get Federal Register count
+        federal_count = await get_federal_register_count()
+        logger.info(f"📊 Federal Register has {federal_count} executive orders")
+        
+        new_orders_available = max(0, federal_count - db_count)
+        
+        if new_orders_available == 0:
+            return {
+                "success": True,
+                "message": "No new executive orders found",
+                "new_orders_count": 0,
+                "database_count": db_count,
+                "federal_register_count": federal_count
+            }
+        
+        logger.info(f"🆕 Found {new_orders_available} new executive orders to fetch")
+        
+        # Fetch new orders using the existing pipeline
+        result = await fetch_executive_orders_simple_integration(
+            period="recent",  # Get recent orders
+            with_ai=True,     # Process with AI
+            limit=None        # No limit to get all available
+        )
+        
+        if not result.get('success'):
+            return {
+                "success": False,
+                "message": f"Failed to fetch new orders: {result.get('message', 'Unknown error')}"
+            }
+        
+        orders = result.get('results', [])
+        logger.info(f"📥 Retrieved {len(orders)} orders from Federal Register")
+        
+        # Save new orders to database
+        saved_count = 0
+        if orders and EXECUTIVE_ORDERS_AVAILABLE:
+            try:
+                transformed_orders = transform_orders_for_save(orders)
+                saved_count = save_executive_orders_to_db(transformed_orders)
+                logger.info(f"💾 Saved {saved_count} new orders to database")
+            except Exception as save_error:
+                logger.error(f"❌ Error saving orders: {save_error}")
+                return {
+                    "success": False,
+                    "message": f"Failed to save new orders: {str(save_error)}"
+                }
+        
+        return {
+            "success": True,
+            "message": f"Successfully found and processed {saved_count} new executive orders",
+            "new_orders_count": saved_count,
+            "orders_fetched": len(orders),
+            "database_count_before": db_count,
+            "federal_register_count": federal_count,
+            "ai_processing_enabled": True
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking for new executive orders: {e}")
+        return {
+            "success": False,
+            "message": f"Error checking for new orders: {str(e)}"
+        }
+
 
 @app.post("/api/fetch-executive-orders")
 async def legacy_fetch_executive_orders(request: ExecutiveOrderFetchRequest):

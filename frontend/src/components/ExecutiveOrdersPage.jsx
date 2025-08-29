@@ -841,6 +841,10 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
   const [newOrdersAvailable, setNewOrdersAvailable] = useState(false);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
 
+  // Check for new orders state
+  const [checkingNewOrders, setCheckingNewOrders] = useState(false);
+  const [checkNewOrdersStatus, setCheckNewOrdersStatus] = useState('');
+
   
   const [pagination, setPagination] = useState({
     page: 1,
@@ -1432,6 +1436,62 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
     }
   }, [allOrders]);
 
+  // Handle checking for new executive orders
+  const handleCheckForNewOrders = useCallback(async () => {
+    setCheckingNewOrders(true);
+    setCheckNewOrdersStatus('Checking for new executive orders...');
+    
+    try {
+      console.log('🔄 Starting check for new executive orders');
+      
+      const response = await fetch(`${API_URL}/api/executive-orders/check-new-orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          checkFederalRegister: true,
+          processWithAI: true
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        const newOrdersCount = result.new_orders_count || 0;
+        
+        if (newOrdersCount > 0) {
+          setCheckNewOrdersStatus(`Found ${newOrdersCount} new executive order${newOrdersCount === 1 ? '' : 's'}! Refreshing data...`);
+          
+          // Refresh the page data to show new orders
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+        } else {
+          setCheckNewOrdersStatus('No new executive orders found');
+          setTimeout(() => {
+            setCheckNewOrdersStatus('');
+          }, 3000);
+        }
+      } else {
+        throw new Error(result.message || 'Failed to check for new orders');
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking for new orders:', error);
+      setCheckNewOrdersStatus(`Error: ${error.message}`);
+      setTimeout(() => {
+        setCheckNewOrdersStatus('');
+      }, 5000);
+    } finally {
+      setCheckingNewOrders(false);
+    }
+  }, []);
+
   // =====================================
   // EVENT HANDLERS
   // =====================================
@@ -1826,10 +1886,43 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
         <div className="max-w-7xl mx-auto">
           <div className="bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-500 text-gray-900 dark:text-dark-text rounded-lg shadow-sm overflow-visible">
             <div className="p-4 sm:p-6">
+              {/* Status Message for Check New Orders */}
+              {checkNewOrdersStatus && (
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                    {checkNewOrdersStatus}
+                  </p>
+                </div>
+              )}
+              
               {/* Controls Bar - Mobile Responsive */}
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6" style={{overflow: 'visible'}}>
-                {/* Left side - Orders Count */}
-                <div className="flex items-center">
+                {/* Left side - Check for New Orders Button and Orders Count */}
+                <div className="flex items-center gap-3">
+                  {/* Check for New Orders Button */}
+                  <button
+                    onClick={handleCheckForNewOrders}
+                    disabled={checkingNewOrders}
+                    className={`px-4 py-3 border rounded-lg text-sm font-medium min-h-[44px] flex items-center justify-center gap-2 transition-all ${
+                      checkingNewOrders
+                        ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-600 text-blue-600 dark:text-blue-400 cursor-not-allowed'
+                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 dark:hover:bg-blue-900/30 dark:hover:border-blue-600 dark:hover:text-blue-400'
+                    }`}
+                  >
+                    {checkingNewOrders ? (
+                      <>
+                        <RefreshIcon size={16} className="animate-spin" />
+                        Checking...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshIcon size={16} />
+                        Check for New Orders
+                      </>
+                    )}
+                  </button>
+                  
+                  {/* Orders Count */}
                   <div className="px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 min-h-[44px] flex items-center justify-center">
                     {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
                   </div>

@@ -32,6 +32,7 @@ import { trackPageView } from "../utils/analytics";
 import BillCardSkeleton from "../components/BillCardSkeleton";
 import SessionNotification from "../components/SessionNotification";
 import SessionFilter from "../components/SessionFilter";
+import LegalDisclaimerModal from "../components/LegalDisclaimerModal";
 import API_URL from "../config/api";
 import {
   getTextClasses,
@@ -2472,6 +2473,12 @@ const StatePage = ({ stateName }) => {
           </div>
         </div>
       </section>
+
+      {/* Legal Disclaimer Modal */}
+      <LegalDisclaimerModal 
+        stateName={stateName}
+        stateAbbr={SUPPORTED_STATES[stateName]}
+      />
 
     </div>
   );

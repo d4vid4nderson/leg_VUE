@@ -15,6 +15,13 @@ import argparse
 from datetime import datetime, timedelta
 import traceback
 
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# Import required modules
+from legiscan_service import EnhancedLegiScanClient
+from database_config import get_db_connection
+
 # Setup logging for Azure Container Jobs
 logging.basicConfig(
     level=logging.INFO,
@@ -34,9 +41,6 @@ async def discover_new_sessions():
     logger.info("🔍 Discovering new legislative sessions...")
     
     try:
-        from legiscan_service import EnhancedLegiScanClient
-        from database_config import get_db_connection
-        
         legiscan_client = EnhancedLegiScanClient()
         new_sessions = []
         
@@ -94,8 +98,6 @@ async def discover_new_sessions():
 async def fetch_new_bills_for_session(session_info):
     """Fetch new bills for a specific session"""
     try:
-        from legiscan_service import EnhancedLegiScanClient
-        from database_config import get_db_connection
         
         state = session_info['state']
         session_id = session_info['session_id']
@@ -185,8 +187,6 @@ async def check_bill_status_updates():
     logger.info("🔄 Checking for bill status updates...")
     
     try:
-        from database_config import get_db_connection
-        from legiscan_service import EnhancedLegiScanClient
         
         # Get bills that haven't been updated in the last 7 days
         cutoff_date = datetime.now() - timedelta(days=7)
@@ -270,8 +270,6 @@ async def ensure_source_links():
     logger.info("🔗 Ensuring all bills have source links...")
     
     try:
-        from database_config import get_db_connection
-        from legiscan_service import EnhancedLegiScanClient
         
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -348,7 +346,6 @@ async def ensure_practice_area_tags():
     logger.info("🏷️ Ensuring proper practice area tags...")
     
     try:
-        from database_config import get_db_connection
         
         # Practice area keywords (same as in AI processing)
         PRACTICE_AREA_KEYWORDS = {
@@ -444,7 +441,6 @@ async def process_ai_queue():
     logger.info("🤖 Processing AI analysis queue with state legislation AI...")
     
     try:
-        from database_config import get_db_connection
         from ai import analyze_state_legislation
         
         # Practice area keywords for categorization (updated to match our approved categories)
@@ -674,7 +670,6 @@ async def main():
         # Verify AI processing in database
         if total_stats['ai_processed'] > 0:
             try:
-                from database_config import get_db_connection
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute('''

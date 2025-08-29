@@ -141,7 +141,6 @@ const SessionFilter = ({
                 {uniqueSessions.map((session) => {
                   const isSelected = selectedSessions.includes(session.session_id);
                   const isSpecial = session.session_name.includes('Special');
-                  const isActive = session.is_active || session.is_likely_active;
                   
                   return (
                     <button
@@ -161,11 +160,6 @@ const SessionFilter = ({
                           {isSpecial && (
                             <span className="px-1.5 py-0.5 text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded">
                               Special
-                            </span>
-                          )}
-                          {isActive && (
-                            <span className="px-1.5 py-0.5 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
-                              Active
                             </span>
                           )}
                         </div>
