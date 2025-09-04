@@ -15,8 +15,12 @@ import argparse
 from datetime import datetime, timedelta
 import traceback
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+# Add parent directory to path for imports  
+backend_dir = os.path.join(os.path.dirname(__file__), '..')
+sys.path.insert(0, backend_dir)
+
+# Explicitly add to PYTHONPATH for container environments
+os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
 
 # Import required modules
 from legiscan_service import EnhancedLegiScanClient

@@ -29,7 +29,11 @@ async def check_and_process_state_updates():
     
     try:
         # Add parent directory to path for imports
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, backend_dir)
+        
+        # Explicitly add to PYTHONPATH
+        os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
         
         from database_config import get_db_connection
         
