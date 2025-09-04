@@ -5489,7 +5489,7 @@ async def clear_manual_executions():
     MANUAL_JOB_EXECUTIONS.clear()
     return {"success": True, "message": f"Cleared {count} manual executions"}
 
-def track_manual_job_execution(job_name: str, status: str, start_time: str, end_time: str = None, error: str = None, process_id: int = None):
+def track_manual_job_execution(job_name: str, status: str, start_time: str, end_time: str = None, error: str = None, process_id: int = None, azure_execution_name: str = None):
     """Track manual job execution in memory"""
     global MANUAL_JOB_EXECUTIONS
     
@@ -5511,6 +5511,7 @@ def track_manual_job_execution(job_name: str, status: str, start_time: str, end_
         "duration": None,
         "error": error,
         "process_id": process_id,
+        "azure_execution_name": azure_execution_name,
         "is_manual": True
     }
     
@@ -5582,15 +5583,107 @@ async def monitor_manual_job(process, job_name: str, start_time: str, execution_
         )
         logger.error(f"Manual job {job_name} monitoring error: {e}")
 
-@app.post("/api/admin/run-job")
-async def run_job_manually(job_name: str):
-    """Manually trigger a nightly job"""
+async def monitor_azure_job(azure_job_name: str, execution_name: str, job_name: str, start_time: str, execution_id: str):
+    """Monitor an Azure Container App Job execution and update its status"""
     try:
         import subprocess
         import asyncio
         from datetime import datetime
         
-        logger.info(f"Manual job execution requested: {job_name}")
+        logger.info(f"Starting monitoring for Azure job {azure_job_name} execution {execution_name}")
+        
+        # Poll the Azure job status
+        max_polls = 60  # Poll for up to 10 minutes (60 * 10 seconds)
+        poll_count = 0
+        
+        while poll_count < max_polls:
+            try:
+                # Check execution status using Azure CLI
+                az_command = [
+                    "az", "containerapp", "job", "execution", "show",
+                    "--name", azure_job_name,
+                    "--resource-group", "rg-legislation-tracker",
+                    "--job-execution-name", execution_name,
+                    "--query", "{status:properties.status, startTime:properties.startTime, endTime:properties.endTime}",
+                    "-o", "json"
+                ]
+                
+                result = subprocess.run(
+                    az_command,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0:
+                    import json
+                    status_data = json.loads(result.stdout)
+                    azure_status = status_data.get("status", "Unknown")
+                    end_time_str = status_data.get("endTime")
+                    
+                    if azure_status in ["Succeeded", "Failed"]:
+                        # Job completed
+                        end_time = end_time_str or (datetime.utcnow().isoformat() + "Z")
+                        
+                        track_manual_job_execution(
+                            job_name=job_name,
+                            status=azure_status,
+                            start_time=start_time,
+                            end_time=end_time,
+                            azure_execution_name=execution_name
+                        )
+                        
+                        logger.info(f"Azure job {azure_job_name} completed with status: {azure_status}")
+                        return
+                    
+                    elif azure_status == "Running":
+                        # Still running, continue polling
+                        logger.debug(f"Azure job {azure_job_name} still running, polling again...")
+                    
+                else:
+                    logger.warning(f"Failed to check Azure job status: {result.stderr}")
+                
+            except Exception as poll_error:
+                logger.warning(f"Error polling Azure job status: {poll_error}")
+            
+            # Wait before next poll
+            await asyncio.sleep(10)  # Poll every 10 seconds
+            poll_count += 1
+        
+        # If we reach here, the job timed out
+        end_time = datetime.utcnow().isoformat() + "Z"
+        track_manual_job_execution(
+            job_name=job_name,
+            status="Failed",
+            start_time=start_time,
+            end_time=end_time,
+            error="Monitoring timeout after 10 minutes",
+            azure_execution_name=execution_name
+        )
+        logger.error(f"Azure job {azure_job_name} monitoring timed out")
+            
+    except Exception as e:
+        # Job monitoring errored
+        end_time = datetime.utcnow().isoformat() + "Z"
+        track_manual_job_execution(
+            job_name=job_name,
+            status="Failed",
+            start_time=start_time,
+            end_time=end_time,
+            error=str(e),
+            azure_execution_name=execution_name
+        )
+        logger.error(f"Azure job {azure_job_name} monitoring error: {e}")
+
+@app.post("/api/admin/run-job")
+async def run_job_manually(job_name: str):
+    """Manually trigger an Azure Container App Job"""
+    try:
+        import subprocess
+        import asyncio
+        from datetime import datetime
+        
+        logger.info(f"Azure Container App Job execution requested: {job_name}")
         
         if job_name not in ["executive-orders", "state-bills"]:
             return {
@@ -5598,66 +5691,65 @@ async def run_job_manually(job_name: str):
                 "error": "Invalid job name. Must be 'executive-orders' or 'state-bills'"
             }
         
-        # Map job names to script paths
-        job_scripts = {
-            "executive-orders": "/app/tasks/nightly_executive_orders.py",
-            "state-bills": "/app/tasks/nightly_state_bills.py"
+        # Map job names to Azure Container App Job names
+        azure_job_names = {
+            "executive-orders": "job-executive-orders-nightly",
+            "state-bills": "job-state-bills-nightly"
         }
         
-        script_path = job_scripts[job_name]
-        script_name = f"nightly_{job_name.replace('-', '_')}.py"
-        
-        # Check if job is already running using pgrep (simpler approach)
-        try:
-            check_process = subprocess.run(
-                ["pgrep", "-f", script_name], 
-                capture_output=True, 
-                text=True
-            )
-            if check_process.returncode == 0:
-                running_pids = check_process.stdout.strip().split('\n')
-                logger.warning(f"Job {job_name} is already running (PIDs: {running_pids})")
-                return {
-                    "success": False,
-                    "error": f"Job {job_name} is already running",
-                    "running_pids": running_pids
-                }
-        except Exception as e:
-            logger.warning(f"Could not check for running processes: {e}")
-        
-        # Run the job in background
-        logger.info(f"Starting manual execution of {job_name} job...")
+        azure_job_name = azure_job_names[job_name]
         start_time = datetime.utcnow().isoformat() + "Z"
         
+        logger.info(f"Starting Azure Container App Job: {azure_job_name}")
+        
         try:
-            # Start the process but don't wait for completion
-            process = subprocess.Popen(
-                ["python", script_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+            # Use Azure CLI to start the Container App Job
+            az_command = [
+                "az", "containerapp", "job", "start",
+                "--name", azure_job_name,
+                "--resource-group", "rg-legislation-tracker",
+                "--query", "name",
+                "-o", "tsv"
+            ]
+            
+            # Execute Azure CLI command
+            process = subprocess.run(
+                az_command,
+                capture_output=True,
                 text=True,
-                cwd="/app"
+                timeout=30
             )
             
-            logger.info(f"Manual job {job_name} started with PID: {process.pid}")
+            if process.returncode != 0:
+                error_msg = f"Azure CLI error: {process.stderr.strip()}"
+                logger.error(f"Failed to start Azure job {azure_job_name}: {error_msg}")
+                return {
+                    "success": False,
+                    "error": f"Failed to start Azure Container App Job: {error_msg}"
+                }
             
-            # Track the initial execution
+            execution_name = process.stdout.strip()
+            logger.info(f"Azure Container App Job {azure_job_name} started with execution: {execution_name}")
+            
+            # Track the Azure job execution
             execution_id = track_manual_job_execution(
                 job_name=job_name,
                 status="Running",
                 start_time=start_time,
-                process_id=process.pid
+                process_id=None,  # No local PID for Azure jobs
+                azure_execution_name=execution_name
             )
             
-            # Start monitoring the job in the background
-            asyncio.create_task(monitor_manual_job(process, job_name, start_time, execution_id))
+            # Start monitoring the Azure job in the background
+            asyncio.create_task(monitor_azure_job(azure_job_name, execution_name, job_name, start_time, execution_id))
             
             return {
                 "success": True,
                 "job_name": job_name,
-                "message": f"Manual {job_name} job started successfully",
+                "azure_job_name": azure_job_name,
+                "execution_name": execution_name,
+                "message": f"Azure Container App Job {azure_job_name} started successfully",
                 "started_at": start_time,
-                "process_id": process.pid,
                 "execution_id": execution_id
             }
             
