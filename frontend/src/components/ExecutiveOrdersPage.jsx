@@ -2317,7 +2317,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                       {isExpanded && (
                         <div className="mt-3">
                           {/* Full Executive Summary */}
-                          {order.ai_processed && order.ai_summary && (
+                          {order.ai_summary && (
                             <div className="mb-4">
                               <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
@@ -2334,9 +2334,9 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                               </div>
                             </div>
                           )}
-                          
+
                           {/* Azure AI Talking Points */}
-                          {order.ai_processed && order.ai_talking_points && (
+                          {order.ai_talking_points && (
                             <div className="mb-4">
                               <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
@@ -2355,7 +2355,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           )}
 
                           {/* Azure AI Business Impact */}
-                          {order.ai_processed && order.ai_business_impact && (
+                          {order.ai_business_impact && (
                             <div className="mb-4">
                               <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
