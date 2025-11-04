@@ -2336,7 +2336,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           )}
 
                           {/* Azure AI Talking Points */}
-                          {order.ai_talking_points && (
+                          {(order.ai_talking_points && order.ai_talking_points.trim()) && (
                             <div className="mb-4">
                               <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">
@@ -2355,7 +2355,7 @@ const ExecutiveOrdersPage = ({ stableHandlers, copyToClipboard }) => {
                           )}
 
                           {/* Azure AI Business Impact */}
-                          {order.ai_business_impact && (
+                          {(order.ai_business_impact && order.ai_business_impact.trim()) && (
                             <div className="mb-4">
                               <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-3">

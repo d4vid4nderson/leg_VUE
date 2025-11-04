@@ -961,16 +961,21 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
             return_exceptions=True
         )
         
+        # Handle exceptions in results
         if isinstance(summary_result, Exception):
-            summary_result = f"Error generating summary: {str(summary_result)}</p>"
-        
+            summary_result = f"Error generating summary: {str(summary_result)}"
+        if isinstance(talking_points_result, Exception):
+            talking_points_result = f"Error generating talking points: {str(talking_points_result)}"
+        if isinstance(business_impact_result, Exception):
+            business_impact_result = f"Error generating business impact: {str(business_impact_result)}"
+
         return {
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
-            'ai_talking_points': "",  # Removed
-            'ai_key_points': "",  # Removed
-            'ai_business_impact': "",  # Removed
-            'ai_potential_impact': "",  # Removed
+            'ai_talking_points': talking_points_result,
+            'ai_key_points': talking_points_result,
+            'ai_business_impact': business_impact_result,
+            'ai_potential_impact': business_impact_result,
             'ai_version': 'azure_openai_enhanced_v1'
         }
         
