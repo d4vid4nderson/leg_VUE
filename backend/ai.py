@@ -618,130 +618,157 @@ def categorize_bill(title: str, description: str) -> BillCategory:
     else:
         return BillCategory.NOT_APPLICABLE
 
-# Core AI processing functions - ENHANCED with distinct content generation
-async def process_with_ai(text: str, prompt_type: PromptType, temperature: float = 0.1, context: str = "") -> str:
-    """Enhanced AI processing with distinct prompts and formatting"""
-    try:
-        max_input_length = 4000
-        if len(text) > max_input_length:
-            text = text[:max_input_length] + "..."
-            print(f"Truncated input text to {max_input_length} characters.")
-        
-        if context:
-            text = f"Context: {context}\n\n{text}"
-        
+# Core AI processing functions - ENHANCED with distinct content generation and retry logic
+async def process_with_ai(text: str, prompt_type: PromptType, temperature: float = 0.1, context: str = "", max_retries: int = 3) -> str:
+    """Enhanced AI processing with distinct prompts, formatting, and retry logic"""
+
+    # Retry loop with exponential backoff
+    for attempt in range(max_retries):
         try:
-            print(f"🔍 Attempting to access PROMPTS for {prompt_type}")
-            print(f"🔍 prompt_type type: {type(prompt_type)}")
-            print(f"🔍 Available PROMPTS keys: {list(PROMPTS.keys())}")
-            print(f"🔍 Available PROMPTS key types: {[type(k) for k in PROMPTS.keys()]}")
-            prompt = PROMPTS[prompt_type].format(text=text)
-        except KeyError as ke:
-            print(f"❌ KeyError accessing PROMPTS for {prompt_type}: {ke}")
-            raise Exception(f"Prompt type {prompt_type} not found in PROMPTS dictionary")
-        except Exception as format_error:
-            print(f"❌ Error formatting prompt for {prompt_type}: {format_error}")
-            raise Exception(f"Error formatting prompt: {format_error}")
-        
-        messages = [
-            {
-                "role": "system",
-                "content": SYSTEM_MESSAGES[prompt_type]
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
+            max_input_length = 4000
+            if len(text) > max_input_length:
+                text = text[:max_input_length] + "..."
+                print(f"Truncated input text to {max_input_length} characters.")
 
-        print(f"🤖 Calling AI for: {prompt_type.value} (with context: {context})")
-        print(f"🔧 Azure endpoint: {AZURE_ENDPOINT}")
-        print(f"🔧 Model name: {MODEL_NAME}")
-        
-        # Enhanced parameters for sophisticated analysis with higher token limits
-        if prompt_type == PromptType.EXECUTIVE_SUMMARY:
-            max_tokens = 600  # Increased for comprehensive executive analysis
-            temperature = 0.2  # Slightly higher for more sophisticated language
-        elif prompt_type == PromptType.STATE_BILL_SUMMARY:
-            max_tokens = 200  # Increased for 5-7 sentence comprehensive summaries
-            temperature = 0.1
-        elif prompt_type == PromptType.KEY_TALKING_POINTS:
-            max_tokens = 800  # Significantly increased for detailed talking points
-            temperature = 0.3  # Higher for more nuanced communications
-        elif prompt_type == PromptType.BUSINESS_IMPACT:
-            max_tokens = 1000  # Doubled for comprehensive business analysis
-            temperature = 0.25  # Balanced for analytical depth
-        
-        try:
-            print(f"🔧 Making Azure API call with max_tokens={max_tokens}, temperature={temperature}")
-            response = await client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=60,
-                top_p=0.95,
-                frequency_penalty=0.3,
-                presence_penalty=0.2,
-                stop=["6.", "7.", "8.", "9."] if prompt_type == PromptType.KEY_TALKING_POINTS else None
-            )
-            print(f"✅ Azure API call successful for {prompt_type.value}")
-        except Exception as api_error:
-            print(f"❌ Azure API call failed for {prompt_type.value}: {type(api_error).__name__}: {api_error}")
-            raise api_error
+            if context:
+                text = f"Context: {context}\n\n{text}"
 
-        raw_response = response.choices[0].message.content
-        print(f"Raw AI response ({prompt_type.value}):\n---\n{raw_response[:300]}...\n---")
-        
-        if prompt_type == PromptType.STATE_BILL_SUMMARY:
-            print(f"🔍 DEBUG: STATE_BILL_SUMMARY raw response: {raw_response[:500]}")
+            try:
+                print(f"🔍 Attempting to access PROMPTS for {prompt_type}")
+                print(f"🔍 prompt_type type: {type(prompt_type)}")
+                print(f"🔍 Available PROMPTS keys: {list(PROMPTS.keys())}")
+                print(f"🔍 Available PROMPTS key types: {[type(k) for k in PROMPTS.keys()]}")
+                prompt = PROMPTS[prompt_type].format(text=text)
+            except KeyError as ke:
+                print(f"❌ KeyError accessing PROMPTS for {prompt_type}: {ke}")
+                raise Exception(f"Prompt type {prompt_type} not found in PROMPTS dictionary")
+            except Exception as format_error:
+                print(f"❌ Error formatting prompt for {prompt_type}: {format_error}")
+                raise Exception(f"Error formatting prompt: {format_error}")
 
-        # Enhanced formatting for each type
-        if prompt_type in [PromptType.EXECUTIVE_SUMMARY, PromptType.STATE_BILL_SUMMARY]:
-            # Keep as paragraph, clean up any unwanted formatting
-            formatted_response = clean_summary_format(raw_response)
-        elif prompt_type == PromptType.KEY_TALKING_POINTS:
-            # Ensure proper numbered list format
-            formatted_response = format_talking_points(raw_response)
-        elif prompt_type == PromptType.BUSINESS_IMPACT:
-            # Ensure proper business impact structure
-            formatted_response = format_business_impact(raw_response)
-        else:
-            formatted_response = format_text_as_html(raw_response, prompt_type)
+            messages = [
+                {
+                    "role": "system",
+                    "content": SYSTEM_MESSAGES[prompt_type]
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
 
-        return formatted_response
+            print(f"🤖 Calling AI for: {prompt_type.value} (with context: {context}) [Attempt {attempt + 1}/{max_retries}]")
+            print(f"🔧 Azure endpoint: {AZURE_ENDPOINT}")
+            print(f"🔧 Model name: {MODEL_NAME}")
 
-    except Exception as e:
-        import openai
-        error_type = type(e).__name__
-        
-        # Distinguish between different types of connection errors
-        if "timeout" in str(e).lower() or isinstance(e, asyncio.TimeoutError):
-            error_msg = f"Connection timeout (exceeded 60 seconds) - API server response too slow"
-            print(f"❌ Timeout error during AI {prompt_type.value} call: {e}")
-        elif "connection" in str(e).lower() or "network" in str(e).lower():
-            error_msg = f"Network connection error - unable to reach API server"
-            print(f"❌ Network error during AI {prompt_type.value} call: {e}")
-        elif hasattr(openai, 'RateLimitError') and isinstance(e, openai.RateLimitError):
-            error_msg = f"API rate limit exceeded - too many requests"
-            print(f"❌ Rate limit error during AI {prompt_type.value} call: {e}")
-        elif hasattr(openai, 'AuthenticationError') and isinstance(e, openai.AuthenticationError):
-            error_msg = f"API authentication failed - check credentials"
-            print(f"❌ Authentication error during AI {prompt_type.value} call: {e}")
-        elif hasattr(openai, 'APIError') and isinstance(e, openai.APIError):
-            error_msg = f"API server error - service temporarily unavailable"
-            print(f"❌ API error during AI {prompt_type.value} call: {e}")
-        else:
-            error_msg = f"Unexpected error ({error_type}): {str(e)}"
-            print(f"❌ Unexpected error during AI {prompt_type.value} call:")
-            print(f"❌ Error type: {type(e)}")
-            print(f"❌ Error value: {e}")
-            print(f"❌ Error str: {str(e)}")
-            print(f"❌ Error repr: {repr(e)}")
-            import traceback
-            print(f"❌ Full traceback: {traceback.format_exc()}")
-        
-        return f"Error generating {prompt_type.value.replace('_', ' ')}: {error_msg}"
+            # Enhanced parameters for sophisticated analysis with higher token limits
+            if prompt_type == PromptType.EXECUTIVE_SUMMARY:
+                max_tokens = 600  # Increased for comprehensive executive analysis
+                temperature = 0.2  # Slightly higher for more sophisticated language
+                timeout = 90  # Longer timeout for complex analysis
+            elif prompt_type == PromptType.STATE_BILL_SUMMARY:
+                max_tokens = 200  # Increased for 5-7 sentence comprehensive summaries
+                temperature = 0.1
+                timeout = 60
+            elif prompt_type == PromptType.KEY_TALKING_POINTS:
+                max_tokens = 800  # Significantly increased for detailed talking points
+                temperature = 0.3  # Higher for more nuanced communications
+                timeout = 120  # Extended timeout for talking points
+            elif prompt_type == PromptType.BUSINESS_IMPACT:
+                max_tokens = 1000  # Doubled for comprehensive business analysis
+                temperature = 0.25  # Balanced for analytical depth
+                timeout = 120  # Extended timeout for business impact
+            else:
+                timeout = 60
+
+            try:
+                print(f"🔧 Making Azure API call with max_tokens={max_tokens}, temperature={temperature}, timeout={timeout}s")
+                response = await client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                    top_p=0.95,
+                    frequency_penalty=0.3,
+                    presence_penalty=0.2,
+                    stop=["6.", "7.", "8.", "9."] if prompt_type == PromptType.KEY_TALKING_POINTS else None
+                )
+                print(f"✅ Azure API call successful for {prompt_type.value}")
+            except Exception as api_error:
+                print(f"❌ Azure API call failed for {prompt_type.value} (attempt {attempt + 1}/{max_retries}): {type(api_error).__name__}: {api_error}")
+
+                # Check if we should retry
+                is_retryable = (
+                    "timeout" in str(api_error).lower() or
+                    "rate" in str(api_error).lower() or
+                    "503" in str(api_error) or
+                    "502" in str(api_error) or
+                    "connection" in str(api_error).lower()
+                )
+
+                if is_retryable and attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 2  # Exponential backoff: 2s, 4s, 8s
+                    print(f"⏳ Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    raise api_error
+
+            raw_response = response.choices[0].message.content
+            print(f"Raw AI response ({prompt_type.value}):\n---\n{raw_response[:300]}...\n---")
+
+            if prompt_type == PromptType.STATE_BILL_SUMMARY:
+                print(f"🔍 DEBUG: STATE_BILL_SUMMARY raw response: {raw_response[:500]}")
+
+            # Enhanced formatting for each type
+            if prompt_type in [PromptType.EXECUTIVE_SUMMARY, PromptType.STATE_BILL_SUMMARY]:
+                # Keep as paragraph, clean up any unwanted formatting
+                formatted_response = clean_summary_format(raw_response)
+            elif prompt_type == PromptType.KEY_TALKING_POINTS:
+                # Ensure proper numbered list format
+                formatted_response = format_talking_points(raw_response)
+            elif prompt_type == PromptType.BUSINESS_IMPACT:
+                # Ensure proper business impact structure
+                formatted_response = format_business_impact(raw_response)
+            else:
+                formatted_response = format_text_as_html(raw_response, prompt_type)
+
+            return formatted_response
+
+        except Exception as e:
+            # If this was the last attempt, handle the error
+            if attempt == max_retries - 1:
+                import openai
+                error_type = type(e).__name__
+
+                # Distinguish between different types of connection errors
+                if "timeout" in str(e).lower() or isinstance(e, asyncio.TimeoutError):
+                    error_msg = f"Connection timeout (exceeded timeout) - API server response too slow"
+                    print(f"❌ Timeout error during AI {prompt_type.value} call: {e}")
+                elif "connection" in str(e).lower() or "network" in str(e).lower():
+                    error_msg = f"Network connection error - unable to reach API server"
+                    print(f"❌ Network error during AI {prompt_type.value} call: {e}")
+                elif hasattr(openai, 'RateLimitError') and isinstance(e, openai.RateLimitError):
+                    error_msg = f"API rate limit exceeded - too many requests"
+                    print(f"❌ Rate limit error during AI {prompt_type.value} call: {e}")
+                elif hasattr(openai, 'AuthenticationError') and isinstance(e, openai.AuthenticationError):
+                    error_msg = f"API authentication failed - check credentials"
+                    print(f"❌ Authentication error during AI {prompt_type.value} call: {e}")
+                elif hasattr(openai, 'APIError') and isinstance(e, openai.APIError):
+                    error_msg = f"API server error - service temporarily unavailable"
+                    print(f"❌ API error during AI {prompt_type.value} call: {e}")
+                else:
+                    error_msg = f"Unexpected error ({error_type}): {str(e)}"
+                    print(f"❌ Unexpected error during AI {prompt_type.value} call:")
+                    print(f"❌ Error type: {type(e)}")
+                    print(f"❌ Error value: {e}")
+                    print(f"❌ Error str: {str(e)}")
+                    print(f"❌ Error repr: {repr(e)}")
+                    import traceback
+                    print(f"❌ Full traceback: {traceback.format_exc()}")
+
+                return f"Error generating {prompt_type.value.replace('_', ' ')}: {error_msg}"
 
 async def get_executive_summary(text: str, context: str = "") -> str:
     return await process_with_ai(text, PromptType.EXECUTIVE_SUMMARY, context=context)
@@ -950,26 +977,45 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
         content = f"Title: {title}"
         if abstract:
             content += f"\n\nContent: {abstract}"
-        
+
         print(f"🔍 Analyzing executive order: {title[:50]}...")
-        
+
         # Run enhanced AI analysis with different contexts
+        # Using gather with return_exceptions=True to handle individual failures
         summary_result, talking_points_result, business_impact_result = await asyncio.gather(
             get_executive_summary(content, f"Executive Summary - {context}"),
             get_key_talking_points(content, f"Policy Discussion - {context}"),
             get_business_impact(content, f"Regulatory Impact - {context}"),
             return_exceptions=True
         )
-        
-        # Handle exceptions in results
-        if isinstance(summary_result, Exception):
-            summary_result = f"Error generating summary: {str(summary_result)}"
-        if isinstance(talking_points_result, Exception):
-            talking_points_result = f"Error generating talking points: {str(talking_points_result)}"
-        if isinstance(business_impact_result, Exception):
-            business_impact_result = f"Error generating business impact: {str(business_impact_result)}"
 
-        return {
+        # Enhanced exception handling with detailed logging
+        if isinstance(summary_result, Exception):
+            error_detail = str(summary_result)
+            print(f"❌ EXECUTIVE SUMMARY ERROR for {order_number}: {error_detail}")
+            print(f"   Exception type: {type(summary_result).__name__}")
+            summary_result = f"Error generating summary: {error_detail}"
+        else:
+            print(f"✅ Executive summary generated successfully for {order_number} ({len(summary_result)} chars)")
+
+        if isinstance(talking_points_result, Exception):
+            error_detail = str(talking_points_result)
+            print(f"❌ TALKING POINTS ERROR for {order_number}: {error_detail}")
+            print(f"   Exception type: {type(talking_points_result).__name__}")
+            talking_points_result = f"Error generating talking points: {error_detail}"
+        else:
+            print(f"✅ Talking points generated successfully for {order_number} ({len(talking_points_result)} chars)")
+
+        if isinstance(business_impact_result, Exception):
+            error_detail = str(business_impact_result)
+            print(f"❌ BUSINESS IMPACT ERROR for {order_number}: {error_detail}")
+            print(f"   Exception type: {type(business_impact_result).__name__}")
+            business_impact_result = f"Error generating business impact: {error_detail}"
+        else:
+            print(f"✅ Business impact generated successfully for {order_number} ({len(business_impact_result)} chars)")
+
+        # Validate results before returning
+        result = {
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
             'ai_talking_points': talking_points_result,
@@ -978,9 +1024,21 @@ async def analyze_executive_order(title: str, abstract: str = "", order_number: 
             'ai_potential_impact': business_impact_result,
             'ai_version': 'azure_openai_enhanced_v1'
         }
-        
+
+        # Log final result summary
+        print(f"📊 AI Analysis Complete for {order_number}:")
+        print(f"   Summary: {'✅' if result['ai_summary'] and not result['ai_summary'].startswith('Error') else '❌'}")
+        print(f"   Talking Points: {'✅' if result['ai_talking_points'] and not result['ai_talking_points'].startswith('Error') else '❌'}")
+        print(f"   Business Impact: {'✅' if result['ai_business_impact'] and not result['ai_business_impact'].startswith('Error') else '❌'}")
+
+        return result
+
     except Exception as e:
-        print(f"❌ Error analyzing executive order: {e}")
+        print(f"❌ Critical error analyzing executive order {order_number}: {e}")
+        print(f"   Exception type: {type(e).__name__}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+
         error_msg = f"AI analysis failed: {str(e)}"
         return {
             'ai_summary': error_msg,
