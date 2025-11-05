@@ -48,11 +48,12 @@ async def main():
             logger.info(f"✅ Database connected. Current EO count: {count}")
         
         # Fetch new executive orders with AI processing
-        logger.info("🔍 Fetching new executive orders with AI foundry processing...")
+        # TEMPORARY FIX: AI disabled until Azure environment variables are configured
+        logger.info("🔍 Fetching new executive orders (AI temporarily disabled)...")
         result = await fetch_executive_orders_simple_integration(
             start_date=None,  # Auto-determine new orders
             end_date=None,
-            with_ai=True,     # Enable AI foundry processing
+            with_ai=False,    # TEMP: Disable AI until Azure env vars fixed
             limit=None,
             save_to_db=True,  # Save to database
             only_new=True     # Only process new orders
