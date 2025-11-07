@@ -84,3 +84,11 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Documentation and commit message files
+AZURE_DEVOPS_COMMANDS.md
+AZURE_DEVOPS_COMMIT.txt
+AZURE_DEVOPS_PR.md
+COMMIT_MESSAGE.txt
+GIT_COMMANDS.md
+PR_DESCRIPTION.md
