@@ -21,6 +21,11 @@ aiofiles
 aiohttp>=3.8.0
 PyJWT>=2.6.0
 
+# Azure SDK dependencies for Managed Identity
+azure-identity>=1.15.0
+azure-mgmt-app>=1.0.0b2
+azure-core>=1.30.0
+
 # Additional SQL Server dependencies
 pymssql>=2.2.7
 sqlalchemy-pytds>=0.3.4

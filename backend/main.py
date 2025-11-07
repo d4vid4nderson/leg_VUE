@@ -21,6 +21,10 @@ from ai_status import check_azure_ai_configuration
 from ai import PromptType, process_with_ai
 from ai import convert_status_to_text
 from progress_tracker import progress_tracker
+# Azure SDK imports for Managed Identity
+from azure.identity import DefaultAzureCredential
+from azure.mgmt.app import ContainerAppsAPIClient
+from azure.core.exceptions import AzureError
 # Import our new fixed modules  
 from database_config import test_database_connection, get_db_connection, get_database_config
 # Import LegiScan service
@@ -5583,48 +5587,49 @@ async def monitor_manual_job(process, job_name: str, start_time: str, execution_
         )
         logger.error(f"Manual job {job_name} monitoring error: {e}")
 
-async def monitor_azure_job(azure_job_name: str, execution_name: str, job_name: str, start_time: str, execution_id: str):
-    """Monitor an Azure Container App Job execution and update its status"""
+async def monitor_azure_job(
+    azure_job_name: str,
+    execution_name: str,
+    job_name: str,
+    start_time: str,
+    execution_id: str,
+    subscription_id: str,
+    resource_group: str
+):
+    """Monitor an Azure Container App Job execution using Managed Identity"""
     try:
-        import subprocess
         import asyncio
         from datetime import datetime
-        
+
         logger.info(f"Starting monitoring for Azure job {azure_job_name} execution {execution_name}")
-        
+
+        # Initialize Azure SDK client
+        credential = DefaultAzureCredential()
+        client = ContainerAppsAPIClient(credential, subscription_id)
+
         # Poll the Azure job status
         max_polls = 60  # Poll for up to 10 minutes (60 * 10 seconds)
         poll_count = 0
-        
+
         while poll_count < max_polls:
             try:
-                # Check execution status using Azure CLI
-                az_command = [
-                    "az", "containerapp", "job", "execution", "show",
-                    "--name", azure_job_name,
-                    "--resource-group", "rg-legislation-tracker",
-                    "--job-execution-name", execution_name,
-                    "--query", "{status:properties.status, startTime:properties.startTime, endTime:properties.endTime}",
-                    "-o", "json"
-                ]
-                
-                result = subprocess.run(
-                    az_command,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-                
-                if result.returncode == 0:
-                    import json
-                    status_data = json.loads(result.stdout)
-                    azure_status = status_data.get("status", "Unknown")
-                    end_time_str = status_data.get("endTime")
-                    
+                # Get list of executions and find ours
+                executions = list(client.jobs.list_executions(
+                    resource_group_name=resource_group,
+                    job_name=azure_job_name
+                ))
+
+                # Find the most recent execution (should be ours)
+                if executions:
+                    execution = executions[0]  # Most recent execution
+
+                    # Get status from execution properties
+                    azure_status = execution.properties.status if hasattr(execution, 'properties') else "Unknown"
+
                     if azure_status in ["Succeeded", "Failed"]:
                         # Job completed
-                        end_time = end_time_str or (datetime.utcnow().isoformat() + "Z")
-                        
+                        end_time = datetime.utcnow().isoformat() + "Z"
+
                         track_manual_job_execution(
                             job_name=job_name,
                             status=azure_status,
@@ -5632,24 +5637,26 @@ async def monitor_azure_job(azure_job_name: str, execution_name: str, job_name: 
                             end_time=end_time,
                             azure_execution_name=execution_name
                         )
-                        
+
                         logger.info(f"Azure job {azure_job_name} completed with status: {azure_status}")
                         return
-                    
+
                     elif azure_status == "Running":
                         # Still running, continue polling
                         logger.debug(f"Azure job {azure_job_name} still running, polling again...")
-                    
+
                 else:
-                    logger.warning(f"Failed to check Azure job status: {result.stderr}")
-                
+                    logger.warning(f"No executions found for Azure job {azure_job_name}")
+
+            except AzureError as poll_error:
+                logger.warning(f"Azure error polling job status: {poll_error}")
             except Exception as poll_error:
                 logger.warning(f"Error polling Azure job status: {poll_error}")
-            
+
             # Wait before next poll
             await asyncio.sleep(10)  # Poll every 10 seconds
             poll_count += 1
-        
+
         # If we reach here, the job timed out
         end_time = datetime.utcnow().isoformat() + "Z"
         track_manual_job_execution(
@@ -5661,7 +5668,7 @@ async def monitor_azure_job(azure_job_name: str, execution_name: str, job_name: 
             azure_execution_name=execution_name
         )
         logger.error(f"Azure job {azure_job_name} monitoring timed out")
-            
+
     except Exception as e:
         # Job monitoring errored
         end_time = datetime.utcnow().isoformat() + "Z"
@@ -5677,60 +5684,55 @@ async def monitor_azure_job(azure_job_name: str, execution_name: str, job_name: 
 
 @app.post("/api/admin/run-job")
 async def run_job_manually(job_name: str):
-    """Manually trigger an Azure Container App Job"""
+    """Manually trigger an Azure Container App Job using Managed Identity"""
     try:
-        import subprocess
         import asyncio
         from datetime import datetime
-        
+
         logger.info(f"Azure Container App Job execution requested: {job_name}")
-        
+
         if job_name not in ["executive-orders", "state-bills"]:
             return {
                 "success": False,
                 "error": "Invalid job name. Must be 'executive-orders' or 'state-bills'"
             }
-        
+
         # Map job names to Azure Container App Job names
         azure_job_names = {
             "executive-orders": "job-executive-orders-nightly",
             "state-bills": "job-state-bills-nightly"
         }
-        
+
         azure_job_name = azure_job_names[job_name]
+        resource_group = "rg-legislation-tracker"
+        subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID", "")
+
+        if not subscription_id:
+            logger.error("AZURE_SUBSCRIPTION_ID environment variable not set")
+            return {
+                "success": False,
+                "error": "Azure subscription ID not configured. Please set AZURE_SUBSCRIPTION_ID environment variable."
+            }
+
         start_time = datetime.utcnow().isoformat() + "Z"
-        
+
         logger.info(f"Starting Azure Container App Job: {azure_job_name}")
-        
+
         try:
-            # Use Azure CLI to start the Container App Job
-            az_command = [
-                "az", "containerapp", "job", "start",
-                "--name", azure_job_name,
-                "--resource-group", "rg-legislation-tracker",
-                "--query", "name",
-                "-o", "tsv"
-            ]
-            
-            # Execute Azure CLI command
-            process = subprocess.run(
-                az_command,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if process.returncode != 0:
-                error_msg = f"Azure CLI error: {process.stderr.strip()}"
-                logger.error(f"Failed to start Azure job {azure_job_name}: {error_msg}")
-                return {
-                    "success": False,
-                    "error": f"Failed to start Azure Container App Job: {error_msg}"
-                }
-            
-            execution_name = process.stdout.strip()
+            # Use Azure SDK with Managed Identity
+            credential = DefaultAzureCredential()
+            client = ContainerAppsAPIClient(credential, subscription_id)
+
+            # Start the job execution
+            result = client.jobs.begin_start(
+                resource_group_name=resource_group,
+                job_name=azure_job_name
+            ).result()
+
+            # Get execution name from result
+            execution_name = result.name if hasattr(result, 'name') else azure_job_name
             logger.info(f"Azure Container App Job {azure_job_name} started with execution: {execution_name}")
-            
+
             # Track the Azure job execution
             execution_id = track_manual_job_execution(
                 job_name=job_name,
@@ -5739,10 +5741,18 @@ async def run_job_manually(job_name: str):
                 process_id=None,  # No local PID for Azure jobs
                 azure_execution_name=execution_name
             )
-            
+
             # Start monitoring the Azure job in the background
-            asyncio.create_task(monitor_azure_job(azure_job_name, execution_name, job_name, start_time, execution_id))
-            
+            asyncio.create_task(monitor_azure_job(
+                azure_job_name,
+                execution_name,
+                job_name,
+                start_time,
+                execution_id,
+                subscription_id,
+                resource_group
+            ))
+
             return {
                 "success": True,
                 "job_name": job_name,
@@ -5752,10 +5762,29 @@ async def run_job_manually(job_name: str):
                 "started_at": start_time,
                 "execution_id": execution_id
             }
-            
+
+        except AzureError as e:
+            error_msg = f"Azure SDK error: {str(e)}"
+            logger.error(f"Failed to start Azure job {azure_job_name}: {error_msg}")
+
+            # Track the failed start
+            track_manual_job_execution(
+                job_name=job_name,
+                status="Failed",
+                start_time=start_time,
+                end_time=datetime.utcnow().isoformat() + "Z",
+                error=error_msg
+            )
+
+            return {
+                "success": False,
+                "error": error_msg,
+                "message": f"Failed to start {job_name} job"
+            }
+
         except Exception as e:
             logger.error(f"Failed to start manual job {job_name}: {e}")
-            
+
             # Track the failed start
             track_manual_job_execution(
                 job_name=job_name,
@@ -5764,13 +5793,13 @@ async def run_job_manually(job_name: str):
                 end_time=datetime.utcnow().isoformat() + "Z",
                 error=str(e)
             )
-            
+
             return {
                 "success": False,
                 "error": str(e),
                 "message": f"Failed to start {job_name} job"
             }
-        
+
     except Exception as e:
         logger.error(f"Error in manual job execution: {e}")
         return {

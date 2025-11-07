@@ -830,30 +830,44 @@ async def analyze_legiscan_bill(bill_data: Dict, enhanced_context: bool = True) 
         # Categorize the bill
         category = categorize_bill(title, description)
         
-        # Run AI analysis tasks with state bill specific prompts
+        # Run AI analysis tasks - FULL analysis including talking points and business impact
         try:
-            summary_task = get_state_bill_summary(content, f"State Bill Summary - {base_context}")
-            # Removed talking points and impact tasks
-            
-            summary_result = await summary_task
-            
+            # Use executive order analysis for comprehensive content (includes all three sections)
+            summary_task = get_executive_summary(content, f"State Bill Summary - {base_context}")
+            talking_points_task = get_key_talking_points(content, f"State Bill Analysis - {base_context}")
+            business_impact_task = get_business_impact(content, f"State Bill Impact - {base_context}")
+
+            # Run all three in parallel
+            summary_result, talking_points_result, business_impact_result = await asyncio.gather(
+                summary_task,
+                talking_points_task,
+                business_impact_task,
+                return_exceptions=True
+            )
+
             # Handle potential exceptions
             if isinstance(summary_result, Exception):
-                summary_result = f"Error generating summary: {str(summary_result)}</p>"
-                
+                summary_result = f"Error generating summary: {str(summary_result)}"
+            if isinstance(talking_points_result, Exception):
+                talking_points_result = f"Error generating talking points: {str(talking_points_result)}"
+            if isinstance(business_impact_result, Exception):
+                business_impact_result = f"Error generating business impact: {str(business_impact_result)}"
+
         except Exception as e:
             print(f"❌ Error in AI analysis tasks: {e}")
-            summary_result = f"Error generating summary: {str(e)}</p>"
-        
+            summary_result = f"Error generating summary: {str(e)}"
+            talking_points_result = f"Error generating talking points: {str(e)}"
+            business_impact_result = f"Error generating business impact: {str(e)}"
+
         # Return results with both old and new field names for compatibility
         return {
             'summary': summary_result,  # New simple overview for summary column
             'ai_summary': summary_result,
             'ai_executive_summary': summary_result,
-            'ai_talking_points': "",  # Removed
-            'ai_key_points': "",  # Removed
-            'ai_business_impact': "",  # Removed
-            'ai_potential_impact': "",  # Removed
+            'ai_talking_points': talking_points_result,
+            'ai_key_points': talking_points_result,
+            'ai_business_impact': business_impact_result,
+            'ai_potential_impact': business_impact_result,
             'category': category.value,
             'ai_version': 'azure_openai_enhanced_v1',
             'analysis_timestamp': datetime.now().isoformat()
