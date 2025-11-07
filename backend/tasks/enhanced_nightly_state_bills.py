@@ -526,16 +526,20 @@ async def process_ai_queue():
                     )
                     
                     if ai_result and ai_result.get('ai_executive_summary'):
-                        # Extract summary
+                        # Extract all AI components
                         executive_summary = ai_result.get('ai_executive_summary', '')
-                        
+                        talking_points = ai_result.get('ai_talking_points', '')
+                        business_impact = ai_result.get('ai_business_impact', '')
+
                         # Determine practice area
                         practice_area = determine_practice_area(title, description)
-                        
-                        # Update database (matching existing pattern)
+
+                        # Update database with all AI components (matching existing pattern)
                         cursor.execute('''
                             UPDATE dbo.state_legislation
                             SET ai_executive_summary = ?,
+                                ai_talking_points = ?,
+                                ai_business_impact = ?,
                                 ai_summary = ?,
                                 category = ?,
                                 ai_version = ?,
@@ -544,6 +548,8 @@ async def process_ai_queue():
                             WHERE id = ?
                         ''', (
                             executive_summary[:2000] if executive_summary else '',
+                            talking_points[:2000] if talking_points else '',
+                            business_impact[:2000] if business_impact else '',
                             executive_summary[:2000] if executive_summary else '',  # Copy to ai_summary for frontend
                             practice_area,
                             'azure_openai_nightly_v1',
