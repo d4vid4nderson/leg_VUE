@@ -5252,13 +5252,40 @@ async def get_automation_report():
         }
         
         # Check if Azure CLI is available and authenticated
+        logger.info("🔍 Checking Azure CLI availability...")
         azure_cli_available = os.system("which az > /dev/null 2>&1") == 0
+        logger.info(f"Azure CLI available: {azure_cli_available}")
         azure_authenticated = False
-        
+
         if azure_cli_available:
-            # Check if Azure CLI is authenticated
-            auth_check = os.system("az account show > /dev/null 2>&1")
-            azure_authenticated = auth_check == 0
+            # Try to authenticate with managed identity if in Azure environment
+            msi_endpoint = os.getenv("MSI_ENDPOINT")
+            container_app_name = os.getenv("CONTAINER_APP_NAME")
+            logger.info(f"MSI_ENDPOINT: {bool(msi_endpoint)}, CONTAINER_APP_NAME: {bool(container_app_name)}")
+
+            if msi_endpoint or container_app_name:
+                logger.info("🔐 Attempting Azure CLI login with managed identity...")
+                login_result = os.system("az login --identity > /tmp/az_login.log 2>&1")
+                logger.info(f"Login result code: {login_result}")
+
+                if login_result == 0:
+                    logger.info("✅ Azure CLI authenticated with managed identity")
+                    azure_authenticated = True
+                else:
+                    logger.warning("❌ Failed to authenticate with managed identity")
+                    # Log the error
+                    try:
+                        with open("/tmp/az_login.log", "r") as f:
+                            error_log = f.read()
+                            logger.warning(f"Login error: {error_log[:200]}")
+                    except:
+                        pass
+            else:
+                # Check if Azure CLI is already authenticated (local dev)
+                logger.info("🔍 Checking existing Azure CLI authentication...")
+                auth_check = os.system("az account show > /dev/null 2>&1")
+                azure_authenticated = auth_check == 0
+                logger.info(f"Azure authenticated (local): {azure_authenticated}")
         
         # Define the jobs to check
         jobs = [
