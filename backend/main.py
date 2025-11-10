@@ -5443,22 +5443,76 @@ async def get_automation_report():
                         # For failed jobs, try to get error details from Azure logs
                         if exec_data["status"] == "Failed":
                             try:
-                                # Attempt to get container logs for this specific execution
-                                log_cmd = [
+                                exec_name = execution.get("name", "")
+                                logger.info(f"Fetching logs for failed execution: {exec_name}")
+
+                                # Get replica name from execution details
+                                replica_cmd = [
                                     "az", "containerapp", "job", "execution", "show",
                                     "--name", job_config["name"],
                                     "--resource-group", "rg-legislation-tracker",
-                                    "--job-execution-name", execution.get("name", ""),
-                                    "--query", "properties.template.containers[0].env",
-                                    "-o", "json"
+                                    "--job-execution-name", exec_name,
+                                    "--query", "properties.status",
+                                    "-o", "tsv"
                                 ]
-                                log_result = subprocess.run(log_cmd, capture_output=True, text=True, timeout=5)
+                                replica_result = subprocess.run(replica_cmd, capture_output=True, text=True, timeout=10)
 
-                                # Default error message if we can't get specific details
-                                exec_data["error"] = "Job execution failed. Check Azure logs for details."
+                                # Try to get container logs using log analytics
+                                # Get the last 50 lines of logs for this execution
+                                log_cmd = [
+                                    "az", "monitor", "log-analytics", "query",
+                                    "--workspace", os.getenv("LOG_ANALYTICS_WORKSPACE_ID", ""),
+                                    "--analytics-query",
+                                    f"ContainerAppConsoleLogs_CL | where ContainerName_s contains '{job_config['name']}' "
+                                    f"| where Log_s contains 'error' or Log_s contains 'Error' or Log_s contains 'ERROR' "
+                                    f"or Log_s contains 'failed' or Log_s contains 'Failed' or Log_s contains 'exception' "
+                                    f"| where TimeGenerated > ago(24h) | project Log_s | take 3",
+                                    "-o", "tsv"
+                                ]
 
-                            except:
-                                exec_data["error"] = "Job execution failed"
+                                # Fallback: try simpler approach with container app logs
+                                simple_log_cmd = [
+                                    "az", "containerapp", "logs", "show",
+                                    "--name", job_config["name"],
+                                    "--resource-group", "rg-legislation-tracker",
+                                    "--type", "console",
+                                    "--tail", "100",
+                                    "--follow", "false"
+                                ]
+
+                                log_result = subprocess.run(simple_log_cmd, capture_output=True, text=True, timeout=15)
+
+                                if log_result.returncode == 0 and log_result.stdout:
+                                    # Parse the logs and extract error lines
+                                    log_lines = log_result.stdout.strip().split('\n')
+                                    error_lines = []
+
+                                    for line in log_lines:
+                                        # Look for error indicators in logs
+                                        if any(keyword in line.lower() for keyword in ['error', 'failed', 'exception', 'traceback', 'fatal']):
+                                            try:
+                                                # Try to parse as JSON (Azure Container App logs format)
+                                                import json
+                                                log_obj = json.loads(line)
+                                                if 'Log' in log_obj:
+                                                    error_lines.append(log_obj['Log'])
+                                            except:
+                                                # Not JSON, use the line as-is
+                                                error_lines.append(line)
+
+                                    if error_lines:
+                                        # Take the last few error lines (most recent)
+                                        exec_data["error"] = " | ".join(error_lines[-3:])[:500]  # Limit to 500 chars
+                                    else:
+                                        exec_data["error"] = "Job execution failed (no error details in recent logs)"
+                                else:
+                                    exec_data["error"] = "Job execution failed. Unable to fetch logs."
+
+                            except subprocess.TimeoutExpired:
+                                exec_data["error"] = "Job execution failed. Log fetch timed out."
+                            except Exception as e:
+                                logger.warning(f"Error fetching logs for {execution.get('name', '')}: {e}")
+                                exec_data["error"] = f"Job execution failed. Error: {str(e)[:200]}"
 
                         job_data["executions"].append(exec_data)
                     
