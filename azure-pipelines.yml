@@ -111,7 +111,7 @@ stages:
               --resource-group $(resourceGroupName) \
               --set-env-vars "$ENV_NAME=secretref:https://$(keyVaultName).vault.azure.net/secrets/$SECRET_NAME"
           }
-          
+
           # Add Key Vault references for each environment variable
           add_keyvault_ref "FRONTEND_URL" "FRONTEND-URL"
           add_keyvault_ref "AZURE_ENDPOINT" "AZURE-ENDPOINT"
@@ -121,6 +121,7 @@ stages:
           add_keyvault_ref "AZURE_SQL_PASSWORD" "AZURE-SQL-PASSWORD"
           add_keyvault_ref "AZURE_SQL_SERVER" "AZURE-SQL-SERVER"
           add_keyvault_ref "AZURE_SQL_USERNAME" "AZURE-SQL-USERNAME"
+          add_keyvault_ref "AZURE_SUBSCRIPTION_ID" "AZURE-SUBSCRIPTION-ID"
           add_keyvault_ref "DEBUG_MODE" "DEBUG-MODE"
           add_keyvault_ref "ENVIRONMENT" "ENVIRONMENT"
           add_keyvault_ref "FROM_EMAIL" "FROM-EMAIL"
@@ -132,7 +133,7 @@ stages:
           add_keyvault_ref "VITE_API_URL_PROD" "VITE-API-URL-PROD"
           add_keyvault_ref "VITE_AZURE_CLIENT_ID" "VITE-AZURE-CLIENT-ID"
           add_keyvault_ref "VITE_AZURE_TENANT_ID" "VITE-AZURE-TENANT-ID"
-          
+
           echo "Backend container app updated successfully."
 
   - job: DeployFrontend
