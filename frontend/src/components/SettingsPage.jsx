@@ -240,9 +240,24 @@ const SettingsPage = ({
                 }
             });
             console.log('State Bills result:', sbResult);
-            
+
             const bothSuccessful = eoResult.success && sbResult.success;
-            
+
+            // Build detailed error message
+            let errorMessage = null;
+            if (!bothSuccessful) {
+                const failedJobs = [];
+                if (!eoResult.success) {
+                    const eoError = eoResult.error || eoResult.message || 'Unknown error';
+                    failedJobs.push(`Executive Orders: ${eoError}`);
+                }
+                if (!sbResult.success) {
+                    const sbError = sbResult.error || sbResult.message || 'Unknown error';
+                    failedJobs.push(`State Bills: ${sbError}`);
+                }
+                errorMessage = failedJobs.join(' | ');
+            }
+
             setManualJobExecution(prev => ({
                 ...prev,
                 loading: false,
@@ -251,7 +266,7 @@ const SettingsPage = ({
                     jobName: 'both jobs',
                     startedAt: new Date().toISOString(),
                     status: bothSuccessful ? 'running' : 'partially-failed',
-                    error: bothSuccessful ? null : 'One or both jobs failed to start'
+                    error: errorMessage
                 }
             }));
             
