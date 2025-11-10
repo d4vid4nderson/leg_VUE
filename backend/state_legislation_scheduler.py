@@ -40,17 +40,17 @@ class StateLegislationScheduler:
         """Check which states have new sessions to process"""
         try:
             states_to_process = []
-            
+
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                
-                # Get states ordered by processing priority
+
+                # Get states ordered by processing priority - simplified query
                 cursor.execute("""
                     SELECT state, COUNT(*) as bill_count
-                    FROM dbo.state_legislation 
+                    FROM dbo.state_legislation
                     WHERE state IN ('CA', 'TX', 'NV', 'KY', 'SC', 'CO')
                     GROUP BY state
-                    ORDER BY 
+                    ORDER BY
                         CASE state
                             WHEN 'CA' THEN 1
                             WHEN 'NV' THEN 2
@@ -61,23 +61,25 @@ class StateLegislationScheduler:
                             ELSE 7
                         END
                 """)
-                
+
                 state_results = cursor.fetchall()
                 available_states = [row[0] for row in state_results]
-                
+
                 # Always process at least one state per night, prioritize by current processing status
                 if available_states:
                     states_to_process = available_states[:2]  # Process up to 2 states per night
+                    logger.info(f"States selected for processing: {states_to_process}")
                 else:
                     # Fallback to priority order if no states found
                     states_to_process = ['CA']
-                
-                logger.info(f"States selected for processing: {states_to_process}")
+                    logger.warning("No states found in database, defaulting to CA")
+
                 return states_to_process
-                
+
         except Exception as e:
-            logger.error(f"Error determining states to process: {e}")
+            logger.error(f"Error determining states to process: {e}", exc_info=True)
             # Fallback to California if there's an error
+            logger.info("Falling back to CA due to error")
             return ['CA']
     
     async def fetch_state_legislation(self, state: str) -> dict:
@@ -200,13 +202,13 @@ class StateLegislationScheduler:
                 
                 # Mark recently created bills as new (use id as proxy for recent creation)
                 cursor.execute("""
-                    UPDATE dbo.state_legislation 
-                    SET is_new = 1, 
-                        last_updated = CONVERT(VARCHAR, GETDATE(), 120)
+                    UPDATE dbo.state_legislation
+                    SET is_new = 1,
+                        last_updated = GETDATE()
                     WHERE state = ?
                     AND id IN (
-                        SELECT TOP 50 id 
-                        FROM dbo.state_legislation 
+                        SELECT TOP 50 id
+                        FROM dbo.state_legislation
                         WHERE state = ?
                         ORDER BY id DESC
                     )

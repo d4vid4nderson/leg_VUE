@@ -49,7 +49,7 @@ def get_db_connection():
     """Get database connection context manager"""
     config = get_database_config()
     print(f"🗄️ Using database: {config['description']}")
-    
+
     conn = None
     try:
         if config['type'] == 'postgresql':
@@ -65,10 +65,26 @@ def get_db_connection():
             print("✅ PostgreSQL connection established")
         else:
             # Azure SQL connection using pyodbc
+            # Check if SQL credentials are explicitly provided (even in container)
+            username = os.getenv('AZURE_SQL_USERNAME')
+            password = os.getenv('AZURE_SQL_PASSWORD')
             is_container = bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT"))
-            
-            if is_container:
-                # Use MSI authentication in production
+
+            if username and password:
+                # Use SQL authentication when credentials are provided
+                connection_string = (
+                    "Driver={ODBC Driver 18 for SQL Server};"
+                    f"Server=tcp:{config['server']},1433;"
+                    f"Database={config['database']};"
+                    f"UID={username};"
+                    f"PWD={password};"
+                    "Encrypt=yes;"
+                    "TrustServerCertificate=no;"
+                    "Connection Timeout=30;"
+                )
+                print("🔑 Using SQL authentication")
+            elif is_container:
+                # Use MSI authentication in production when no credentials provided
                 connection_string = (
                     "Driver={ODBC Driver 18 for SQL Server};"
                     f"Server=tcp:{config['server']},1433;"
@@ -78,19 +94,10 @@ def get_db_connection():
                     "TrustServerCertificate=no;"
                     "Connection Timeout=30;"
                 )
+                print("🔐 Using MSI authentication")
             else:
-                # Use SQL authentication for local development
-                connection_string = (
-                    "Driver={ODBC Driver 18 for SQL Server};"
-                    f"Server=tcp:{config['server']},1433;"
-                    f"Database={config['database']};"
-                    f"UID={config['username']};"
-                    f"PWD={config['password']};"
-                    "Encrypt=yes;"
-                    "TrustServerCertificate=no;"
-                    "Connection Timeout=30;"
-                )
-            
+                raise ValueError("❌ No database credentials found. Set AZURE_SQL_USERNAME and AZURE_SQL_PASSWORD or configure MSI")
+
             conn = pyodbc.connect(connection_string, timeout=30)
             conn.autocommit = False
         
