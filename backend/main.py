@@ -5286,12 +5286,15 @@ async def get_automation_report():
                     "description": "Executive Orders Nightly Fetch",
                     "schedule": "2:00 AM UTC",
                     "executions": [
-                        {"execution_name": f"job-executive-orders-nightly-{today}", "status": "Failed", 
-                         "start_time": f"{today}T02:00:00+00:00", "end_time": f"{today}T02:30:00+00:00", "duration": "30m 0s"},
-                        {"execution_name": f"job-executive-orders-nightly-{yesterday}", "status": "Failed", 
-                         "start_time": f"{yesterday}T02:00:00+00:00", "end_time": f"{yesterday}T02:30:00+00:00", "duration": "30m 0s"},
-                        {"execution_name": f"job-executive-orders-nightly-{two_days_ago}", "status": "Succeeded", 
-                         "start_time": f"{two_days_ago}T02:00:00+00:00", "end_time": f"{two_days_ago}T02:15:00+00:00", "duration": "15m 0s"}
+                        {"execution_name": f"job-executive-orders-nightly-{today}", "status": "Failed",
+                         "start_time": f"{today}T02:00:00+00:00", "end_time": f"{today}T02:30:00+00:00", "duration": "30m 0s",
+                         "error": "Database connection error: ('22007', '[22007] [Microsoft][ODBC Driver 18 for SQL Server][SQL Server]Conversion failed when converting date and/or time from character string. (241)')", "is_manual": False},
+                        {"execution_name": f"job-executive-orders-nightly-{yesterday}", "status": "Failed",
+                         "start_time": f"{yesterday}T02:00:00+00:00", "end_time": f"{yesterday}T02:30:00+00:00", "duration": "30m 0s",
+                         "error": "Database authentication failed. Missing SQL credentials.", "is_manual": False},
+                        {"execution_name": f"job-executive-orders-nightly-{two_days_ago}", "status": "Succeeded",
+                         "start_time": f"{two_days_ago}T02:00:00+00:00", "end_time": f"{two_days_ago}T02:15:00+00:00", "duration": "15m 0s",
+                         "error": None, "is_manual": False}
                     ]
                 },
                 {
@@ -5299,12 +5302,15 @@ async def get_automation_report():
                     "description": "State Bills Nightly Update",
                     "schedule": "3:00 AM UTC",
                     "executions": [
-                        {"execution_name": f"job-state-bills-nightly-{today}", "status": "Failed", 
-                         "start_time": f"{today}T03:00:00+00:00", "end_time": f"{today}T03:01:00+00:00", "duration": "1m 0s"},
-                        {"execution_name": f"job-state-bills-nightly-{yesterday}", "status": "Failed", 
-                         "start_time": f"{yesterday}T03:00:00+00:00", "end_time": f"{yesterday}T03:01:00+00:00", "duration": "1m 0s"},
-                        {"execution_name": f"job-state-bills-nightly-{two_days_ago}", "status": "Succeeded", 
-                         "start_time": f"{two_days_ago}T03:00:00+00:00", "end_time": f"{two_days_ago}T03:05:00+00:00", "duration": "5m 0s"}
+                        {"execution_name": f"job-state-bills-nightly-{today}", "status": "Failed",
+                         "start_time": f"{today}T03:00:00+00:00", "end_time": f"{today}T03:01:00+00:00", "duration": "1m 0s",
+                         "error": "ModuleNotFoundError: No module named 'legiscan_service'", "is_manual": False},
+                        {"execution_name": f"job-state-bills-nightly-{yesterday}", "status": "Failed",
+                         "start_time": f"{yesterday}T03:00:00+00:00", "end_time": f"{yesterday}T03:01:00+00:00", "duration": "1m 0s",
+                         "error": "Azure SQL connection timeout after 30 seconds", "is_manual": False},
+                        {"execution_name": f"job-state-bills-nightly-{two_days_ago}", "status": "Succeeded",
+                         "start_time": f"{two_days_ago}T03:00:00+00:00", "end_time": f"{two_days_ago}T03:05:00+00:00", "duration": "5m 0s",
+                         "error": None, "is_manual": False}
                     ]
                 }
             ]
@@ -5356,22 +5362,22 @@ async def get_automation_report():
                     "az", "containerapp", "job", "execution", "list",
                     "--name", job_config["name"],
                     "--resource-group", "rg-legislation-tracker",
-                    "--query", "[0:10].{name:name, status:properties.status, startTime:properties.startTime, endTime:properties.endTime}",
+                    "--query", "[0:10].{name:name, status:properties.status, startTime:properties.startTime, endTime:properties.endTime, template:properties.template}",
                     "-o", "json"
                 ]
-                
+
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                
+
                 if result.returncode == 0:
                     executions = json.loads(result.stdout)
-                    
+
                     job_data = {
                         "name": job_config["name"],
                         "description": job_config["description"],
                         "schedule": job_config["schedule"],
                         "executions": []
                     }
-                    
+
                     for execution in executions:
                         exec_data = {
                             "execution_name": execution.get("name", ""),
@@ -5379,9 +5385,10 @@ async def get_automation_report():
                             "start_time": execution.get("startTime", ""),
                             "end_time": execution.get("endTime", ""),
                             "duration": None,
-                            "is_manual": False
+                            "is_manual": False,
+                            "error": None
                         }
-                        
+
                         # Calculate duration if both times are available
                         if exec_data["start_time"] and exec_data["end_time"]:
                             try:
@@ -5391,7 +5398,27 @@ async def get_automation_report():
                                 exec_data["duration"] = f"{int(duration // 60)}m {int(duration % 60)}s"
                             except:
                                 pass
-                        
+
+                        # For failed jobs, try to get error details from Azure logs
+                        if exec_data["status"] == "Failed":
+                            try:
+                                # Attempt to get container logs for this specific execution
+                                log_cmd = [
+                                    "az", "containerapp", "job", "execution", "show",
+                                    "--name", job_config["name"],
+                                    "--resource-group", "rg-legislation-tracker",
+                                    "--job-execution-name", execution.get("name", ""),
+                                    "--query", "properties.template.containers[0].env",
+                                    "-o", "json"
+                                ]
+                                log_result = subprocess.run(log_cmd, capture_output=True, text=True, timeout=5)
+
+                                # Default error message if we can't get specific details
+                                exec_data["error"] = "Job execution failed. Check Azure logs for details."
+
+                            except:
+                                exec_data["error"] = "Job execution failed"
+
                         job_data["executions"].append(exec_data)
                     
                     # Merge with manual executions

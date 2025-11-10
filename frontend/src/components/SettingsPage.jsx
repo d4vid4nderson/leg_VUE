@@ -8,6 +8,7 @@ import {
     X,
     Trash2,
     ChevronDown,
+    ChevronUp,
     HelpCircle,
     ExternalLink,
     Mail,
@@ -125,6 +126,18 @@ const SettingsPage = ({
         runningJob: null,
         lastExecution: null
     });
+
+    // Execution expand/collapse state (tracking which executions are expanded)
+    const [expandedExecutions, setExpandedExecutions] = useState({});
+
+    // Toggle execution expansion
+    const toggleExecutionExpanded = (jobName, executionName) => {
+        const key = `${jobName}-${executionName}`;
+        setExpandedExecutions(prev => ({
+            ...prev,
+            [key]: !prev[key]
+        }));
+    };
 
     // Track page view
     usePageTracking('Settings');
@@ -1652,31 +1665,124 @@ const SettingsPage = ({
                                                         <p className="text-xs text-gray-600 dark:text-gray-400 font-medium mb-1">
                                                             Recent Executions:
                                                         </p>
-                                                        {job.executions.slice(0, 3).map((exec, execIndex) => (
-                                                            <div key={execIndex} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-800 p-1.5 rounded">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className={`w-2 h-2 rounded-full ${
-                                                                        exec.status === 'Succeeded' ? 'bg-green-500'
-                                                                        : exec.status === 'Failed' ? 'bg-red-500'
-                                                                        : exec.status === 'Running' ? 'bg-yellow-500 animate-pulse'
-                                                                        : 'bg-gray-400'
-                                                                    }`} />
-                                                                    <span className="text-gray-600 dark:text-gray-400">
-                                                                        {exec.start_time ? new Date(exec.start_time).toLocaleString('en-US', {
-                                                                            month: 'short',
-                                                                            day: 'numeric',
-                                                                            hour: '2-digit',
-                                                                            minute: '2-digit'
-                                                                        }) : 'N/A'}
-                                                                    </span>
+                                                        {job.executions.map((exec, execIndex) => {
+                                                            const expandKey = `${job.name}-${exec.execution_name}`;
+                                                            const isExpanded = expandedExecutions[expandKey];
+
+                                                            return (
+                                                                <div key={execIndex} className="bg-gray-50 dark:bg-gray-800 rounded overflow-hidden">
+                                                                    {/* Collapsed View - Click to expand */}
+                                                                    <button
+                                                                        onClick={() => toggleExecutionExpanded(job.name, exec.execution_name)}
+                                                                        className="w-full flex items-center justify-between text-xs p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                                                                    >
+                                                                        <div className="flex items-center gap-2 flex-1">
+                                                                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                                                                exec.status === 'Succeeded' ? 'bg-green-500'
+                                                                                : exec.status === 'Failed' ? 'bg-red-500'
+                                                                                : exec.status === 'Running' ? 'bg-yellow-500 animate-pulse'
+                                                                                : 'bg-gray-400'
+                                                                            }`} />
+                                                                            <span className="text-gray-600 dark:text-gray-400">
+                                                                                {exec.start_time ? new Date(exec.start_time).toLocaleString('en-US', {
+                                                                                    month: 'short',
+                                                                                    day: 'numeric',
+                                                                                    hour: '2-digit',
+                                                                                    minute: '2-digit'
+                                                                                }) : 'N/A'}
+                                                                            </span>
+                                                                            {exec.is_manual && (
+                                                                                <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-[10px] font-medium">
+                                                                                    Manual
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {exec.duration && (
+                                                                                <span className="text-gray-500 dark:text-gray-400">
+                                                                                    {exec.duration}
+                                                                                </span>
+                                                                            )}
+                                                                            {isExpanded ? (
+                                                                                <ChevronUp size={14} className="text-gray-500 dark:text-gray-400" />
+                                                                            ) : (
+                                                                                <ChevronDown size={14} className="text-gray-500 dark:text-gray-400" />
+                                                                            )}
+                                                                        </div>
+                                                                    </button>
+
+                                                                    {/* Expanded View - Show details */}
+                                                                    {isExpanded && (
+                                                                        <div className="px-3 pb-2 space-y-1.5 border-t border-gray-200 dark:border-gray-700 pt-2">
+                                                                            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                                                                                <div>
+                                                                                    <span className="text-gray-500 dark:text-gray-400">Status:</span>
+                                                                                    <span className={`ml-1 font-medium ${
+                                                                                        exec.status === 'Succeeded' ? 'text-green-600 dark:text-green-400'
+                                                                                        : exec.status === 'Failed' ? 'text-red-600 dark:text-red-400'
+                                                                                        : exec.status === 'Running' ? 'text-yellow-600 dark:text-yellow-400'
+                                                                                        : 'text-gray-600 dark:text-gray-400'
+                                                                                    }`}>
+                                                                                        {exec.status}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <span className="text-gray-500 dark:text-gray-400">Type:</span>
+                                                                                    <span className="ml-1 text-gray-700 dark:text-gray-300">
+                                                                                        {exec.is_manual ? 'Manual' : 'Scheduled'}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="col-span-2">
+                                                                                    <span className="text-gray-500 dark:text-gray-400">Execution ID:</span>
+                                                                                    <span className="ml-1 text-gray-700 dark:text-gray-300 font-mono text-[10px]">
+                                                                                        {exec.execution_name}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {exec.start_time && (
+                                                                                    <div className="col-span-2">
+                                                                                        <span className="text-gray-500 dark:text-gray-400">Started:</span>
+                                                                                        <span className="ml-1 text-gray-700 dark:text-gray-300">
+                                                                                            {new Date(exec.start_time).toLocaleString()}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {exec.end_time && (
+                                                                                    <div className="col-span-2">
+                                                                                        <span className="text-gray-500 dark:text-gray-400">Ended:</span>
+                                                                                        <span className="ml-1 text-gray-700 dark:text-gray-300">
+                                                                                            {new Date(exec.end_time).toLocaleString()}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {exec.duration && (
+                                                                                    <div>
+                                                                                        <span className="text-gray-500 dark:text-gray-400">Duration:</span>
+                                                                                        <span className="ml-1 text-gray-700 dark:text-gray-300">
+                                                                                            {exec.duration}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+
+                                                                            {/* Error Details */}
+                                                                            {exec.error && exec.status === 'Failed' && (
+                                                                                <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+                                                                                    <div className="flex items-start gap-1">
+                                                                                        <AlertTriangle size={12} className="text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                                                                                        <div className="flex-1 min-w-0">
+                                                                                            <p className="text-[10px] font-medium text-red-700 dark:text-red-300 mb-1">Error Details:</p>
+                                                                                            <p className="text-[11px] text-red-600 dark:text-red-400 break-words font-mono">
+                                                                                                {exec.error}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                                {exec.duration && (
-                                                                    <span className="text-gray-500 dark:text-gray-400">
-                                                                        {exec.duration}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
                                                 ) : (
                                                     <p className="text-xs text-gray-500 dark:text-gray-400">
