@@ -2222,14 +2222,26 @@ async def remove_duplicate_texas_endpoint():
 
 @app.get("/api/debug/database-msi")
 async def debug_database_msi_connection():
-    """Debug endpoint for testing MSI database connection"""
+    """Debug endpoint for testing MSI database connection (with caching)"""
+
+    # Check cache first
+    cache_key = "debug_msi"
+    current_time = time.time()
+    if cache_key not in _health_check_cache:
+        _health_check_cache[cache_key] = {"result": None, "timestamp": 0}
+
+    msi_cache = _health_check_cache[cache_key]
+    if msi_cache["result"] is not None and (current_time - msi_cache["timestamp"]) < HEALTH_CHECK_CACHE_TTL:
+        print("✅ Using cached MSI debug status")
+        return msi_cache["result"]
+
     try:
         # Environment check
         raw_env = os.getenv("ENVIRONMENT", "development")
         environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
 
         log_output = []
-        
+
         log_output.append(f"🔍 Environment: {environment}")
         log_output.append(f"🔍 Testing Azure SQL connection via MSI authentication...")
         log_output.append(f"🔍 Container indicators: CONTAINER_APP_NAME={os.getenv('CONTAINER_APP_NAME', 'Not set')}")
@@ -2316,13 +2328,17 @@ async def debug_database_msi_connection():
             log_output.append("👉 Double-check you've added the MSI as a user in SQL Database")
         
         success = False
-    
-    return {
+
+    # Cache the result
+    result = {
         "success": success,
         "logs": log_output,
         "timestamp": datetime.now().isoformat(),
         "environment": environment
     }
+    _health_check_cache[cache_key] = {"result": result, "timestamp": current_time}
+
+    return result
 
 
 @app.get("/api/debug/connectivity")
@@ -4203,33 +4219,51 @@ async def root():
 
 @app.get("/api/status")
 async def get_status():
-    """Enhanced system status endpoint"""
-    
-    # Test database connection
-    try:
-        db_conn = DatabaseConnection()
-        db_working = db_conn.test_connection()
-    except:
-        db_working = False
-    
-    # Test Azure SQL connection if available
-    azure_sql_working = False
-    if AZURE_SQL_AVAILABLE:
+    """Enhanced system status endpoint with optimized caching"""
+
+    # Test database connection (with simple caching)
+    cache_key = "db_status"
+    current_time = time.time()
+    if cache_key not in _health_check_cache:
+        _health_check_cache[cache_key] = {"result": None, "timestamp": 0}
+
+    db_cache = _health_check_cache[cache_key]
+    if db_cache["result"] is not None and (current_time - db_cache["timestamp"]) < HEALTH_CHECK_CACHE_TTL:
+        db_working = db_cache["result"].get("db_working", False)
+        azure_sql_working = db_cache["result"].get("azure_sql_working", False)
+        print("✅ Using cached database status")
+    else:
+        # Test database connection
         try:
-            azure_sql_working = test_azure_sql_connection()
-        except Exception:
-            azure_sql_working = False
-    
-    # Test LegiScan API connection
+            db_conn = DatabaseConnection()
+            db_working = db_conn.test_connection()
+        except:
+            db_working = False
+
+        # Test Azure SQL connection if available
+        azure_sql_working = False
+        if AZURE_SQL_AVAILABLE:
+            try:
+                azure_sql_working = test_azure_sql_connection()
+            except Exception:
+                azure_sql_working = False
+
+        # Cache the results
+        _health_check_cache[cache_key] = {
+            "result": {"db_working": db_working, "azure_sql_working": azure_sql_working},
+            "timestamp": current_time
+        }
+
+    # Test LegiScan API connection (cached)
     legiscan_status = await check_legiscan_connection()
-    
-    # Test Enhanced Azure AI connection
+
+    # Test Enhanced Azure AI connection (cached)
     enhanced_ai_status = await check_enhanced_ai_connection()
 
     raw_env = os.getenv("ENVIRONMENT", "development")
     environment = "production" if raw_env == "production" or bool(os.getenv("CONTAINER_APP_NAME") or os.getenv("MSI_ENDPOINT")) else "development"
 
-    
+
     return {
         "environment": environment,
         "app_version": "14.0.0-Enhanced-AI-Integration - Executive Orders & State Legislation",
@@ -4246,7 +4280,7 @@ async def get_status():
             "azure_sql": "connected" if azure_sql_working else "not_configured",
             "highlights": "available" if HIGHLIGHTS_DB_AVAILABLE else "table_needed",
             "executive_orders_integration": "azure_sql_based" if EXECUTIVE_ORDERS_AVAILABLE else "not_available",
-            
+
             # Enhanced AI integrations
             "legiscan": legiscan_status,
             "enhanced_ai_analysis": enhanced_ai_status,
@@ -4278,36 +4312,58 @@ async def get_status():
 
 # Helper functions for status checks
 
+# Cache for health check results
+_health_check_cache = {
+    "legiscan": {"result": None, "timestamp": 0},
+    "enhanced_ai": {"result": None, "timestamp": 0}
+}
+HEALTH_CHECK_CACHE_TTL = 60  # Cache results for 60 seconds
+
 async def check_legiscan_connection():
-    """Check if LegiScan API is properly configured and working"""
-    
+    """Check if LegiScan API is properly configured and working (with caching)"""
+
+    # Check cache first
+    cache_entry = _health_check_cache["legiscan"]
+    current_time = time.time()
+    if cache_entry["result"] and (current_time - cache_entry["timestamp"]) < HEALTH_CHECK_CACHE_TTL:
+        print(f"✅ Using cached LegiScan status: {cache_entry['result']}")
+        return cache_entry["result"]
+
     # Check if API key is configured using YOUR environment variable name
     api_key = os.getenv('LEGISCAN_API_KEY')
-    
+
     if not api_key:
         print("❌ LEGISCAN_API_KEY not found in environment")
-        return "not configured"
-    
+        result = "not configured"
+        _health_check_cache["legiscan"] = {"result": result, "timestamp": current_time}
+        return result
+
     try:
         import httpx
 
-        # Test with a simple LegiScan API call
+        # Test with a simple LegiScan API call (reduced timeout)
         url = f"https://api.legiscan.com/?key={api_key}&op=getSessionList&state=CA"
-        
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=10.0)
-            
+            response = await client.get(url, timeout=5.0)  # Reduced from 10s to 5s
+
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status') == 'OK':
                     print("✅ LegiScan API connection successful")
-                    return "connected"
+                    result = "connected"
+                    _health_check_cache["legiscan"] = {"result": result, "timestamp": current_time}
+                    return result
                 else:
                     print(f"❌ LegiScan API error: {data.get('alert', 'Unknown error')}")
-                    return "error"
+                    result = "error"
+                    _health_check_cache["legiscan"] = {"result": result, "timestamp": current_time}
+                    return result
             else:
                 print(f"❌ LegiScan API HTTP error: {response.status_code}")
-                return "error"
+                result = "error"
+                _health_check_cache["legiscan"] = {"result": result, "timestamp": current_time}
+                return result
                 
     except ImportError:
         print("❌ httpx not installed - install with: pip install httpx")
@@ -4317,29 +4373,44 @@ async def check_legiscan_connection():
         return "error"
 
 async def check_enhanced_ai_connection():
-    """Check if Enhanced Azure OpenAI is properly configured and working"""
-    
+    """Check if Enhanced Azure OpenAI is properly configured and working (with caching)"""
+
+    # Check cache first
+    cache_entry = _health_check_cache["enhanced_ai"]
+    current_time = time.time()
+    if cache_entry["result"] and (current_time - cache_entry["timestamp"]) < HEALTH_CHECK_CACHE_TTL:
+        print(f"✅ Using cached Enhanced AI status: {cache_entry['result']}")
+        return cache_entry["result"]
+
     if not enhanced_ai_client:
-        return "not configured"
-    
+        result = "not configured"
+        _health_check_cache["enhanced_ai"] = {"result": result, "timestamp": current_time}
+        return result
+
     try:
         # Test simple AI call
         test_response = await process_with_ai(
-            text="Test legislation about education technology", 
+            text="Test legislation about education technology",
             prompt_type=PromptType.EXECUTIVE_SUMMARY,
             context="Test"
         )
-        
+
         if "Error generating" not in test_response:
             print("✅ Enhanced Azure OpenAI connection successful")
-            return "connected"
+            result = "connected"
+            _health_check_cache["enhanced_ai"] = {"result": result, "timestamp": current_time}
+            return result
         else:
             print("❌ Enhanced Azure OpenAI test failed")
-            return "error"
-            
+            result = "error"
+            _health_check_cache["enhanced_ai"] = {"result": result, "timestamp": current_time}
+            return result
+
     except Exception as e:
         print(f"❌ Enhanced Azure OpenAI test failed: {e}")
-        return "error"
+        result = "error"
+        _health_check_cache["enhanced_ai"] = {"result": result, "timestamp": current_time}
+        return result
 
 @app.get("/api/debug/users")
 async def debug_users():
