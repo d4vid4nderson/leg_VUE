@@ -5379,13 +5379,27 @@ async def get_automation_report():
                     }
 
                     for execution in executions:
+                        exec_name = execution.get("name", "")
+
+                        # Detect manual runs: they have random suffixes (letters) instead of just numbers
+                        # Scheduled: job-executive-orders-nightly-29379000
+                        # Manual: job-executive-orders-nightly-i77505l
+                        is_manual = False
+                        if exec_name:
+                            # Extract the suffix after the last hyphen
+                            parts = exec_name.split('-')
+                            if len(parts) > 0:
+                                suffix = parts[-1]
+                                # If suffix contains letters, it's a manual run
+                                is_manual = any(c.isalpha() for c in suffix)
+
                         exec_data = {
-                            "execution_name": execution.get("name", ""),
+                            "execution_name": exec_name,
                             "status": execution.get("status", "Unknown"),
                             "start_time": execution.get("startTime", ""),
                             "end_time": execution.get("endTime", ""),
                             "duration": None,
-                            "is_manual": False,
+                            "is_manual": is_manual,
                             "error": None
                         }
 
