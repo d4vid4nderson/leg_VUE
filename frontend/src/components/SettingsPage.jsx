@@ -1793,6 +1793,21 @@ const SettingsPage = ({
                                                                                     </div>
                                                                                 </div>
                                                                             )}
+
+                                                                            {/* Success Summary */}
+                                                                            {exec.error && exec.status === 'Succeeded' && (
+                                                                                <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded">
+                                                                                    <div className="flex items-start gap-1">
+                                                                                        <CheckCircle size={12} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                                                                                        <div className="flex-1 min-w-0">
+                                                                                            <p className="text-[10px] font-medium text-green-700 dark:text-green-300 mb-1">Summary:</p>
+                                                                                            <p className="text-[11px] text-green-600 dark:text-green-400 break-words">
+                                                                                                {exec.error}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     )}
                                                                 </div>

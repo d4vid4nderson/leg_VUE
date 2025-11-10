@@ -5828,15 +5828,55 @@ async def monitor_azure_job(
                         azure_status = our_execution.get("properties", {}).get("status", "Unknown")
 
                         if azure_status in ["Succeeded", "Failed"]:
-                            # Job completed
+                            # Job completed - get logs to extract summary
                             end_time = datetime.utcnow().isoformat() + "Z"
+
+                            summary = None
+                            if azure_status == "Succeeded":
+                                # Try to get logs and extract summary
+                                try:
+                                    log_result = subprocess.run([
+                                        "az", "containerapp", "job", "logs", "show",
+                                        "--name", azure_job_name,
+                                        "--resource-group", resource_group,
+                                        "--output", "table"
+                                    ], capture_output=True, text=True, timeout=30)
+
+                                    if log_result.returncode == 0 and log_result.stdout:
+                                        # Extract summary from logs
+                                        logs = log_result.stdout
+
+                                        # Look for common success patterns in logs
+                                        if job_name == "executive-orders":
+                                            # Look for "X new orders processed" pattern
+                                            import re
+                                            match = re.search(r'(\d+)\s+new\s+(orders?|executive orders?)', logs, re.IGNORECASE)
+                                            if match:
+                                                count = match.group(1)
+                                                summary = f"{count} new executive orders processed"
+                                        elif job_name == "state-bills":
+                                            # Look for "X bills processed" pattern
+                                            import re
+                                            match = re.search(r'(\d+)\s+(bills?|state bills?)\s+processed', logs, re.IGNORECASE)
+                                            if match:
+                                                count = match.group(1)
+                                                summary = f"{count} state bills processed"
+                                            # Also look for state-specific info
+                                            state_match = re.search(r'Processing state:\s+([A-Z]{2})', logs)
+                                            if state_match and summary:
+                                                state = state_match.group(1)
+                                                summary = f"{summary} for {state}"
+
+                                except Exception as log_error:
+                                    logger.warning(f"Failed to fetch logs for summary: {log_error}")
 
                             track_manual_job_execution(
                                 job_name=job_name,
                                 status=azure_status,
                                 start_time=start_time,
                                 end_time=end_time,
-                                azure_execution_name=execution_name
+                                azure_execution_name=execution_name,
+                                error=summary  # Use error field to store summary for now
                             )
 
                             logger.info(f"Azure job {azure_job_name} completed with status: {azure_status}")
