@@ -5210,6 +5210,65 @@ def migrate_user_sessions_add_display_name():
         print(f"❌ Failed to migrate user_sessions table: {e}")
         return False
 
+def create_user_activity_events_table():
+    """Create comprehensive table to track all user activity events"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            create_table_sql = """
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'user_activity_events')
+            CREATE TABLE dbo.user_activity_events (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                user_id NVARCHAR(100) NOT NULL,
+                session_id NVARCHAR(100),
+                event_type NVARCHAR(50) NOT NULL,  -- 'page_view', 'page_leave', 'button_click', 'search', 'filter', 'highlight_add', 'highlight_remove', 'export', 'fetch_data', etc.
+                event_category NVARCHAR(50),  -- 'navigation', 'interaction', 'data_action', 'system'
+                page_name NVARCHAR(255),
+                page_path NVARCHAR(500),
+                event_data NVARCHAR(MAX),  -- JSON string with additional event details
+                duration_seconds INT,  -- For page_leave events, time spent on page
+                created_at DATETIME2 DEFAULT GETDATE(),
+                INDEX IX_user_activity_user_id (user_id),
+                INDEX IX_user_activity_created_at (created_at),
+                INDEX IX_user_activity_event_type (event_type),
+                INDEX IX_user_activity_session_id (session_id)
+            );
+            """
+            cursor.execute(create_table_sql)
+            conn.commit()
+            print("✅ User activity events table created/verified")
+            return True
+    except Exception as e:
+        print(f"❌ Failed to create user activity events table: {e}")
+        return False
+
+def migrate_page_views_add_duration():
+    """Add duration and left_at columns to page_views table"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Check if duration_seconds column exists
+            cursor.execute("""
+                SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'page_views'
+                AND COLUMN_NAME = 'duration_seconds'
+            """)
+
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE dbo.page_views ADD duration_seconds INT NULL")
+                cursor.execute("ALTER TABLE dbo.page_views ADD left_at DATETIME2 NULL")
+                conn.commit()
+                print("✅ Added duration tracking columns to page_views table")
+                return True
+            else:
+                print("✅ Duration columns already exist in page_views table")
+                return True
+
+    except Exception as e:
+        print(f"❌ Failed to migrate page_views table: {e}")
+        return False
+
 @app.get("/api/admin/recent-sessions")
 async def get_recent_sessions(limit: int = 20):
     """Get recent user sessions with display names for analytics"""
@@ -6161,7 +6220,7 @@ class SessionStartRequest(BaseModel):
 
 @app.post("/api/analytics/track-page-view")
 async def track_page_view(
-    request: PageViewRequest, 
+    request: PageViewRequest,
     http_request: Request,
     current_user: dict = Depends(get_current_user)
 ):
@@ -6169,6 +6228,8 @@ async def track_page_view(
     try:
         create_page_views_table()
         create_user_profiles_table()
+        create_user_activity_events_table()
+        migrate_page_views_add_duration()
         
         # Get client IP address
         client_ip = http_request.headers.get("x-forwarded-for")
@@ -6425,6 +6486,123 @@ async def track_user_login(request: UserLoginRequest):
             
     except Exception as e:
         print(f"❌ Failed to track login: {e}")
+        return {"success": False, "error": str(e)}
+
+class UserActivityEventRequest(BaseModel):
+    user_id: str
+    session_id: Optional[str] = None
+    event_type: str  # 'button_click', 'search', 'filter', 'highlight_add', 'highlight_remove', 'export', 'fetch_data', etc.
+    event_category: Optional[str] = None  # 'interaction', 'data_action', 'system'
+    page_name: Optional[str] = None
+    page_path: Optional[str] = None
+    event_data: Optional[dict] = None  # Additional event details
+
+@app.post("/api/analytics/track-event")
+async def track_user_event(
+    request: UserActivityEventRequest,
+    http_request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Track a user activity event"""
+    try:
+        create_user_activity_events_table()
+
+        # Use authenticated user if available
+        if current_user and current_user.get("email"):
+            normalized_user_id = normalize_user_id(current_user["email"])
+            print(f"📊 Tracking event for authenticated user: {current_user.get('email')}")
+        else:
+            normalized_user_id = normalize_user_id(request.user_id)
+
+        # Convert event_data dict to JSON string
+        event_data_json = json.dumps(request.event_data) if request.event_data else None
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                INSERT INTO dbo.user_activity_events
+                (user_id, session_id, event_type, event_category, page_name, page_path, event_data, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE())
+            """, (
+                normalized_user_id,
+                request.session_id,
+                request.event_type,
+                request.event_category,
+                request.page_name,
+                request.page_path,
+                event_data_json
+            ))
+
+            conn.commit()
+
+        print(f"✅ Event tracked: {request.event_type} for user {normalized_user_id}")
+        return {"success": True, "message": "Event tracked successfully"}
+
+    except Exception as e:
+        print(f"❌ Failed to track event: {e}")
+        return {"success": False, "error": str(e)}
+
+class PageLeaveRequest(BaseModel):
+    user_id: str
+    session_id: Optional[str] = None
+    page_name: str
+    page_path: str
+    duration_seconds: int  # How long user spent on the page
+
+@app.post("/api/analytics/track-page-leave")
+async def track_page_leave(
+    request: PageLeaveRequest,
+    http_request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Track when a user leaves a page (for duration tracking)"""
+    try:
+        create_user_activity_events_table()
+        migrate_page_views_add_duration()
+
+        # Use authenticated user if available
+        if current_user and current_user.get("email"):
+            normalized_user_id = normalize_user_id(current_user["email"])
+        else:
+            normalized_user_id = normalize_user_id(request.user_id)
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Log page leave event
+            cursor.execute("""
+                INSERT INTO dbo.user_activity_events
+                (user_id, session_id, event_type, event_category, page_name, page_path, duration_seconds, created_at)
+                VALUES (?, ?, 'page_leave', 'navigation', ?, ?, ?, GETDATE())
+            """, (
+                normalized_user_id,
+                request.session_id,
+                request.page_name,
+                request.page_path,
+                request.duration_seconds
+            ))
+
+            # Update the most recent page_view for this user/page with duration
+            cursor.execute("""
+                UPDATE TOP (1) dbo.page_views
+                SET duration_seconds = ?, left_at = GETDATE()
+                WHERE user_id = ? AND page_name = ? AND session_id = ?
+                ORDER BY viewed_at DESC
+            """, (
+                request.duration_seconds,
+                normalized_user_id,
+                request.page_name,
+                request.session_id
+            ))
+
+            conn.commit()
+
+        print(f"✅ Page leave tracked: {request.page_name} ({request.duration_seconds}s) for user {normalized_user_id}")
+        return {"success": True, "message": "Page leave tracked successfully"}
+
+    except Exception as e:
+        print(f"❌ Failed to track page leave: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get("/api/debug/env")

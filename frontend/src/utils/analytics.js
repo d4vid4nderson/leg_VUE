@@ -177,14 +177,80 @@ export const endSession = async () => {
                 session_id: sessionId
             })
         });
-        
+
         if (!response.ok) {
             console.error('Failed to end session');
         }
-        
+
         // Clear session ID
         sessionStorage.removeItem('analyticsSessionId');
     } catch (error) {
         console.error('Error ending session:', error);
+    }
+};
+
+// Track user activity event
+export const trackEvent = async (eventType, eventCategory, eventData = {}) => {
+    try {
+        const token = localStorage.getItem('auth_token');
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_URL}/api/analytics/track-event`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                user_id: getUserId(),
+                session_id: getSessionId(),
+                event_type: eventType,
+                event_category: eventCategory,
+                page_name: eventData.pageName || document.title,
+                page_path: eventData.pagePath || window.location.pathname,
+                event_data: eventData
+            })
+        });
+
+        if (!response.ok) {
+            console.error('Failed to track event');
+        }
+    } catch (error) {
+        console.error('Error tracking event:', error);
+    }
+};
+
+// Track page leave (for duration tracking)
+export const trackPageLeave = async (pageName, pagePath, durationSeconds) => {
+    try {
+        const token = localStorage.getItem('auth_token');
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_URL}/api/analytics/track-page-leave`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                user_id: getUserId(),
+                session_id: getSessionId(),
+                page_name: pageName,
+                page_path: pagePath || window.location.pathname,
+                duration_seconds: durationSeconds
+            })
+        });
+
+        if (!response.ok) {
+            console.error('Failed to track page leave');
+        }
+    } catch (error) {
+        console.error('Error tracking page leave:', error);
     }
 };
