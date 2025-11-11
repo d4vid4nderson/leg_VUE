@@ -274,12 +274,54 @@ class EnhancedLegiScanClient:
             }
     
     async def check_active_sessions(self, states: List[str]) -> Dict:
-        """Check for active sessions across multiple states"""
+        """Check for active sessions across multiple states with date-based validation"""
         try:
             print(f"🔥 DEBUG: check_active_sessions called with states: {states}")
             active_sessions = {}
             session_details = {}
-            
+
+            # Get actual session activity dates from database
+            session_activity = {}
+            try:
+                from database_config import get_db_connection
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT
+                            session_id,
+                            MAX(last_action_date) as latest_action
+                        FROM dbo.state_legislation
+                        WHERE state IN ({})
+                        AND last_action_date IS NOT NULL
+                        GROUP BY session_id
+                    '''.format(','.join(['?' for _ in states])), tuple(states))
+
+                    for session_id, latest_action in cursor.fetchall():
+                        if latest_action:
+                            # Convert to date if string
+                            if isinstance(latest_action, str):
+                                try:
+                                    from datetime import datetime
+                                    latest_date = datetime.strptime(latest_action, '%Y-%m-%d').date()
+                                except:
+                                    try:
+                                        latest_date = datetime.fromisoformat(latest_action).date()
+                                    except:
+                                        latest_date = None
+                            elif hasattr(latest_action, 'date'):
+                                latest_date = latest_action.date()
+                            else:
+                                latest_date = latest_action
+
+                            if latest_date:
+                                days_since = (datetime.now().date() - latest_date).days
+                                session_activity[str(session_id)] = {
+                                    'latest_action': latest_date,
+                                    'days_since': days_since
+                                }
+            except Exception as e:
+                print(f"⚠️ Could not query session activity from database: {e}")
+
             for state in states:
                 print(f"🔍 Checking sessions for {state}...")
                 session_data = await self.get_session_list(state)
@@ -308,24 +350,34 @@ class EnhancedLegiScanClient:
                         session_name = session_info.get('session_name', '')
                         year = session_info.get('year_start', 0)
                         current_year = datetime.now().year
-                        
+
                         # Session processing for all states
-                        
+
                         # Check if session is actually active using LegiScan API sine_die flag
                         # sine_die = 0 means session is active, sine_die = 1 means session is closed
                         sine_die = session_info.get('sine_die', 0)
                         is_session_closed = sine_die == 1
-                        
-                        # Session activity is determined solely by LegiScan API sine_die flag
-                        
-                        # Session is active ONLY if LegiScan API shows it's not closed (sine_die != 1)
-                        # If sine_die = 1, session is DEFINITIVELY CLOSED per LegiScan API
+
+                        # Date-based validation: Check actual bill activity
+                        # If LegiScan says sine_die=0 but no recent bill activity, session is likely ended
                         is_likely_active = not is_session_closed
-                        
-                        # Debug logging for session status  
-                        status_msg = "CLOSED" if is_session_closed else "ACTIVE"
-                        print(f"🔍 {state} session: {session_name} - {status_msg} (sine_die: {sine_die})")
-                        
+                        activity_data = session_activity.get(str(session_key), {})
+
+                        if activity_data and sine_die == 0:
+                            # Session has sine_die=0, but check if actually active
+                            days_since = activity_data.get('days_since', 999)
+                            latest_action = activity_data.get('latest_action')
+
+                            # Consider session inactive if no activity in 60+ days
+                            # This handles biennial legislatures like TX where sine_die=0 during off-year
+                            if days_since > 60:
+                                is_likely_active = False
+                                print(f"📅 {state} session {session_name}: LegiScan says ACTIVE (sine_die=0), but no activity in {days_since} days since {latest_action}. Status: ENDED")
+                            else:
+                                print(f"✅ {state} session {session_name}: ACTIVE with recent activity ({days_since} days ago)")
+                        elif sine_die == 1:
+                            print(f"❌ {state} session {session_name}: CLOSED per LegiScan (sine_die=1)")
+
                         session_entry = {
                             'session_id': session_key,
                             'session_name': session_name,
@@ -334,17 +386,19 @@ class EnhancedLegiScanClient:
                             'session_start_date': session_info.get('session_start_date', ''),
                             'session_end_date': session_info.get('session_end_date', ''),
                             'sine_die': session_info.get('sine_die', ''),
-                            'is_active': not is_session_closed,  # True if session is not closed per LegiScan
+                            'is_active': is_likely_active,  # Now based on both sine_die and activity
                             'is_likely_active': is_likely_active,
+                            'latest_bill_activity': activity_data.get('latest_action').isoformat() if activity_data.get('latest_action') else None,
+                            'days_since_activity': activity_data.get('days_since'),
                             'session_info': session_info
                         }
-                        
-                        # ONLY add to active sessions if sine_die is NOT 1
-                        if is_likely_active and not is_session_closed:
+
+                        # Add to active sessions if likely active (based on sine_die AND recent activity)
+                        if is_likely_active:
                             state_active_sessions.append(session_entry)
-                            print(f"✅ Adding ACTIVE session: {session_name} (sine_die={sine_die})")
-                        elif is_session_closed:
-                            print(f"❌ Skipping CLOSED session: {session_name} (sine_die={sine_die})")
+                            print(f"✅ Adding ACTIVE session: {session_name} (sine_die={sine_die}, activity-based={is_likely_active})")
+                        else:
+                            print(f"❌ Skipping ENDED session: {session_name} (sine_die={sine_die}, no recent activity)")
                         
                         # Store all session details for reference
                         if state not in session_details:
