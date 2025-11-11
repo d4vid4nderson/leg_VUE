@@ -2425,10 +2425,10 @@ const StatePage = ({ stateName }) => {
                                   <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                                     {bill.summary}
                                   </div>
-                                  {bill.legiscan_url && (
+                                  {(bill.legiscan_url || bill.pdf_url) && (
                                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                                       <a
-                                        href={bill.legiscan_url}
+                                        href={bill.legiscan_url || bill.pdf_url}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200"
