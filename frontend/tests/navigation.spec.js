@@ -219,6 +219,7 @@ test.describe('Navigation', () => {
         'error tracking',
         'error loading',
         'failed to load resource',
+        'could not connect to the server', // WebKit-specific error message
         'warning:' // React warnings (not critical errors)
       ];
 
