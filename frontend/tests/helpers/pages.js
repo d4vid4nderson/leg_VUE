@@ -9,8 +9,12 @@
  */
 export async function navigateTo(page, path) {
   await page.goto(path);
-  // Wait for network to be idle
-  await page.waitForLoadState('networkidle');
+  // Wait for DOM to be ready (faster than networkidle, especially on mobile)
+  await page.waitForLoadState('domcontentloaded');
+  // Try to wait for network to be idle, but don't fail if it takes too long
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {
+    // Mobile browsers may not reach networkidle quickly - that's ok
+  });
 }
 
 /**

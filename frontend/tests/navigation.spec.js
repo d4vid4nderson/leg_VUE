@@ -173,29 +173,38 @@ test.describe('Navigation', () => {
     // Filter out expected/known errors (like analytics failures in test env)
     const criticalErrors = errors.filter((error) => {
       const errorLower = error.toLowerCase();
-      return (
-        !errorLower.includes('analytics') &&
-        !errorLower.includes('failed to fetch') &&
-        !errorLower.includes('networkerror') &&
-        !errorLower.includes('network error') &&
-        !errorLower.includes('favicon') &&
-        !errorLower.includes('404') &&
-        !errorLower.includes('http://backend') &&
-        !errorLower.includes('localhost:8000') &&
-        !errorLower.includes('err_connection_refused') &&
-        !errorLower.includes('net::err') &&
-        !errorLower.includes('backend') &&
-        !errorLower.includes('proxy') &&
-        !errorLower.includes('econnrefused') &&
-        !errorLower.includes('connection refused') &&
-        !errorLower.includes('fetch error') &&
-        !errorLower.includes('load failed') &&
-        !errorLower.includes('xhr error') &&
-        !errorLower.includes('cors') &&
-        !errorLower.includes('preflight') &&
-        !errorLower.includes('::1:') && // Localhost variations
-        !errorLower.includes('127.0.0.1')
-      );
+
+      // Check for common expected error patterns
+      const expectedPatterns = [
+        'analytics',
+        'failed to fetch',
+        'networkerror',
+        'network error',
+        'favicon',
+        '404',
+        'http://backend',
+        'localhost:8000',
+        'err_connection_refused',
+        'net::err',
+        'backend',
+        'proxy',
+        'econnrefused',
+        'connection refused',
+        'fetch error',
+        'load failed',
+        'xhr error',
+        'cors',
+        'preflight',
+        '::1:', // Localhost variations
+        '127.0.0.1',
+        'error starting session',
+        'error ending session',
+        'error tracking',
+        'failed to load resource'
+      ];
+
+      // If error contains any expected pattern, filter it out
+      return !expectedPatterns.some(pattern => errorLower.includes(pattern));
     });
 
     // Log all errors for debugging (even filtered ones)

@@ -47,20 +47,25 @@ export async function loginAsDemo(page) {
  * @param {import('@playwright/test').Page} page
  */
 export async function logout(page) {
-  // Clear storage (simplest approach for testing)
+  // Clear storage by navigating with a script that clears before the page loads
+  await page.goto('/', {
+    waitUntil: 'domcontentloaded'
+  });
+
+  // Clear storage immediately after navigation
   await page.evaluate(() => {
     localStorage.clear();
     sessionStorage.clear();
   });
 
-  // Reload page to trigger logout state
-  await page.reload();
+  // Wait a moment for the app to detect the cleared auth state
+  await page.waitForTimeout(500);
 
-  // Wait for page to load
-  await page.waitForLoadState('domcontentloaded');
+  // Reload to trigger logout UI
+  await page.reload({ waitUntil: 'domcontentloaded' });
 
   // Wait for network to settle
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
 
   // Give time for login modal to appear
   await page.waitForTimeout(1500);

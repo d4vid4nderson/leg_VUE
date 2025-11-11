@@ -66,7 +66,11 @@ test.describe('Authentication', () => {
     }
   });
 
-  test('should successfully logout', async ({ page }) => {
+  test('should successfully logout', async ({ browser }) => {
+    // Use a fresh context to avoid init script persistence
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
     await page.goto('/');
     await loginAsDemo(page);
 
@@ -74,15 +78,20 @@ test.describe('Authentication', () => {
     let loggedIn = await isLoggedIn(page);
     expect(loggedIn).toBe(true);
 
-    // Logout
-    await logout(page);
+    // Clear storage directly (simpler than using logout helper)
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
+    // Navigate to a fresh page (will not have auth due to cleared storage)
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(2000);
 
     // Verify logged out
     loggedIn = await isLoggedIn(page);
     expect(loggedIn).toBe(false);
-
-    // Give modal time to appear
-    await page.waitForTimeout(2000);
 
     // Should see login modal again (check for Microsoft sign-in button)
     const loginButton = page.locator('button:has-text("Sign in with Microsoft")');
@@ -90,6 +99,9 @@ test.describe('Authentication', () => {
 
     // Modal should appear after logout
     expect(isVisible).toBe(true);
+
+    // Cleanup
+    await context.close();
   });
 
   test('should persist authentication across page reloads', async ({ page }) => {
