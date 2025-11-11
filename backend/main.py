@@ -5269,6 +5269,83 @@ def migrate_page_views_add_duration():
         print(f"❌ Failed to migrate page_views table: {e}")
         return False
 
+@app.get("/api/admin/activity-summary")
+async def get_activity_summary(limit: int = 50):
+    """Get a quick summary of recent user activity for testing"""
+    try:
+        create_user_activity_events_table()
+        migrate_page_views_add_duration()
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get recent page views with duration
+            cursor.execute("""
+                SELECT TOP (?)
+                    up.display_name,
+                    up.msi_email,
+                    pv.page_name,
+                    pv.duration_seconds,
+                    pv.viewed_at,
+                    pv.left_at
+                FROM dbo.page_views pv
+                LEFT JOIN dbo.user_profiles up ON pv.user_id = up.user_id
+                ORDER BY pv.viewed_at DESC
+            """, (limit,))
+
+            page_views = []
+            for row in cursor.fetchall():
+                page_views.append({
+                    "user": row[0] or "Anonymous",
+                    "email": row[1],
+                    "page": row[2],
+                    "duration": row[3],
+                    "viewedAt": row[4].isoformat() if row[4] else None,
+                    "leftAt": row[5].isoformat() if row[5] else None
+                })
+
+            # Get recent activity events
+            cursor.execute("""
+                SELECT TOP (?)
+                    up.display_name,
+                    ae.event_type,
+                    ae.event_category,
+                    ae.page_name,
+                    ae.duration_seconds,
+                    ae.event_data,
+                    ae.created_at
+                FROM dbo.user_activity_events ae
+                LEFT JOIN dbo.user_profiles up ON ae.user_id = up.user_id
+                ORDER BY ae.created_at DESC
+            """, (limit,))
+
+            activity_events = []
+            for row in cursor.fetchall():
+                activity_events.append({
+                    "user": row[0] or "Anonymous",
+                    "eventType": row[1],
+                    "eventCategory": row[2],
+                    "page": row[3],
+                    "duration": row[4],
+                    "eventData": row[5],
+                    "timestamp": row[6].isoformat() if row[6] else None
+                })
+
+            return {
+                "success": True,
+                "pageViews": page_views,
+                "activityEvents": activity_events,
+                "summary": {
+                    "totalPageViews": len(page_views),
+                    "totalEvents": len(activity_events),
+                    "pageViewsWithDuration": len([pv for pv in page_views if pv["duration"]])
+                }
+            }
+
+    except Exception as e:
+        print(f"❌ Failed to get activity summary: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/admin/recent-sessions")
 async def get_recent_sessions(limit: int = 20):
     """Get recent user sessions with display names for analytics"""
