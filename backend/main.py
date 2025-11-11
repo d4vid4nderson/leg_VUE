@@ -5261,20 +5261,35 @@ async def list_upload_jobs_endpoint():
 def merge_manual_executions_with_job(job_data, job_name_map):
     """Merge manual executions with Azure job data"""
     global MANUAL_JOB_EXECUTIONS
-    
+
     # Map Azure job names to manual job names
     manual_name = job_name_map.get(job_data["name"])
     if not manual_name:
         return job_data
-    
+
     # Get manual executions for this job
     manual_executions = [
-        exec for exec in MANUAL_JOB_EXECUTIONS 
+        exec for exec in MANUAL_JOB_EXECUTIONS
         if exec["job_name"] == manual_name
     ]
-    
-    # Convert manual executions to the same format as Azure executions
+
+    # Deduplicate manual executions based on azure_execution_name (if available) or start_time
+    # Keep the most recent version (with end_time if available)
+    seen_executions = {}
     for manual_exec in manual_executions:
+        # Use azure_execution_name as the key if available, otherwise use start_time
+        dedup_key = manual_exec.get("azure_execution_name") or manual_exec["start_time"]
+
+        if dedup_key in seen_executions:
+            # Keep the one with end_time (completed) over one without (running)
+            existing = seen_executions[dedup_key]
+            if manual_exec.get("end_time") and not existing.get("end_time"):
+                seen_executions[dedup_key] = manual_exec
+        else:
+            seen_executions[dedup_key] = manual_exec
+
+    # Convert deduplicated manual executions to the same format as Azure executions
+    for manual_exec in seen_executions.values():
         formatted_exec = {
             "execution_name": manual_exec["execution_name"],
             "status": manual_exec["status"],
@@ -5286,16 +5301,16 @@ def merge_manual_executions_with_job(job_data, job_name_map):
             "process_id": manual_exec.get("process_id")
         }
         job_data["executions"].append(formatted_exec)
-    
+
     # Sort all executions by start time (most recent first)
     job_data["executions"].sort(
-        key=lambda x: x["start_time"] or "", 
+        key=lambda x: x["start_time"] or "",
         reverse=True
     )
-    
+
     # Limit to 10 most recent executions
     job_data["executions"] = job_data["executions"][:10]
-    
+
     return job_data
 
 @app.get("/api/admin/automation-report")
