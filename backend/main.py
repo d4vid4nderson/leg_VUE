@@ -70,17 +70,23 @@ security = HTTPBearer(auto_error=False)
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Extract user information from Azure AD token if provided"""
     if not credentials:
+        print("⚠️ No credentials provided to get_current_user")
         return None
-    
+
     try:
         # For Azure AD tokens, we can decode without verification to get user info
         # In production, you should verify the token with Azure AD public keys
         token = credentials.credentials
-        
+
         # Decode token without verification (for user info extraction)
         # Note: In production, verify with Azure AD keys
         decoded = jwt.decode(token, options={"verify_signature": False})
-        
+
+        print(f"🔍 DEBUG: Decoded token fields: {list(decoded.keys())}")
+        print(f"🔍 DEBUG: Token values - oid: {decoded.get('oid')}, sub: {decoded.get('sub')}")
+        print(f"🔍 DEBUG: Token email fields - unique_name: {decoded.get('unique_name')}, upn: {decoded.get('upn')}, email: {decoded.get('email')}, preferred_username: {decoded.get('preferred_username')}")
+        print(f"🔍 DEBUG: Token name: {decoded.get('name')}")
+
         user_info = {
             "user_id": decoded.get("oid") or decoded.get("sub"),  # Object ID or Subject
             "email": decoded.get("unique_name") or decoded.get("upn") or decoded.get("email") or decoded.get("preferred_username"),
@@ -89,10 +95,13 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             "family_name": decoded.get("family_name") or decoded.get("surname"),
             "upn": decoded.get("upn"),  # User Principal Name
         }
-        
+
+        print(f"✅ Extracted user info: {user_info}")
         return user_info
     except Exception as e:
-        print(f"Could not extract user from token: {e}")
+        print(f"❌ Could not extract user from token: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # Note: Token test endpoint moved to after app definition
@@ -6339,6 +6348,11 @@ class UserLoginRequest(BaseModel):
 async def track_user_login(request: UserLoginRequest):
     """Track user login event and update user profile"""
     try:
+        print(f"🔐 TRACK LOGIN CALLED")
+        print(f"  user_id: {request.user_id}")
+        print(f"  email: {request.email}")
+        print(f"  display_name: {request.display_name}")
+
         # SPECIAL CLEANUP: Check for magic cleanup email
         print(f"🔍 DEBUG: user_id received = '{request.user_id}'")
         print(f"🔍 DEBUG: checking against 'REMOVE_TEST_USERS@cleanup.com'")
