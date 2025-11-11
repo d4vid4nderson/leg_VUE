@@ -66,26 +66,40 @@ test.describe('Authentication', () => {
     }
   });
 
-  test('should successfully logout', async ({ browser }) => {
-    // Use a fresh context to avoid init script persistence
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
+  test('should successfully logout', async ({ page }) => {
+    // First, navigate and set auth manually (without addInitScript)
     await page.goto('/');
-    await loginAsDemo(page);
+
+    // Set auth state directly on the page
+    await page.evaluate(() => {
+      const authToken = 'test-token-' + Date.now();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      localStorage.setItem('auth_token', authToken);
+      localStorage.setItem('user', JSON.stringify({
+        username: 'demo@legislationvue.com',
+        email: 'demo@legislationvue.com',
+        role: 'analyst'
+      }));
+    });
+
+    // Reload to apply auth
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(500);
 
     // Verify logged in
     let loggedIn = await isLoggedIn(page);
     expect(loggedIn).toBe(true);
 
-    // Clear storage directly (simpler than using logout helper)
+    // Now logout by clearing storage
     await page.evaluate(() => {
       localStorage.clear();
       sessionStorage.clear();
     });
 
-    // Navigate to a fresh page (will not have auth due to cleared storage)
-    await page.goto('/');
+    // Reload to see logout state
+    await page.reload();
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
 
@@ -99,9 +113,6 @@ test.describe('Authentication', () => {
 
     // Modal should appear after logout
     expect(isVisible).toBe(true);
-
-    // Cleanup
-    await context.close();
   });
 
   test('should persist authentication across page reloads', async ({ page }) => {

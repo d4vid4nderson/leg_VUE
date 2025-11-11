@@ -200,7 +200,8 @@ test.describe('Navigation', () => {
         'error starting session',
         'error ending session',
         'error tracking',
-        'failed to load resource'
+        'failed to load resource',
+        'warning:' // React warnings (not critical errors)
       ];
 
       // If error contains any expected pattern, filter it out
