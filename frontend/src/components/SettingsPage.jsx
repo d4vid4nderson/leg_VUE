@@ -149,7 +149,15 @@ const SettingsPage = ({
 
     // Auto-load automation report on component mount
     useEffect(() => {
-        fetchAutomationReport();
+        // Small delay to ensure component is fully mounted and API is ready
+        const timer = setTimeout(() => {
+            fetchAutomationReport().catch(err => {
+                // Silently catch errors on initial load to prevent console spam
+                console.debug('Initial automation report load failed:', err.message);
+            });
+        }, 500);
+
+        return () => clearTimeout(timer);
     }, []); // Empty dependency array = runs once on mount
 
     // Save version and notify App.jsx
