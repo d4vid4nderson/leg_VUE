@@ -27,6 +27,7 @@ from azure.mgmt.app import ContainerAppsAPIClient
 from azure.core.exceptions import AzureError
 # Import our new fixed modules  
 from database_config import test_database_connection, get_db_connection, get_database_config
+from job_execution_summaries import get_job_summary, save_job_summary
 # Import LegiScan service
 from legiscan_service import (
     EnhancedLegiScanClient, 
@@ -5566,23 +5567,24 @@ async def get_automation_report():
                 job_data = merge_manual_executions_with_job(job_data, job_name_map)
                 report["jobs"].append(job_data)
 
-        # Add generic summaries for scheduled executions
-        # Note: We can't fetch logs from completed jobs because containers are scaled to zero
-        # Manual jobs already have summaries from monitor_azure_job()
+        # Load summaries from database for all executions (manual and scheduled)
+        # This replaces log fetching which doesn't work for completed jobs
         for job_data in report["jobs"]:
-            job_name_simple = "executive-orders" if "executive-orders" in job_data["name"] else "state-bills"
-            job_display_name = "Executive Orders" if job_name_simple == "executive-orders" else "State Bills"
-
             for exec_data in job_data["executions"]:
-                # Only add summaries for scheduled executions that don't already have them
-                if (exec_data["status"] in ["Failed", "Succeeded"] and
-                    not exec_data.get("is_manual", False) and
-                    not exec_data.get("error")):
+                execution_name = exec_data.get("execution_name")
 
-                    if exec_data["status"] == "Succeeded":
-                        exec_data["error"] = f"{job_display_name} nightly update completed successfully"
-                    else:  # Failed
-                        exec_data["error"] = f"{job_display_name} nightly update failed - check job logs"
+                if execution_name and not exec_data.get("error"):
+                    # Try to get summary from database
+                    try:
+                        summary_data = get_job_summary(execution_name)
+                        if summary_data and summary_data.get('summary'):
+                            exec_data["error"] = summary_data['summary']
+                    except Exception as e:
+                        logger.warning(f"Could not load summary for {execution_name}: {e}")
+                        # Fall back to generic message if database lookup fails
+                        if exec_data["status"] == "Succeeded":
+                            job_display_name = "Executive Orders" if "executive-orders" in job_data["name"] else "State Bills"
+                            exec_data["error"] = f"{job_display_name} nightly update completed successfully"
 
         # Recalculate summary from merged data
         report["summary"] = {
@@ -5889,6 +5891,25 @@ async def monitor_azure_job(
                                 azure_execution_name=execution_name,
                                 error=summary_or_error  # Use error field for both success summary and failure info
                             )
+
+                            # Also save to database for persistence
+                            try:
+                                job_type = 'executive-orders' if job_name == 'executive-orders' else 'state-bills'
+                                save_job_summary(
+                                    execution_name=execution_name,
+                                    job_name=azure_job_name,
+                                    job_type=job_type,
+                                    status=azure_status,
+                                    summary=summary_or_error or "",
+                                    items_processed=0,  # We don't parse counts for manual jobs
+                                    items_total=0,
+                                    states_count=0,
+                                    is_manual=True,
+                                    start_time=datetime.fromisoformat(start_time.replace('Z', '+00:00')) if start_time else None,
+                                    end_time=datetime.fromisoformat(end_time.replace('Z', '+00:00')) if end_time else None
+                                )
+                            except Exception as db_error:
+                                logger.warning(f"Failed to save manual job summary to database: {db_error}")
 
                             logger.info(f"Azure job {azure_job_name} completed with status: {azure_status}")
                             if summary_or_error:

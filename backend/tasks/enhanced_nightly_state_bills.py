@@ -25,6 +25,7 @@ os.environ['PYTHONPATH'] = backend_dir + ':' + os.environ.get('PYTHONPATH', '')
 # Import required modules
 from legiscan_service import EnhancedLegiScanClient
 from database_config import get_db_connection
+from job_execution_summaries import save_job_summary, generate_summary_message, create_job_summaries_table
 
 # Setup logging for Azure Container Jobs
 logging.basicConfig(
@@ -605,6 +606,10 @@ async def process_ai_queue():
 
 async def main():
     """Main entry point for enhanced nightly state bills job"""
+    start_time = datetime.now()
+    execution_name = os.getenv('CONTAINER_APP_REPLICA_NAME', f"job-state-bills-nightly--{start_time.strftime('%Y%m%d%H%M%S')}")
+    job_name = "job-state-bills-nightly"
+
     parser = argparse.ArgumentParser(description='Enhanced Nightly State Bills & Session Discovery')
     parser.add_argument('--production', action='store_true', help='Run in production mode')
     parser.add_argument('--discover-sessions', action='store_true', help='Discover new sessions')
@@ -614,11 +619,15 @@ async def main():
     parser.add_argument('--ensure-links', action='store_true', help='Ensure all bills have source links')
     parser.add_argument('--ensure-categories', action='store_true', help='Ensure proper practice area tags')
     args = parser.parse_args()
-    
+
     logger.info("🚀 Starting Enhanced Azure Container Job: State Bills & Session Discovery")
+    logger.info(f"📋 Execution name: {execution_name}")
     logger.info(f"⏰ Execution time: {datetime.utcnow().isoformat()}Z")
     logger.info(f"🌐 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
     logger.info(f"🏭 Production mode: {args.production}")
+
+    # Create summaries table if it doesn't exist
+    create_job_summaries_table()
     
     total_stats = {
         'new_sessions': 0,
@@ -678,27 +687,82 @@ async def main():
         logger.info(f"  🏷️ Categories updated: {total_stats['categories_updated']}")
         
         # Verify AI processing in database
+        states_updated_count = 0
         if total_stats['ai_processed'] > 0:
             try:
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute('''
                         SELECT COUNT(*) FROM dbo.state_legislation
-                        WHERE ai_executive_summary IS NOT NULL 
+                        WHERE ai_executive_summary IS NOT NULL
                         AND ai_executive_summary != ''
                         AND last_updated >= DATEADD(hour, -1, GETDATE())
                     ''')
                     recent_ai_count = cursor.fetchone()[0]
                     logger.info(f"🔍 Verification: {recent_ai_count} bills with AI summaries in last hour")
+
+                    # Get count of distinct states updated
+                    cursor.execute('''
+                        SELECT COUNT(DISTINCT state) FROM dbo.state_legislation
+                        WHERE last_updated >= DATEADD(hour, -1, GETDATE())
+                    ''')
+                    states_updated_count = cursor.fetchone()[0] or 0
             except Exception as e:
                 logger.warning(f"⚠️ Could not verify AI processing: {e}")
-        
+
+        # Calculate total items processed (bills + status updates)
+        total_items_processed = total_stats['new_bills'] + total_stats['status_updates']
+
+        # Save execution summary to database
+        end_time = datetime.now()
+        if total_items_processed > 0 or states_updated_count > 0:
+            summary_msg = generate_summary_message('state-bills', total_items_processed, states_updated_count)
+        else:
+            summary_msg = "Nothing to update at this time"
+
+        logger.info(f"💾 Saving execution summary: {summary_msg}")
+
+        save_job_summary(
+            execution_name=execution_name,
+            job_name=job_name,
+            job_type='state-bills',
+            status='Succeeded',
+            summary=summary_msg,
+            items_processed=total_items_processed,
+            items_total=total_items_processed,
+            states_count=states_updated_count,
+            is_manual=False,  # This is a scheduled execution
+            start_time=start_time,
+            end_time=end_time
+        )
+
+        logger.info(f"📊 Daily fetch successful: {states_updated_count} states, {total_items_processed} bills processed")
         logger.info("🎉 Azure Container Job completed successfully!")
         sys.exit(0)  # Success
         
     except Exception as e:
         logger.error(f"❌ Critical error in enhanced nightly job: {e}")
         logger.error(f"📋 Traceback: {traceback.format_exc()}")
+
+        # Save failure summary
+        try:
+            end_time = datetime.now()
+            save_job_summary(
+                execution_name=execution_name,
+                job_name=job_name,
+                job_type='state-bills',
+                status='Failed',
+                summary=f"Job failed with exception: {str(e)}",
+                items_processed=0,
+                items_total=0,
+                states_count=0,
+                is_manual=False,
+                start_time=start_time,
+                end_time=end_time
+            )
+        except:
+            pass  # Don't fail if we can't save the summary
+
         logger.error("💥 Azure Container Job failed!")
         sys.exit(1)  # Failure
 

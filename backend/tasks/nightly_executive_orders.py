@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 
 async def main():
     """Main entry point for Azure Container Job"""
+    start_time = datetime.now()
+    execution_name = os.getenv('CONTAINER_APP_REPLICA_NAME', f"job-executive-orders-nightly--{start_time.strftime('%Y%m%d%H%M%S')}")
+    job_name = "job-executive-orders-nightly"
+
     logger.info("🚀 Starting Azure Container Job: Nightly Executive Order Fetch")
+    logger.info(f"📋 Execution name: {execution_name}")
     logger.info(f"⏰ Execution time: {datetime.utcnow().isoformat()}Z")
     logger.info(f"🌐 Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
     
@@ -36,8 +41,12 @@ async def main():
         # Import here to ensure all dependencies are available
         from simple_executive_orders import fetch_executive_orders_simple_integration
         from database_config import get_db_connection
-        
+        from job_execution_summaries import save_job_summary, generate_summary_message, create_job_summaries_table
+
         logger.info("📦 Dependencies loaded successfully")
+
+        # Create summaries table if it doesn't exist
+        create_job_summaries_table()
         
         # Test database connection
         logger.info("🗄️ Testing database connection...")
@@ -95,19 +104,74 @@ async def main():
                     """)
                     ai_count = cursor.fetchone()[0]
                     logger.info(f"🔍 Verification: {ai_count} recent orders have AI summaries in database")
-            
+
+            # Save execution summary to database
+            end_time = datetime.now()
+            summary_msg = generate_summary_message('executive-orders', new_count)
+            logger.info(f"💾 Saving execution summary: {summary_msg}")
+
+            save_job_summary(
+                execution_name=execution_name,
+                job_name=job_name,
+                job_type='executive-orders',
+                status='Succeeded',
+                summary=summary_msg,
+                items_processed=new_count,
+                items_total=new_count,
+                is_manual=False,  # This is a scheduled execution
+                start_time=start_time,
+                end_time=end_time
+            )
+
+            logger.info(f"📊 Final summary: {summary_msg}")
             logger.info("🎉 Azure Container Job completed successfully!")
             sys.exit(0)  # Success exit code
             
         else:
             error_msg = result.get('error', 'Unknown error')
             logger.error(f"❌ Nightly fetch failed: {error_msg}")
+
+            # Save failure summary
+            end_time = datetime.now()
+            save_job_summary(
+                execution_name=execution_name,
+                job_name=job_name,
+                job_type='executive-orders',
+                status='Failed',
+                summary=f"Job failed: {error_msg}",
+                items_processed=0,
+                items_total=0,
+                is_manual=False,
+                start_time=start_time,
+                end_time=end_time
+            )
+
             logger.error("💥 Azure Container Job failed!")
             sys.exit(1)  # Failure exit code
             
     except Exception as e:
         logger.error(f"❌ Critical error in Azure Container Job: {e}")
         logger.error(f"📋 Traceback: {traceback.format_exc()}")
+
+        # Save exception summary
+        try:
+            from job_execution_summaries import save_job_summary
+            end_time = datetime.now()
+            save_job_summary(
+                execution_name=execution_name,
+                job_name=job_name,
+                job_type='executive-orders',
+                status='Failed',
+                summary=f"Job failed with exception: {str(e)}",
+                items_processed=0,
+                items_total=0,
+                is_manual=False,
+                start_time=start_time,
+                end_time=end_time
+            )
+        except:
+            pass  # Don't fail if we can't save the summary
+
         logger.error("💥 Azure Container Job failed with exception!")
         sys.exit(1)  # Failure exit code
 
