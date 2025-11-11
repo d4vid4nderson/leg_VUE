@@ -5313,6 +5313,101 @@ def merge_manual_executions_with_job(job_data, job_name_map):
 
     return job_data
 
+async def fetch_execution_logs_async(job_name: str, exec_name: str, resource_group: str = "rg-legislation-tracker", timeout_seconds: int = 10) -> str:
+    """Fetch logs for a specific execution asynchronously"""
+    try:
+        import asyncio
+
+        proc = await asyncio.create_subprocess_exec(
+            "az", "containerapp", "job", "logs", "show",
+            "--name", job_name,
+            "--resource-group", resource_group,
+            "--execution", exec_name,
+            "--container", job_name,
+            "--format", "text",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+            if proc.returncode == 0 and stdout:
+                return stdout.decode('utf-8')
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.warning(f"⏱️ Timeout fetching logs for {exec_name}")
+            return ""
+    except Exception as e:
+        logger.warning(f"⚠️ Error fetching logs for {exec_name}: {e}")
+        return ""
+
+    return ""
+
+def extract_summary_from_logs(logs: str, job_name_simple: str, status: str) -> str:
+    """Extract summary message from job logs"""
+    import re
+
+    if status == "Succeeded":
+        if job_name_simple == "executive-orders":
+            # Check for "No new executive orders" first
+            no_new_match = re.search(r'No new executive orders', logs, re.IGNORECASE)
+            if no_new_match:
+                return "Nothing to update at this time"
+
+            # Match: "📊 New executive orders processed: X"
+            match = re.search(r'New executive orders processed:\s*(\d+)', logs, re.IGNORECASE)
+            if match:
+                count = int(match.group(1))
+                if count == 0:
+                    return "Nothing to update at this time"
+                else:
+                    return f"Updated {count} executive order{'s' if count != 1 else ''}"
+
+            # Fallback pattern
+            match = re.search(r'(\d+)\s+(?:new\s+)?(?:executive\s+)?orders?(?:\s+processed)?', logs, re.IGNORECASE)
+            if match:
+                count = int(match.group(1))
+                if count == 0:
+                    return "Nothing to update at this time"
+                else:
+                    return f"Updated {count} executive order{'s' if count != 1 else ''}"
+
+        elif job_name_simple == "state-bills":
+            # Match: "✅ Daily fetch successful: X states, Y bills processed"
+            daily_match = re.search(r'Daily fetch successful:\s*(\d+)\s+states?,\s*(\d+)\s+bills?\s+processed', logs, re.IGNORECASE)
+            if daily_match:
+                states_count = int(daily_match.group(1))
+                bills_count = int(daily_match.group(2))
+                if bills_count == 0:
+                    return "Nothing to update at this time"
+                else:
+                    return f"Updated {bills_count} bill{'s' if bills_count != 1 else ''} across {states_count} state{'s' if states_count != 1 else ''}"
+
+            # Alternative pattern: "📜 New bills added: X"
+            new_bills_match = re.search(r'New bills added:\s*(\d+)', logs, re.IGNORECASE)
+            if new_bills_match:
+                count = int(new_bills_match.group(1))
+                if count == 0:
+                    return "Nothing to update at this time"
+                else:
+                    return f"Updated {count} bill{'s' if count != 1 else ''}"
+
+    elif status == "Failed":
+        # Extract error message from logs
+        error_match = re.search(r'❌\s*(.+?)(?:\n|$)', logs)
+        if error_match:
+            return error_match.group(1).strip()
+
+        # Look for exception or error keywords
+        error_lines = [line for line in logs.split('\n') if 'error' in line.lower() or 'failed' in line.lower() or 'exception' in line.lower()]
+        if error_lines:
+            return error_lines[-1].strip()[:200]
+
+        return "Job execution failed"
+
+    return ""
+
 @app.get("/api/admin/automation-report")
 async def get_automation_report():
     """Get automation job execution report for Azure Container Apps and manual executions"""
@@ -5321,7 +5416,8 @@ async def get_automation_report():
         import json
         from datetime import datetime, timedelta
         import os
-        
+        import asyncio
+
         global MANUAL_JOB_EXECUTIONS
         
         report = {
@@ -5526,100 +5622,6 @@ async def get_automation_report():
                             except:
                                 pass
 
-                        # For completed jobs (both success and failure), fetch logs for summary/error details
-                        if exec_data["status"] in ["Failed", "Succeeded"]:
-                            try:
-                                exec_name = execution.get("name", "")
-                                resource_group = "rg-legislation-tracker"
-
-                                # Determine job name from job_config
-                                # Map to simple job names
-                                job_name_simple = "executive-orders" if "executive-orders" in job_config["name"] else "state-bills"
-
-                                # Fetch logs using az containerapp job logs show
-                                log_result = subprocess.run([
-                                    "az", "containerapp", "job", "logs", "show",
-                                    "--name", job_config["name"],
-                                    "--resource-group", resource_group,
-                                    "--execution", exec_name,
-                                    "--container", job_config["name"],
-                                    "--format", "text"
-                                ], capture_output=True, text=True, timeout=30)
-
-                                if log_result.returncode == 0 and log_result.stdout:
-                                    logs = log_result.stdout
-
-                                    if exec_data["status"] == "Succeeded":
-                                        # Extract success summary
-                                        import re
-
-                                        if job_name_simple == "executive-orders":
-                                            # Check for "No new executive orders" first
-                                            no_new_match = re.search(r'No new executive orders', logs, re.IGNORECASE)
-                                            if no_new_match:
-                                                exec_data["error"] = "Nothing to update at this time"
-                                            else:
-                                                # Match: "📊 New executive orders processed: X"
-                                                match = re.search(r'New executive orders processed:\s*(\d+)', logs, re.IGNORECASE)
-                                                if match:
-                                                    count = int(match.group(1))
-                                                    if count == 0:
-                                                        exec_data["error"] = "Nothing to update at this time"
-                                                    else:
-                                                        exec_data["error"] = f"Updated {count} executive order{'s' if count != 1 else ''}"
-                                                else:
-                                                    # Fallback pattern
-                                                    match = re.search(r'(\d+)\s+(?:new\s+)?(?:executive\s+)?orders?(?:\s+processed)?', logs, re.IGNORECASE)
-                                                    if match:
-                                                        count = int(match.group(1))
-                                                        if count == 0:
-                                                            exec_data["error"] = "Nothing to update at this time"
-                                                        else:
-                                                            exec_data["error"] = f"Updated {count} executive order{'s' if count != 1 else ''}"
-
-                                        elif job_name_simple == "state-bills":
-                                            # Match: "✅ Daily fetch successful: X states, Y bills processed"
-                                            daily_match = re.search(r'Daily fetch successful:\s*(\d+)\s+states?,\s*(\d+)\s+bills?\s+processed', logs, re.IGNORECASE)
-                                            if daily_match:
-                                                states_count = int(daily_match.group(1))
-                                                bills_count = int(daily_match.group(2))
-                                                if bills_count == 0:
-                                                    exec_data["error"] = "Nothing to update at this time"
-                                                else:
-                                                    exec_data["error"] = f"Updated {bills_count} bill{'s' if bills_count != 1 else ''} across {states_count} state{'s' if states_count != 1 else ''}"
-                                            else:
-                                                # Alternative pattern: "📜 New bills added: X"
-                                                new_bills_match = re.search(r'New bills added:\s*(\d+)', logs, re.IGNORECASE)
-                                                if new_bills_match:
-                                                    count = int(new_bills_match.group(1))
-                                                    if count == 0:
-                                                        exec_data["error"] = "Nothing to update at this time"
-                                                    else:
-                                                        exec_data["error"] = f"Updated {count} bill{'s' if count != 1 else ''}"
-
-                                    else:  # Failed
-                                        # Extract error message from logs
-                                        import re
-                                        # Look for error markers
-                                        error_match = re.search(r'❌\s*(.+?)(?:\n|$)', logs)
-                                        if error_match:
-                                            exec_data["error"] = error_match.group(1).strip()
-                                        else:
-                                            # Look for exception or error keywords
-                                            error_lines = [line for line in logs.split('\n') if 'error' in line.lower() or 'failed' in line.lower() or 'exception' in line.lower()]
-                                            if error_lines:
-                                                exec_data["error"] = error_lines[-1].strip()[:200]  # Last error, max 200 chars
-                                            else:
-                                                exec_data["error"] = "Job execution failed"
-
-                            except subprocess.TimeoutExpired:
-                                if exec_data["status"] == "Failed":
-                                    exec_data["error"] = "Job execution failed. Log fetch timed out."
-                            except Exception as e:
-                                logger.warning(f"⚠️ Error fetching logs for {execution.get('name', '')}: {e}")
-                                if exec_data["status"] == "Failed":
-                                    exec_data["error"] = f"Job execution failed. Error fetching logs: {str(e)[:150]}"
-
                         job_data["executions"].append(exec_data)
                     
                     # Merge with manual executions
@@ -5658,7 +5660,41 @@ async def get_automation_report():
                 }
                 job_data = merge_manual_executions_with_job(job_data, job_name_map)
                 report["jobs"].append(job_data)
-        
+
+        # Fetch logs in parallel for all completed executions (excluding manual ones which already have summaries)
+        log_fetch_tasks = []
+        for job_data in report["jobs"]:
+            job_name_simple = "executive-orders" if "executive-orders" in job_data["name"] else "state-bills"
+            for exec_data in job_data["executions"]:
+                # Only fetch logs for scheduled executions that don't already have summaries
+                if (exec_data["status"] in ["Failed", "Succeeded"] and
+                    not exec_data.get("is_manual", False) and
+                    not exec_data.get("error")):
+                    log_fetch_tasks.append({
+                        "exec_data": exec_data,
+                        "job_name": job_data["name"],
+                        "job_name_simple": job_name_simple
+                    })
+
+        # Fetch all logs in parallel with a timeout
+        if log_fetch_tasks:
+            async def fetch_and_populate(task_info):
+                exec_data = task_info["exec_data"]
+                logs = await fetch_execution_logs_async(
+                    task_info["job_name"],
+                    exec_data["execution_name"],
+                    timeout_seconds=10
+                )
+                if logs:
+                    summary = extract_summary_from_logs(logs, task_info["job_name_simple"], exec_data["status"])
+                    if summary:
+                        exec_data["error"] = summary
+
+            try:
+                await asyncio.gather(*[fetch_and_populate(task) for task in log_fetch_tasks], return_exceptions=True)
+            except Exception as e:
+                logger.warning(f"⚠️ Error fetching logs in parallel: {e}")
+
         # Recalculate summary from merged data
         report["summary"] = {
             "total_executions": 0,
