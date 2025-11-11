@@ -1550,25 +1550,6 @@ const SettingsPage = ({
                                         </h4>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={fetchAutomationReport}
-                                            disabled={automationReport.loading}
-                                            className={`px-3 py-2 text-xs rounded-md transition-colors h-8 flex items-center justify-center ${
-                                                automationReport.loading 
-                                                    ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                                                    : 'bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-400'
-                                            }`}
-                                        >
-                                            {automationReport.loading ? (
-                                                <div className="flex items-center gap-1">
-                                                    <RotateCw size={10} className="animate-spin" />
-                                                    Loading...
-                                                </div>
-                                            ) : (
-                                                'Load Report'
-                                            )}
-                                        </button>
-                                        
                                         {/* Manual trigger button */}
                                         <button
                                             onClick={runAllJobsManually}
@@ -1619,7 +1600,34 @@ const SettingsPage = ({
                                         Error: {automationReport.error}
                                     </div>
                                 )}
-                                
+
+                                {/* Skeleton Loaders */}
+                                {automationReport.loading && !automationReport.data && (
+                                    <div className="space-y-3 mt-3 animate-pulse">
+                                        {/* Summary Cards Skeleton */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                            {[...Array(4)].map((_, i) => (
+                                                <div key={i} className="bg-gray-200 dark:bg-gray-700 p-2 rounded border border-gray-300 dark:border-gray-600 h-14"></div>
+                                            ))}
+                                        </div>
+
+                                        {/* Job Cards Skeleton */}
+                                        {[...Array(2)].map((_, i) => (
+                                            <div key={i} className="bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded p-3">
+                                                <div className="space-y-2">
+                                                    <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded w-3/4"></div>
+                                                    <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-1/2"></div>
+                                                    <div className="space-y-1 mt-3">
+                                                        {[...Array(3)].map((_, j) => (
+                                                            <div key={j} className="h-8 bg-gray-300 dark:bg-gray-600 rounded"></div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
                                 {automationReport.data && (
                                     <div className="space-y-3">
                                         {/* Summary */}
