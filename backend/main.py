@@ -5849,33 +5849,60 @@ async def monitor_azure_job(
                                     if azure_status == "Succeeded":
                                         # Extract success summary
                                         if job_name == "executive-orders":
-                                            # Match: "📊 New executive orders processed: X"
                                             import re
-                                            match = re.search(r'New executive orders processed:\s*(\d+)', logs, re.IGNORECASE)
-                                            if match:
-                                                count = match.group(1)
-                                                summary_or_error = f"{count} new executive orders processed"
+                                            # First check for "No new executive orders" or similar
+                                            no_new_match = re.search(r'No new executive orders', logs, re.IGNORECASE)
+                                            if no_new_match:
+                                                summary_or_error = "Nothing to update at this time"
                                             else:
-                                                # Fallback pattern
-                                                match = re.search(r'(\d+)\s+(?:new\s+)?(?:executive\s+)?orders?(?:\s+processed)?', logs, re.IGNORECASE)
+                                                # Match: "📊 New executive orders processed: X"
+                                                match = re.search(r'New executive orders processed:\s*(\d+)', logs, re.IGNORECASE)
                                                 if match:
-                                                    count = match.group(1)
-                                                    summary_or_error = f"{count} executive orders processed"
+                                                    count = int(match.group(1))
+                                                    if count == 0:
+                                                        summary_or_error = "Nothing to update at this time"
+                                                    else:
+                                                        summary_or_error = f"Updated {count} executive order{'s' if count != 1 else ''}"
+                                                else:
+                                                    # Fallback pattern
+                                                    match = re.search(r'(\d+)\s+(?:new\s+)?(?:executive\s+)?orders?(?:\s+processed)?', logs, re.IGNORECASE)
+                                                    if match:
+                                                        count = int(match.group(1))
+                                                        if count == 0:
+                                                            summary_or_error = "Nothing to update at this time"
+                                                        else:
+                                                            summary_or_error = f"Updated {count} executive order{'s' if count != 1 else ''}"
 
                                         elif job_name == "state-bills":
-                                            # Match state info and counts
                                             import re
-                                            # Look for state name
-                                            state_match = re.search(r'States checked:\s*\d+.*?Recent updates:\s*(\d+)', logs, re.DOTALL)
-                                            if state_match:
-                                                updates = state_match.group(1)
-                                                summary_or_error = f"{updates} state bills updated"
+                                            # Check for completed state patterns
+                                            # Match: "✅ Daily fetch successful: X states, Y bills processed"
+                                            daily_match = re.search(r'Daily fetch successful:\s*(\d+)\s+states?,\s*(\d+)\s+bills?\s+processed', logs, re.IGNORECASE)
+                                            if daily_match:
+                                                states_count = int(daily_match.group(1))
+                                                bills_count = int(daily_match.group(2))
+                                                if bills_count == 0:
+                                                    summary_or_error = "Nothing to update at this time"
+                                                else:
+                                                    summary_or_error = f"Updated {bills_count} bill{'s' if bills_count != 1 else ''} across {states_count} state{'s' if states_count != 1 else ''}"
                                             else:
-                                                # Fallback: look for any bill count
-                                                match = re.search(r'(\d+)\s+(?:state\s+)?bills?(?:\s+(?:processed|updated))?', logs, re.IGNORECASE)
-                                                if match:
-                                                    count = match.group(1)
-                                                    summary_or_error = f"{count} bills processed"
+                                                # Alternative pattern: "📜 New bills added: X"
+                                                new_bills_match = re.search(r'New bills added:\s*(\d+)', logs, re.IGNORECASE)
+                                                if new_bills_match:
+                                                    count = int(new_bills_match.group(1))
+                                                    if count == 0:
+                                                        summary_or_error = "Nothing to update at this time"
+                                                    else:
+                                                        summary_or_error = f"Updated {count} bill{'s' if count != 1 else ''}"
+                                                else:
+                                                    # Final fallback
+                                                    match = re.search(r'(\d+)\s+(?:state\s+)?bills?(?:\s+(?:processed|updated))?', logs, re.IGNORECASE)
+                                                    if match:
+                                                        count = int(match.group(1))
+                                                        if count == 0:
+                                                            summary_or_error = "Nothing to update at this time"
+                                                        else:
+                                                            summary_or_error = f"Updated {count} bill{'s' if count != 1 else ''}"
 
                                     else:  # Failed
                                         # Extract error message from logs

@@ -1769,7 +1769,7 @@ const SettingsPage = ({
                                                                                     </span>
                                                                                 </div>
                                                                                 <div className="col-span-2">
-                                                                                    <span className="text-gray-500 dark:text-gray-400">Execution ID:</span>
+                                                                                    <span className="text-gray-500 dark:text-gray-400">Pipeline ID:</span>
                                                                                     <span className="ml-1 text-gray-700 dark:text-gray-300 font-mono text-[10px]">
                                                                                         {exec.execution_name}
                                                                                     </span>
