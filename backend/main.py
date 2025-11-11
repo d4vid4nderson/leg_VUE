@@ -5828,47 +5828,70 @@ async def monitor_azure_job(
                         azure_status = our_execution.get("properties", {}).get("status", "Unknown")
 
                         if azure_status in ["Succeeded", "Failed"]:
-                            # Job completed - get logs to extract summary
+                            # Job completed - fetch logs to extract summary/error info
                             end_time = datetime.utcnow().isoformat() + "Z"
 
-                            summary = None
-                            if azure_status == "Succeeded":
-                                # Try to get logs and extract summary
-                                try:
-                                    log_result = subprocess.run([
-                                        "az", "containerapp", "job", "logs", "show",
-                                        "--name", azure_job_name,
-                                        "--resource-group", resource_group,
-                                        "--output", "table"
-                                    ], capture_output=True, text=True, timeout=30)
+                            summary_or_error = None
+                            try:
+                                # Fetch logs from the specific execution
+                                log_result = subprocess.run([
+                                    "az", "containerapp", "job", "logs", "show",
+                                    "--name", azure_job_name,
+                                    "--resource-group", resource_group,
+                                    "--execution", execution_name,
+                                    "--container", azure_job_name,
+                                    "--format", "text"
+                                ], capture_output=True, text=True, timeout=30)
 
-                                    if log_result.returncode == 0 and log_result.stdout:
-                                        # Extract summary from logs
-                                        logs = log_result.stdout
+                                if log_result.returncode == 0 and log_result.stdout:
+                                    logs = log_result.stdout
 
-                                        # Look for common success patterns in logs
+                                    if azure_status == "Succeeded":
+                                        # Extract success summary
                                         if job_name == "executive-orders":
-                                            # Look for "X new orders processed" pattern
+                                            # Match: "📊 New executive orders processed: X"
                                             import re
-                                            match = re.search(r'(\d+)\s+new\s+(orders?|executive orders?)', logs, re.IGNORECASE)
+                                            match = re.search(r'New executive orders processed:\s*(\d+)', logs, re.IGNORECASE)
                                             if match:
                                                 count = match.group(1)
-                                                summary = f"{count} new executive orders processed"
-                                        elif job_name == "state-bills":
-                                            # Look for "X bills processed" pattern
-                                            import re
-                                            match = re.search(r'(\d+)\s+(bills?|state bills?)\s+processed', logs, re.IGNORECASE)
-                                            if match:
-                                                count = match.group(1)
-                                                summary = f"{count} state bills processed"
-                                            # Also look for state-specific info
-                                            state_match = re.search(r'Processing state:\s+([A-Z]{2})', logs)
-                                            if state_match and summary:
-                                                state = state_match.group(1)
-                                                summary = f"{summary} for {state}"
+                                                summary_or_error = f"{count} new executive orders processed"
+                                            else:
+                                                # Fallback pattern
+                                                match = re.search(r'(\d+)\s+(?:new\s+)?(?:executive\s+)?orders?(?:\s+processed)?', logs, re.IGNORECASE)
+                                                if match:
+                                                    count = match.group(1)
+                                                    summary_or_error = f"{count} executive orders processed"
 
-                                except Exception as log_error:
-                                    logger.warning(f"Failed to fetch logs for summary: {log_error}")
+                                        elif job_name == "state-bills":
+                                            # Match state info and counts
+                                            import re
+                                            # Look for state name
+                                            state_match = re.search(r'States checked:\s*\d+.*?Recent updates:\s*(\d+)', logs, re.DOTALL)
+                                            if state_match:
+                                                updates = state_match.group(1)
+                                                summary_or_error = f"{updates} state bills updated"
+                                            else:
+                                                # Fallback: look for any bill count
+                                                match = re.search(r'(\d+)\s+(?:state\s+)?bills?(?:\s+(?:processed|updated))?', logs, re.IGNORECASE)
+                                                if match:
+                                                    count = match.group(1)
+                                                    summary_or_error = f"{count} bills processed"
+
+                                    else:  # Failed
+                                        # Extract error message from logs
+                                        import re
+                                        # Look for error markers
+                                        error_match = re.search(r'❌\s*(.+?)(?:\n|$)', logs)
+                                        if error_match:
+                                            summary_or_error = error_match.group(1).strip()
+                                        else:
+                                            # Look for exception or error keywords
+                                            error_lines = [line for line in logs.split('\n') if 'error' in line.lower() or 'failed' in line.lower() or 'exception' in line.lower()]
+                                            if error_lines:
+                                                summary_or_error = error_lines[-1].strip()[:200]  # Last error, max 200 chars
+
+                            except Exception as log_error:
+                                logger.warning(f"Failed to fetch/parse logs for summary: {log_error}")
 
                             track_manual_job_execution(
                                 job_name=job_name,
@@ -5876,10 +5899,12 @@ async def monitor_azure_job(
                                 start_time=start_time,
                                 end_time=end_time,
                                 azure_execution_name=execution_name,
-                                error=summary  # Use error field to store summary for now
+                                error=summary_or_error  # Use error field for both success summary and failure info
                             )
 
                             logger.info(f"Azure job {azure_job_name} completed with status: {azure_status}")
+                            if summary_or_error:
+                                logger.info(f"Summary/Info: {summary_or_error}")
                             return
 
                         elif azure_status == "Running":

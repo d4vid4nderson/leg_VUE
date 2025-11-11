@@ -147,6 +147,11 @@ const SettingsPage = ({
         setTempVersion(appVersion || '1.0.0');
     }, [appVersion]);
 
+    // Auto-load automation report on component mount
+    useEffect(() => {
+        fetchAutomationReport();
+    }, []); // Empty dependency array = runs once on mount
+
     // Save version and notify App.jsx
     const handleVersionUpdate = () => {
         if (tempVersion.trim() === '') {
