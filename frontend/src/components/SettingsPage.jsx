@@ -1388,40 +1388,124 @@ const SettingsPage = ({
                                         </div>
                                     </div>
 
-                                    {/* Most Active Users */}
-                                    {analyticsData.data.topUsers && analyticsData.data.topUsers.length > 0 && (
+                                    {/* All Users Analytics Table */}
+                                    {analyticsData.data.allUsers && analyticsData.data.allUsers.length > 0 && (
                                         <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-600/50 rounded-lg p-4">
-                                            <h5 className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Most Active Users</h5>
-                                            <p className="text-xs text-gray-500 dark:text-gray-300 mb-3">Based on highlighted items in the database</p>
-                                            <div className="space-y-2">
-                                                {analyticsData.data.topUsers.map((user, index) => (
-                                                    <div key={index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-3 px-4 bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30 gap-3 sm:gap-0">
-                                                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center border border-blue-200 dark:border-blue-600/50 flex-shrink-0">
-                                                                <User size={16} className="text-blue-600 dark:text-blue-300" />
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div>
+                                                    <h5 className="font-semibold text-gray-800 dark:text-gray-100">User Analytics</h5>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-300 mt-1">
+                                                        Showing {analyticsData.data.allUsers.length} authenticated user{analyticsData.data.allUsers.length !== 1 ? 's' : ''}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Desktop Table View */}
+                                            <div className="hidden lg:block overflow-x-auto">
+                                                <table className="w-full text-sm">
+                                                    <thead>
+                                                        <tr className="border-b border-gray-300 dark:border-gray-600">
+                                                            <th className="text-left py-2 px-3 font-semibold text-gray-700 dark:text-gray-200">User</th>
+                                                            <th className="text-left py-2 px-3 font-semibold text-gray-700 dark:text-gray-200">Email</th>
+                                                            <th className="text-center py-2 px-3 font-semibold text-gray-700 dark:text-gray-200">Logins</th>
+                                                            <th className="text-center py-2 px-3 font-semibold text-gray-700 dark:text-gray-200">Page Views</th>
+                                                            <th className="text-center py-2 px-3 font-semibold text-gray-700 dark:text-gray-200">Sessions</th>
+                                                            <th className="text-left py-2 px-3 font-semibold text-gray-700 dark:text-gray-200">Most Active Page</th>
+                                                            <th className="text-left py-2 px-3 font-semibold text-gray-700 dark:text-gray-200">Last Login</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {analyticsData.data.allUsers.map((user, index) => (
+                                                            <tr key={index} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700/30 transition-colors">
+                                                                <td className="py-3 px-3">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center border border-blue-200 dark:border-blue-600/50 flex-shrink-0">
+                                                                            <User size={14} className="text-blue-600 dark:text-blue-300" />
+                                                                        </div>
+                                                                        <span className="font-medium text-gray-800 dark:text-gray-100">
+                                                                            {user.displayName || 'Unknown User'}
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-3 px-3 text-gray-600 dark:text-gray-300 text-xs truncate max-w-[200px]">
+                                                                    {user.email || 'N/A'}
+                                                                </td>
+                                                                <td className="py-3 px-3 text-center">
+                                                                    <span className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded text-xs font-medium">
+                                                                        {user.loginCount || 0}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-3 px-3 text-center">
+                                                                    <span className="inline-block bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-1 rounded text-xs font-medium">
+                                                                        {user.pageViewCount || 0}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-3 px-3 text-center">
+                                                                    <span className="inline-block bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-1 rounded text-xs font-medium">
+                                                                        {user.sessionCount || 0}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-3 px-3 text-gray-600 dark:text-gray-300 text-xs">
+                                                                    {user.mostActivePage || 'N/A'}
+                                                                </td>
+                                                                <td className="py-3 px-3 text-gray-600 dark:text-gray-300 text-xs whitespace-nowrap">
+                                                                    {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            {/* Mobile Card View */}
+                                            <div className="lg:hidden space-y-3">
+                                                {analyticsData.data.allUsers.map((user, index) => (
+                                                    <div key={index} className="bg-white dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600/30 p-4">
+                                                        <div className="flex items-start gap-3 mb-3">
+                                                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center border border-blue-200 dark:border-blue-600/50 flex-shrink-0">
+                                                                <User size={18} className="text-blue-600 dark:text-blue-300" />
                                                             </div>
-                                                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 flex-1 min-w-0">
-                                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-100 truncate">
-                                                                    {user.displayName || user.userId || 'Anonymous'}
-                                                                </span>
-                                                                <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-gray-500 dark:text-gray-300">
-                                                                    {user.loginCount !== undefined && user.loginCount > 0 && (
-                                                                        <span className="bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{user.loginCount} logins</span>
-                                                                    )}
-                                                                    {user.highlightCount !== undefined && user.highlightCount > 0 && (
-                                                                        <span className="bg-yellow-100 dark:bg-yellow-900/30 px-2 py-1 rounded">{user.highlightCount} highlights</span>
-                                                                    )}
-                                                                    {user.mostActivePage && (
-                                                                        <span className="bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded">Most active: {user.mostActivePage}</span>
-                                                                    )}
-                                                                </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <h6 className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+                                                                    {user.displayName || 'Unknown User'}
+                                                                </h6>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1">
+                                                                    {user.email || 'N/A'}
+                                                                </p>
                                                             </div>
                                                         </div>
-                                                        {user.lastLogin && (
-                                                            <div className="text-xs text-gray-500 dark:text-gray-300 whitespace-nowrap sm:text-right">
-                                                                Last: {new Date(user.lastLogin).toLocaleDateString()}
+
+                                                        <div className="grid grid-cols-2 gap-2 mb-3">
+                                                            <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-2">
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400">Logins</p>
+                                                                <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">{user.loginCount || 0}</p>
                                                             </div>
-                                                        )}
+                                                            <div className="bg-green-50 dark:bg-green-900/20 rounded p-2">
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400">Page Views</p>
+                                                                <p className="text-sm font-semibold text-green-700 dark:text-green-300">{user.pageViewCount || 0}</p>
+                                                            </div>
+                                                            <div className="bg-purple-50 dark:bg-purple-900/20 rounded p-2">
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400">Sessions</p>
+                                                                <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">{user.sessionCount || 0}</p>
+                                                            </div>
+                                                            <div className="bg-gray-50 dark:bg-gray-700 rounded p-2">
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400">Highlights</p>
+                                                                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{user.highlightCount || 0}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="border-t border-gray-200 dark:border-gray-600 pt-2 space-y-1">
+                                                            <div className="flex justify-between text-xs">
+                                                                <span className="text-gray-600 dark:text-gray-400">Most Active Page:</span>
+                                                                <span className="text-gray-800 dark:text-gray-200 font-medium">{user.mostActivePage || 'N/A'}</span>
+                                                            </div>
+                                                            <div className="flex justify-between text-xs">
+                                                                <span className="text-gray-600 dark:text-gray-400">Last Login:</span>
+                                                                <span className="text-gray-800 dark:text-gray-200 font-medium">
+                                                                    {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
