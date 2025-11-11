@@ -85,6 +85,14 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Playwright Test Artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
+frontend/tests/screenshots/
+frontend/tests/videos/
+frontend/tests/traces/
+
 # Documentation and commit message files
 AZURE_DEVOPS_COMMANDS.md
 AZURE_DEVOPS_COMMIT.txt
