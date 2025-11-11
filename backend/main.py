@@ -5308,8 +5308,8 @@ def merge_manual_executions_with_job(job_data, job_name_map):
         reverse=True
     )
 
-    # Limit to 10 most recent executions
-    job_data["executions"] = job_data["executions"][:10]
+    # Limit to 3 most recent executions
+    job_data["executions"] = job_data["executions"][:3]
 
     return job_data
 
@@ -5475,7 +5475,7 @@ async def get_automation_report():
                     "az", "containerapp", "job", "execution", "list",
                     "--name", job_config["name"],
                     "--resource-group", "rg-legislation-tracker",
-                    "--query", "[0:10].{name:name, status:properties.status, startTime:properties.startTime, endTime:properties.endTime, template:properties.template}",
+                    "--query", "[0:3].{name:name, status:properties.status, startTime:properties.startTime, endTime:properties.endTime, template:properties.template}",
                     "-o", "json"
                 ]
 
@@ -5526,78 +5526,99 @@ async def get_automation_report():
                             except:
                                 pass
 
-                        # For failed jobs, try to get error details from Azure Log Analytics
-                        if exec_data["status"] == "Failed":
+                        # For completed jobs (both success and failure), fetch logs for summary/error details
+                        if exec_data["status"] in ["Failed", "Succeeded"]:
                             try:
                                 exec_name = execution.get("name", "")
-                                logger.info(f"📋 Fetching logs for failed execution: {exec_name}")
+                                resource_group = "rg-legislation-tracker"
 
-                                # Get Log Analytics workspace ID from environment
-                                env_query = [
-                                    "az", "containerapp", "env", "show",
-                                    "--name", "legis-vue",
-                                    "--resource-group", "rg-legislation-tracker",
-                                    "--query", "properties.appLogsConfiguration.logAnalyticsConfiguration.customerId",
-                                    "-o", "tsv"
-                                ]
-                                env_result = subprocess.run(env_query, capture_output=True, text=True, timeout=10)
-                                workspace_id = env_result.stdout.strip() if env_result.returncode == 0 else None
+                                # Determine job name from job_config
+                                # Map to simple job names
+                                job_name_simple = "executive-orders" if "executive-orders" in job_config["name"] else "state-bills"
 
-                                if workspace_id:
-                                    # Query Log Analytics for error logs from this job
-                                    analytics_query = (
-                                        f"ContainerAppConsoleLogs_CL "
-                                        f"| where ContainerJobName_s == '{job_config['name']}' "
-                                        f"| where TimeGenerated > ago(24h) "
-                                        f"| project TimeGenerated, Log_s "
-                                        f"| order by TimeGenerated desc "
-                                        f"| take 20"
-                                    )
+                                # Fetch logs using az containerapp job logs show
+                                log_result = subprocess.run([
+                                    "az", "containerapp", "job", "logs", "show",
+                                    "--name", job_config["name"],
+                                    "--resource-group", resource_group,
+                                    "--execution", exec_name,
+                                    "--container", job_config["name"],
+                                    "--format", "text"
+                                ], capture_output=True, text=True, timeout=30)
 
-                                    log_cmd = [
-                                        "az", "monitor", "log-analytics", "query",
-                                        "--workspace", workspace_id,
-                                        "--analytics-query", analytics_query,
-                                        "-o", "json"
-                                    ]
+                                if log_result.returncode == 0 and log_result.stdout:
+                                    logs = log_result.stdout
 
-                                    log_result = subprocess.run(log_cmd, capture_output=True, text=True, timeout=15)
+                                    if exec_data["status"] == "Succeeded":
+                                        # Extract success summary
+                                        import re
 
-                                    if log_result.returncode == 0 and log_result.stdout:
-                                        import json
-                                        log_data = json.loads(log_result.stdout)
-
-                                        if log_data:
-                                            # Extract error lines
-                                            error_lines = []
-                                            for entry in log_data:
-                                                log_text = entry.get('Log_s', '')
-                                                # Look for actual errors
-                                                if any(keyword in log_text.lower() for keyword in
-                                                       ['error', 'failed', 'exception', 'traceback', 'errno', 'cannot', 'unable']):
-                                                    error_lines.append(log_text.strip())
-
-                                            if error_lines:
-                                                # Take first 3 unique error lines
-                                                unique_errors = list(dict.fromkeys(error_lines))[:3]
-                                                exec_data["error"] = " | ".join(unique_errors)[:500]
-                                                logger.info(f"✅ Found {len(unique_errors)} error lines for {exec_name}")
+                                        if job_name_simple == "executive-orders":
+                                            # Check for "No new executive orders" first
+                                            no_new_match = re.search(r'No new executive orders', logs, re.IGNORECASE)
+                                            if no_new_match:
+                                                exec_data["error"] = "Nothing to update at this time"
                                             else:
-                                                # No specific errors found, show last log line
-                                                last_log = log_data[0].get('Log_s', '') if log_data else ''
-                                                exec_data["error"] = f"Job failed. Last log: {last_log[:200]}"
+                                                # Match: "📊 New executive orders processed: X"
+                                                match = re.search(r'New executive orders processed:\s*(\d+)', logs, re.IGNORECASE)
+                                                if match:
+                                                    count = int(match.group(1))
+                                                    if count == 0:
+                                                        exec_data["error"] = "Nothing to update at this time"
+                                                    else:
+                                                        exec_data["error"] = f"Updated {count} executive order{'s' if count != 1 else ''}"
+                                                else:
+                                                    # Fallback pattern
+                                                    match = re.search(r'(\d+)\s+(?:new\s+)?(?:executive\s+)?orders?(?:\s+processed)?', logs, re.IGNORECASE)
+                                                    if match:
+                                                        count = int(match.group(1))
+                                                        if count == 0:
+                                                            exec_data["error"] = "Nothing to update at this time"
+                                                        else:
+                                                            exec_data["error"] = f"Updated {count} executive order{'s' if count != 1 else ''}"
+
+                                        elif job_name_simple == "state-bills":
+                                            # Match: "✅ Daily fetch successful: X states, Y bills processed"
+                                            daily_match = re.search(r'Daily fetch successful:\s*(\d+)\s+states?,\s*(\d+)\s+bills?\s+processed', logs, re.IGNORECASE)
+                                            if daily_match:
+                                                states_count = int(daily_match.group(1))
+                                                bills_count = int(daily_match.group(2))
+                                                if bills_count == 0:
+                                                    exec_data["error"] = "Nothing to update at this time"
+                                                else:
+                                                    exec_data["error"] = f"Updated {bills_count} bill{'s' if bills_count != 1 else ''} across {states_count} state{'s' if states_count != 1 else ''}"
+                                            else:
+                                                # Alternative pattern: "📜 New bills added: X"
+                                                new_bills_match = re.search(r'New bills added:\s*(\d+)', logs, re.IGNORECASE)
+                                                if new_bills_match:
+                                                    count = int(new_bills_match.group(1))
+                                                    if count == 0:
+                                                        exec_data["error"] = "Nothing to update at this time"
+                                                    else:
+                                                        exec_data["error"] = f"Updated {count} bill{'s' if count != 1 else ''}"
+
+                                    else:  # Failed
+                                        # Extract error message from logs
+                                        import re
+                                        # Look for error markers
+                                        error_match = re.search(r'❌\s*(.+?)(?:\n|$)', logs)
+                                        if error_match:
+                                            exec_data["error"] = error_match.group(1).strip()
                                         else:
-                                            exec_data["error"] = "Job execution failed (no logs found in last 24h)"
-                                    else:
-                                        exec_data["error"] = "Job execution failed. Unable to query logs."
-                                else:
-                                    exec_data["error"] = "Job execution failed. Log Analytics workspace not found."
+                                            # Look for exception or error keywords
+                                            error_lines = [line for line in logs.split('\n') if 'error' in line.lower() or 'failed' in line.lower() or 'exception' in line.lower()]
+                                            if error_lines:
+                                                exec_data["error"] = error_lines[-1].strip()[:200]  # Last error, max 200 chars
+                                            else:
+                                                exec_data["error"] = "Job execution failed"
 
                             except subprocess.TimeoutExpired:
-                                exec_data["error"] = "Job execution failed. Log fetch timed out."
+                                if exec_data["status"] == "Failed":
+                                    exec_data["error"] = "Job execution failed. Log fetch timed out."
                             except Exception as e:
                                 logger.warning(f"⚠️ Error fetching logs for {execution.get('name', '')}: {e}")
-                                exec_data["error"] = f"Job execution failed. Error fetching logs: {str(e)[:150]}"
+                                if exec_data["status"] == "Failed":
+                                    exec_data["error"] = f"Job execution failed. Error fetching logs: {str(e)[:150]}"
 
                         job_data["executions"].append(exec_data)
                     

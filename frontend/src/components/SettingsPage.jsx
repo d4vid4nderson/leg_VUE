@@ -1546,7 +1546,7 @@ const SettingsPage = ({
                                     <div className="flex items-center gap-2 h-8">
                                         <Clock size={16} className="text-gray-600 dark:text-gray-400" />
                                         <h4 className="font-semibold text-gray-800 dark:text-gray-200 leading-none text-sm">
-                                            Automation Report
+                                            Nightly Automation Status Report
                                         </h4>
                                     </div>
                                     <div className="flex items-center gap-2">
