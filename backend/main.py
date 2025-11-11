@@ -5274,12 +5274,24 @@ def merge_manual_executions_with_job(job_data, job_name_map):
         if exec["job_name"] == manual_name
     ]
 
+    # Collect all Azure execution names to avoid duplicates
+    azure_execution_names = set(
+        exec_data.get("execution_name", "")
+        for exec_data in job_data.get("executions", [])
+    )
+
     # Deduplicate manual executions based on azure_execution_name (if available) or start_time
     # Keep the most recent version (with end_time if available)
     seen_executions = {}
     for manual_exec in manual_executions:
+        # Skip if this execution already exists in Azure's list
+        azure_exec_name = manual_exec.get("azure_execution_name")
+        if azure_exec_name and azure_exec_name in azure_execution_names:
+            logger.info(f"Skipping duplicate manual execution: {azure_exec_name} (already in Azure list)")
+            continue
+
         # Use azure_execution_name as the key if available, otherwise use start_time
-        dedup_key = manual_exec.get("azure_execution_name") or manual_exec["start_time"]
+        dedup_key = azure_exec_name or manual_exec["start_time"]
 
         if dedup_key in seen_executions:
             # Keep the one with end_time (completed) over one without (running)
@@ -5292,7 +5304,7 @@ def merge_manual_executions_with_job(job_data, job_name_map):
     # Convert deduplicated manual executions to the same format as Azure executions
     for manual_exec in seen_executions.values():
         formatted_exec = {
-            "execution_name": manual_exec["execution_name"],
+            "execution_name": manual_exec.get("azure_execution_name") or manual_exec["execution_name"],
             "status": manual_exec["status"],
             "start_time": manual_exec["start_time"],
             "end_time": manual_exec["end_time"],
