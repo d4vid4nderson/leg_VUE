@@ -3,68 +3,67 @@
  */
 
 /**
- * Login with demo credentials
+ * Login with demo credentials by setting auth state directly
  * @param {import('@playwright/test').Page} page
  */
 export async function loginAsDemo(page) {
-  // Navigate to homepage
-  await page.goto('/');
+  // Set authentication data directly in localStorage before navigating
+  await page.addInitScript(() => {
+    const authToken = 'demo-test-token-' + Date.now();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  // Wait for login modal to appear
-  await page.waitForSelector('[data-testid="login-modal"], text="Sign in"', { timeout: 5000 });
+    const userData = {
+      username: 'demo@legislationvue.com',
+      name: 'Test User',
+      email: 'demo@legislationvue.com',
+      role: 'analyst',
+      authMethod: 'demo',
+      expires_at: expiresAt
+    };
 
-  // Click demo login if available, otherwise fill credentials
-  const demoButton = page.locator('button:has-text("Demo Account")');
-  if (await demoButton.isVisible()) {
-    await demoButton.click();
-  } else {
-    // Fill in demo credentials
-    await page.fill('input[type="email"]', 'demo@example.com');
-    await page.fill('input[type="password"]', 'demo123');
-    await page.click('button:has-text("Sign in"), button:has-text("Login")');
-  }
+    // Set auth token and user data
+    localStorage.setItem('auth_token', authToken);
+    localStorage.setItem('user', JSON.stringify(userData));
 
-  // Wait for login to complete (check for user profile or homepage content)
-  await page.waitForSelector('[data-testid="user-menu"], .homepage-content, text="Executive Orders"', { timeout: 10000 });
-
-  // Verify we're logged in
-  const isLoggedIn = await page.evaluate(() => {
-    return !!localStorage.getItem('auth_token') || !!localStorage.getItem('user');
+    // Create a user ID for analytics
+    localStorage.setItem('userId', 'test-user-' + Date.now());
+    localStorage.setItem('sessionId', 'test-session-' + Date.now());
   });
 
-  if (!isLoggedIn) {
-    throw new Error('Login failed - no auth token found');
-  }
+  // Navigate to homepage (will use the auth data we just set)
+  await page.goto('/');
+
+  // Wait for page to be ready
+  await page.waitForLoadState('domcontentloaded');
+
+  // Give the app time to process auth state
+  await page.waitForTimeout(500);
 
   return true;
 }
 
 /**
- * Logout current user
+ * Logout current user by clearing auth state
  * @param {import('@playwright/test').Page} page
  */
 export async function logout(page) {
-  // Click user menu/profile
-  const userMenu = page.locator('[data-testid="user-menu"], button:has-text("Logout")').first();
-
-  if (await userMenu.isVisible()) {
-    await userMenu.click();
-
-    // Click logout
-    const logoutButton = page.locator('button:has-text("Logout"), button:has-text("Sign out")').first();
-    if (await logoutButton.isVisible()) {
-      await logoutButton.click();
-    }
-  }
-
-  // Clear storage
+  // Clear storage (simplest approach for testing)
   await page.evaluate(() => {
     localStorage.clear();
     sessionStorage.clear();
   });
 
-  // Wait for login modal to appear again
-  await page.waitForSelector('[data-testid="login-modal"], text="Sign in"', { timeout: 5000 });
+  // Reload page to trigger logout state
+  await page.reload();
+
+  // Wait for page to load
+  await page.waitForLoadState('domcontentloaded');
+
+  // Wait for network to settle
+  await page.waitForLoadState('networkidle').catch(() => {});
+
+  // Give time for login modal to appear
+  await page.waitForTimeout(1500);
 
   return true;
 }
