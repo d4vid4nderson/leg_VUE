@@ -1228,6 +1228,7 @@ const StatePage = ({ stateName }) => {
             state: bill?.state || stateName,
             status: bill?.status, // ✅ ADD THE STATUS FIELD!
             legiscan_url: bill?.legiscan_url,
+            pdf_url: bill?.pdf_url,
             introduced_date: bill?.introduced_date,
             last_action_date: bill?.last_action_date,
             reviewed: bill?.reviewed || false,
@@ -1304,6 +1305,7 @@ const StatePage = ({ stateName }) => {
           state: bill?.state || stateName,
           status: bill?.status,
           legiscan_url: bill?.legiscan_url,
+          pdf_url: bill?.pdf_url,
           introduced_date: bill?.introduced_date,
           last_action_date: bill?.last_action_date,
           reviewed: bill?.reviewed || false,
@@ -1435,6 +1437,7 @@ const StatePage = ({ stateName }) => {
           state: bill?.state || stateName,
           status: bill?.status,
           legiscan_url: bill?.legiscan_url,
+          pdf_url: bill?.pdf_url,
           introduced_date: bill?.introduced_date,
           last_action_date: bill?.last_action_date,
           reviewed: bill?.reviewed || false,
