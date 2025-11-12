@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ApplicationInfoModal from './ApplicationInfoModal';
-import DarkModeToggle from './DarkModeToggle';
 import GlobalSearch from './GlobalSearch';
 import {
     Building,
@@ -417,9 +416,6 @@ const Header = ({
                             >
                                 <Search size={18} />
                             </button>
-
-                            {/* Dark Mode Toggle */}
-                            <DarkModeToggle />
 
                             {/* Information Button - Mobile friendly */}
                             <button

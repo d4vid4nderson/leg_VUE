@@ -401,7 +401,7 @@ const Homepage = () => {
       </section>
 
       {/* Coverage Section */}
-      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-br from-gray-50 to-blue-50 dark:from-dark-bg-secondary dark:to-dark-bg">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gray-50 dark:bg-dark-bg-secondary">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
@@ -472,7 +472,7 @@ const Homepage = () => {
       </section>
 
       {/* Highlights Feature Section */}
-      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20">
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-white dark:bg-dark-bg">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 items-center">
             <div>
@@ -674,98 +674,6 @@ const Homepage = () => {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* AI Features Deep Dive */}
-      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
-              Advanced AI Analysis
-            </h2>
-            <p className={getTextClasses('secondary', 'text-xl max-w-3xl mx-auto')}>
-              Our AI doesn't just collect data—it understands it. Get insights 
-              that would take hours of manual analysis in seconds.
-            </p>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
-            <div className={getCardClasses('rounded-xl p-8 shadow-lg')}>
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center mb-6">
-                <FileText size={32} className="text-white" />
-              </div>
-              <h3 className={getTextClasses('primary', 'text-xl font-semibold mb-4')}>Executive Summaries</h3>
-              <p className={getTextClasses('secondary', 'mb-6')}>
-                Distills complex legislation into clear, actionable summaries that highlight the most important provisions and implications.
-              </p>
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <p className="text-purple-800 text-sm italic">
-                  "This bill establishes new data privacy requirements for companies handling personal information, 
-                  with penalties up to $50,000 for violations..."
-                </p>
-              </div>
-            </div>
-            
-            <div className={getCardClasses('rounded-xl p-8 shadow-lg')}>
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center mb-6">
-                <Target size={32} className="text-white" />
-              </div>
-              <h3 className={getTextClasses('primary', 'text-xl font-semibold mb-4')}>Strategic Talking Points</h3>
-              <p className={getTextClasses('secondary', 'mb-6')}>
-                Generates key discussion points for leadership meetings, stakeholder communications, and strategic planning sessions.
-              </p>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-blue-700 text-sm">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  Compliance deadline: 180 days
-                </div>
-                <div className="flex items-center gap-2 text-blue-700 text-sm">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  Estimated implementation cost: $125K
-                </div>
-                <div className="flex items-center gap-2 text-blue-700 text-sm">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  Competitive advantage opportunity
-                </div>
-              </div>
-            </div>
-            
-            <div className={getCardClasses('rounded-xl p-8 shadow-lg')}>
-              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-teal-500 rounded-xl flex items-center justify-center mb-6">
-                <TrendingUp size={32} className="text-white" />
-              </div>
-              <h3 className={getTextClasses('primary', 'text-xl font-semibold mb-4')}>Business Impact Analysis</h3>
-              <p className={getTextClasses('secondary', 'mb-6')}>
-                Identifies specific risks, opportunities, and operational changes your organization needs to consider.
-              </p>
-              <div className="space-y-3">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <div className="text-red-800 text-sm font-medium">Risk Assessment</div>
-                  <div className="text-red-700 text-xs">High compliance burden</div>
-                </div>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                  <div className="text-green-800 text-sm font-medium">Opportunity</div>
-                  <div className="text-green-700 text-xs">Market differentiation potential</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gradient-to-r from-blue-600 to-purple-600">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-bold text-white mb-6">
-            Ready to Transform Your Legislative Intelligence?
-          </h2>
-          <p className="text-xl text-blue-100 mb-10 leading-relaxed">
-            Empower your leadership team with comprehensive legislative intelligence. 
-            Stay informed about regulatory changes that impact your organization with 
-            AI-powered analysis and insights.
-          </p>
-          
         </div>
       </section>
 
