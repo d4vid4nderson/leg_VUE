@@ -32,7 +32,7 @@ export default defineConfig({
 
   // Reporter to use
   reporter: process.env.CI
-    ? [['html'], ['github']]
+    ? [['html'], ['junit', { outputFile: 'test-results/junit.xml' }], ['list']]
     : [['html'], ['list']],
 
   // Shared settings for all the projects below

@@ -24,8 +24,80 @@ variables:
   keyVaultName: 'kv-legislation-tracker'
 
 stages:
+- stage: Test
+  displayName: Run Tests
+  jobs:
+  - job: PlaywrightTests
+    displayName: Run Playwright E2E Tests
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: '18.x'
+
+    - script: |
+        cd frontend
+        npm ci
+      displayName: 'Install frontend dependencies'
+
+    - script: |
+        cd frontend
+        npx playwright install --with-deps
+      displayName: 'Install Playwright browsers'
+
+    - script: |
+        cd frontend
+        npm run dev &
+        DEV_PID=$!
+        echo "Started dev server with PID: $DEV_PID"
+
+        # Wait for dev server to be ready
+        echo "Waiting for dev server to be ready..."
+        for i in {1..30}; do
+          if curl -s http://localhost:3000 > /dev/null; then
+            echo "Dev server is ready!"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 2
+        done
+
+        # Run Playwright tests
+        echo "Running Playwright tests..."
+        npx playwright test
+        TEST_EXIT_CODE=$?
+
+        # Kill dev server
+        echo "Stopping dev server..."
+        kill $DEV_PID || true
+
+        exit $TEST_EXIT_CODE
+      displayName: 'Run Playwright tests'
+      env:
+        CI: true
+
+    - task: PublishTestResults@2
+      displayName: 'Publish test results'
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'frontend/test-results/junit.xml'
+        failTaskOnFailedTests: true
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Playwright report'
+      condition: succeededOrFailed()
+      inputs:
+        targetPath: 'frontend/playwright-report'
+        artifact: 'playwright-report'
+        publishLocation: 'pipeline'
+
 - stage: Build
   displayName: Build and Push
+  dependsOn: Test
+  condition: succeeded()
   jobs:
   - job: BuildBackend
     displayName: Build Backend
