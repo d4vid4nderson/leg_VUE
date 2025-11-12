@@ -143,6 +143,9 @@ def get_job_summary(execution_name: str) -> Optional[Dict]:
     """
     Retrieve a job execution summary by execution name
 
+    Also tries to find summaries with revision suffixes if exact match not found.
+    For example, if looking for 'job-exec-123', also tries 'job-exec-123-%'
+
     Returns:
         Dictionary with summary data or None if not found
     """
@@ -150,6 +153,7 @@ def get_job_summary(execution_name: str) -> Optional[Dict]:
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
+            # First try exact match
             cursor.execute("""
                 SELECT
                     execution_name, job_name, job_type, status, summary,
@@ -160,6 +164,21 @@ def get_job_summary(execution_name: str) -> Optional[Dict]:
             """, (execution_name,))
 
             row = cursor.fetchone()
+
+            # If not found, try with wildcard suffix (for revision suffixes like -6rnzm)
+            if not row:
+                cursor.execute("""
+                    SELECT TOP 1
+                        execution_name, job_name, job_type, status, summary,
+                        items_processed, items_total, states_count, is_manual,
+                        start_time, end_time, created_at, updated_at
+                    FROM dbo.job_execution_summaries
+                    WHERE execution_name LIKE ?
+                    ORDER BY created_at DESC
+                """, (execution_name + '-%',))
+
+                row = cursor.fetchone()
+
             if row:
                 return {
                     'execution_name': row[0],
