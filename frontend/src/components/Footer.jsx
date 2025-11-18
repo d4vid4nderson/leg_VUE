@@ -26,7 +26,7 @@ const Footer = ({ appVersion }) => {
               Strategic initiative tracking and management platform for modern organizations.
             </p>
             <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 break-words">
-              &copy; 2025 Built with <span>❤️</span> by <a href="https://moregroup-inc.com/" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">MOREgroup Solutions Development</a>. All rights reserved. Version: <span className="font-mono">{appVersion}</span>
+              &copy; 2025 Built with <span>❤️</span> by <a href="https://moregroup-inc.com/" target="_blank" rel="noopener noreferrer" className="hover:text-violet-600 dark:hover:text-violet-400 transition-colors">MOREgroup Solutions Development</a>. All rights reserved. Version: <span className="font-mono">{appVersion}</span>
             </p>
           </div>
 
