@@ -28,7 +28,7 @@ const Footer = ({ appVersion }) => {
             <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 break-words">
               &copy; 2025 Built with <span>❤️</span> by <a href="https://moregroup-inc.com/" target="_blank" rel="noopener noreferrer" className="text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors">MOREgroup Solutions Development</a>.
             </p>
-            <p className="text-xs text-gray-600 dark:text-gray-400 break-words">
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 break-words">
               All rights reserved. Version: <span className="font-mono">{appVersion}</span>
             </p>
           </div>
