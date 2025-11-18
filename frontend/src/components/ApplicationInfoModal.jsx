@@ -897,13 +897,13 @@ const ApplicationInfoModal = ({ isOpen, onClose }) => {
             <Terminal className="w-12 h-12 text-white" />
           </div>
           <div>
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-dark-text">MOREgroup Development</h3>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-dark-text">MOREgroup Solutions Development</h3>
             <p className="text-lg text-gray-600 dark:text-dark-text-secondary">Changing our Business, One App at a Time.</p>
           </div>
         </div>
         <p className="text-gray-700 dark:text-dark-text-secondary text-xl leading-relaxed">
-          MOREgroup Development is a team of visionary developers and experts dedicated to transforming how our organization interacts with data and each other. 
-          We leverage the latest technologies to build intelligent applications that empower our teams and clients to make informed decisions quickly and efficiently.       
+          MOREgroup Solutions Development is a team of visionary developers and experts dedicated to transforming how our organization interacts with data and each other.
+          We leverage the latest technologies to build intelligent applications that empower our teams and clients to make informed decisions quickly and efficiently.
         </p>
       </div>
 
