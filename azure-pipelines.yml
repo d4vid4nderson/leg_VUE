@@ -126,6 +126,18 @@ stages:
     pool:
       vmImage: $(vmImageName)
     steps:
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: '18.x'
+
+    - script: |
+        cd frontend
+        echo "Current version: $(cat package.json | grep version | head -1)"
+        node update-version.cjs $(Build.BuildId)
+        echo "Updated version: $(cat package.json | grep version | head -1)"
+      displayName: 'Update version number'
+
     - task: AzureCLI@2
       displayName: Build and Push Frontend Image
       inputs:
@@ -135,10 +147,10 @@ stages:
         inlineScript: |
           # Login to ACR
           az acr login --name moregroupdev
-          
+
           # Build image with platform specification
           docker build --platform linux/amd64 -t $(containerRegistry)/$(frontendImageName):$(tag) -t $(containerRegistry)/$(frontendImageName):latest ./frontend
-          
+
           # Push image
           docker push $(containerRegistry)/$(frontendImageName):$(tag)
           docker push $(containerRegistry)/$(frontendImageName):latest

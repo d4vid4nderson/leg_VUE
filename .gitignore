@@ -93,6 +93,9 @@ frontend/tests/screenshots/
 frontend/tests/videos/
 frontend/tests/traces/
 
+# Auto-generated version files
+frontend/src/version.json
+
 # Documentation and commit message files
 AZURE_DEVOPS_COMMANDS.md
 AZURE_DEVOPS_COMMIT.txt
