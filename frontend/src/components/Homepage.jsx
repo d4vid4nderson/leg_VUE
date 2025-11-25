@@ -1,0 +1,695 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import GlobalSearchBanner from './GlobalSearchBanner';
+import GlobalSearch from './GlobalSearch';
+import PWAInstallModal from './PWAInstallModal';
+import { getPageContainerClasses, getCardClasses, getTextClasses } from '../utils/darkModeClasses';
+import { usePageTracking } from '../hooks/usePageTracking';
+import {
+  ScrollText,
+  Star,
+  FileText,
+  Sparkles,
+  TrendingUp,
+  Target,
+  ChevronRight,
+  Building,
+  GraduationCap,
+  HeartPulse,
+  Wrench,
+  Search,
+  Bell,
+  BarChart3,
+  Users,
+  Clock,
+  Shield,
+  ArrowRight,
+  CheckCircle,
+  Zap,
+  Globe,
+  Brain,
+  Eye,
+  Download,
+  PlayCircle,
+  Flag,
+  Check,
+  Hash,
+  Calendar,
+  ChevronDown,
+  LayoutGrid,
+  X
+} from 'lucide-react';
+
+// Mobile Availability Sticker Component
+const MobileSticker = ({ onShowModal }) => {
+    const [isVisible, setIsVisible] = useState(true);
+    
+    // Check localStorage to see if user has dismissed the sticker
+    useEffect(() => {
+        const dismissed = localStorage.getItem('mobileStickerDismissed');
+        if (dismissed === 'true') {
+            setIsVisible(false);
+        }
+    }, []);
+    
+    const handleDismiss = (e) => {
+        e.stopPropagation();
+        setIsVisible(false);
+        localStorage.setItem('mobileStickerDismissed', 'true');
+    };
+
+    const handleStickerClick = () => {
+        onShowModal();
+    };
+    
+    if (!isVisible) return null;
+    
+    return (
+        <div className="flex justify-center py-6 px-4">
+            <div className="relative inline-block group">
+                <style jsx>{`
+                    @keyframes shine {
+                        0% {
+                            left: -100%;
+                        }
+                        100% {
+                            left: 100%;
+                        }
+                    }
+                    .shine-effect {
+                        position: absolute;
+                        top: 0;
+                        left: -100%;
+                        width: 100%;
+                        height: 100%;
+                        background: linear-gradient(
+                            90deg,
+                            transparent,
+                            rgba(255, 255, 255, 0.4),
+                            transparent
+                        );
+                        border-radius: 9999px;
+                        animation: shine 1.5s ease-in-out;
+                        pointer-events: none;
+                    }
+                `}</style>
+                <div 
+                    onClick={handleStickerClick} 
+                    className="relative bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 text-white px-4 py-2 rounded-full text-xs sm:text-sm font-semibold shadow-lg flex items-center gap-2 border-2 border-white/80 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-105"
+                >
+                    <div className="shine-effect group-hover:animate-none group-hover:left-[-100%]" style={{zIndex: 1}}></div>
+                    <div className="shine-effect hidden group-hover:block group-hover:animate-[shine_1.5s_ease-in-out]" style={{zIndex: 1}}></div>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10">
+                        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                        <line x1="12" y1="18" x2="12" y2="18"></line>
+                    </svg>
+                    <span className="relative z-20">Now available on mobile devices</span>
+                    <button 
+                        onClick={handleDismiss}
+                        className="ml-1 hover:bg-white/20 rounded-full p-2 -m-1 transition-colors relative z-30 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                        title="Dismiss"
+                        aria-label="Dismiss mobile notification"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const Homepage = () => {
+  const navigate = useNavigate();
+  const [hoveredFeature, setHoveredFeature] = useState(null);
+  const [hoveredButton, setHoveredButton] = useState(null);
+  const [showPWAModal, setShowPWAModal] = useState(false);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+  
+
+  // Track page view
+  usePageTracking('Homepage');
+
+  // Keyboard shortcut for search (Cmd/Ctrl + K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowGlobalSearch(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  return (
+    <div className={getPageContainerClasses()}>
+      {/* Global Search Banner */}
+      <GlobalSearchBanner 
+        onTryNow={() => {
+          setShowGlobalSearch(true);
+        }}
+        expirationDate="2025-12-31" // Banner will expire on December 31, 2025
+      />
+      
+      <style jsx="true">{`
+        .gradient-button {
+          background: transparent;
+          transition: all 0.3s ease;
+        }
+        .gradient-button:hover {
+          background: linear-gradient(to right, #2563eb, #9333ea) !important;
+          color: white !important;
+        }
+        .gradient-button:hover svg {
+          color: white !important;
+          stroke: white !important;
+        }
+        .gradient-button:hover svg path {
+          stroke: white !important;
+        }
+        .gradient-button:hover svg rect {
+          stroke: white !important;
+          fill: none !important;
+        }
+        .gradient-button:hover svg line {
+          stroke: white !important;
+        }
+        .cta-button-secondary {
+          background: transparent;
+          transition: all 0.3s ease;
+        }
+        .cta-button-secondary:hover {
+          background: white !important;
+          color: #2563eb !important;
+        }
+        .cta-button-secondary:hover svg {
+          color: #2563eb !important;
+          stroke: #2563eb !important;
+        }
+        .cta-button-secondary:hover svg path {
+          stroke: #2563eb !important;
+        }
+        .cta-button-secondary:hover svg rect {
+          stroke: #2563eb !important;
+          fill: none !important;
+        }
+        .cta-button-secondary:hover svg line {
+          stroke: #2563eb !important;
+        }
+        .cta-button-container:hover .cta-button-primary {
+          background: transparent !important;
+          color: white !important;
+          border: 2px solid white !important;
+        }
+        .cta-button-container:hover .cta-button-primary svg {
+          color: white !important;
+          stroke: white !important;
+        }
+        .cta-button-container:hover .cta-button-primary svg path {
+          stroke: white !important;
+        }
+        .cta-button-container:hover .cta-button-primary svg rect {
+          stroke: white !important;
+          fill: none !important;
+        }
+        .cta-button-container:hover .cta-button-primary svg line {
+          stroke: white !important;
+        }
+        .cta-button-container .cta-button-secondary:hover ~ .cta-button-primary {
+          background: transparent !important;
+          color: white !important;
+          border: 2px solid white !important;
+        }
+      `}</style>
+      {/* Hero Section */}
+      <section className="relative overflow-hidden pt-12 pb-20">
+        <div className="max-w-7xl mx-auto">
+          {/* Mobile Sticker - Below HR1 Banner, Above Title */}
+          <MobileSticker onShowModal={() => setShowPWAModal(true)} />
+          
+          <div className="text-center mb-12 mt-8">
+            
+            <h1 className={getTextClasses('primary', 'text-3xl sm:text-4xl md:text-6xl font-bold mb-6 sm:mb-8 leading-tight')}>
+              <span className="block">Track Policy &</span>
+              <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent py-2">Legislative Changes</span>
+            </h1>
+            
+            <p className={getTextClasses('secondary', 'text-base sm:text-lg mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4 sm:px-0')}>
+              LegislationVUE automatically tracks Executive Orders and State Legislation, 
+              then uses advanced AI to deliver instant summaries and business impact analysis.
+            </p>
+            
+          </div>
+          
+          {/* Hero Dashboard Preview */}
+          <div className="relative max-w-5xl mx-auto">
+            <div className="bg-white dark:bg-dark-bg-secondary rounded-2xl shadow-2xl border border-gray-200 dark:border-dark-border overflow-hidden">
+              <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-6 py-4 flex items-center gap-3">
+                <div className="flex gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                </div>
+                <div className="text-gray-300 dark:text-dark-text-secondary text-sm font-medium">LegislationVUE Dashboard</div>
+              </div>
+              
+              <div className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                  {/* Executive Order Preview */}
+                  <div className="bg-gray-50 dark:bg-dark-bg-secondary border-2 border-gray-200 dark:border-dark-border rounded-lg p-2">
+                    <div className={getCardClasses('rounded-lg p-4')}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <ScrollText size={16} className="text-purple-600 dark:text-purple-400" />
+                          <span className={getTextClasses('primary', 'font-semibold text-sm')}>Executive Orders</span>
+                        </div>
+                        <div className="w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded"></div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 text-xs mb-3">
+                        <Hash size={12} className="text-blue-600 dark:text-blue-400" />
+                        <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-8"></div>
+                        <Calendar size={12} className="text-green-600 dark:text-green-400" />
+                        <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-12"></div>
+
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-3/4"></div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* State Legislation Preview */}
+                  <div className="bg-gray-50 dark:bg-dark-bg-secondary border-2 border-gray-200 dark:border-dark-border rounded-lg p-2">
+                    <div className={getCardClasses("rounded-lg p-4")}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <FileText size={16} className="text-green-600 dark:text-green-400" />
+                          <span className={getTextClasses("primary", "font-semibold text-sm")}>State Legislation</span>
+                        </div>
+                        <div className="w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded"></div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 text-xs mb-3">
+                        <Hash size={12} className="text-blue-600 dark:text-blue-400" />
+                        <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-8"></div>
+                        <Calendar size={12} className="text-green-600 dark:text-green-400" />
+                        <div className="h-2 bg-gray-300 dark:bg-gray-600 rounded w-12"></div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
+                        <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-3/4"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-16 sm:py-20 bg-white dark:bg-dark-bg">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
+              Everything You Need to Track Legislation
+            </h2>
+            <p className={getTextClasses('secondary', 'text-xl max-w-3xl mx-auto')}>
+              From automatic data collection to AI-powered analysis, 
+              LegislationVUE provides comprehensive legislative intelligence.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+            {[
+              {
+                icon: Download,
+                title: "Automatic Collection",
+                description: "Continuously monitors and collects Executive Orders and State Legislation from official sources",
+                color: "blue"
+              },
+              {
+                icon: Brain,
+                title: "AI-Powered Analysis",
+                description: "Advanced natural language processing extracts key insights and generates comprehensive summaries",
+                color: "purple"
+              },
+              {
+                icon: TrendingUp,
+                title: "Business Impact Assessment",
+                description: "Identifies potential risks, opportunities, and regulatory implications for your organization",
+                color: "green"
+              },
+              {
+                icon: Target,
+                title: "Strategic Talking Points",
+                description: "Generates clear, actionable talking points for stakeholder communications and decision-making",
+                color: "orange"
+              },
+              {
+                icon: Star,
+                title: "Smart Highlighting",
+                description: "Mark important items on respective pages for easier recall and tracking with integrated filtering",
+                color: "yellow"
+              },
+              {
+                icon: BarChart3,
+                title: "Trend Analysis",
+                description: "Track legislative patterns and emerging themes across different states and categories",
+                color: "indigo"
+              }
+            ].map((feature, index) => (
+              <div
+                key={index}
+                className={getCardClasses('p-6 rounded-xl border-2 border-gray-200 transition-all duration-300 cursor-pointer hover:border-gray-300 dark:hover:border-dark-border hover:shadow-lg')}
+                onMouseEnter={() => setHoveredFeature(index)}
+                onMouseLeave={() => setHoveredFeature(null)}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
+                  feature.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                  feature.color === 'purple' ? 'bg-purple-100 dark:bg-purple-900/30' :
+                  feature.color === 'green' ? 'bg-green-100 dark:bg-green-900/30' :
+                  feature.color === 'orange' ? 'bg-orange-100 dark:bg-orange-900/30' :
+                  feature.color === 'yellow' ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                  feature.color === 'indigo' ? 'bg-indigo-100 dark:bg-indigo-900/30' :
+                  'bg-gray-100 dark:bg-gray-900/30'
+                }`}>
+                  <feature.icon size={24} className={
+                    feature.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
+                    feature.color === 'purple' ? 'text-purple-600 dark:text-purple-400' :
+                    feature.color === 'green' ? 'text-green-600 dark:text-green-400' :
+                    feature.color === 'orange' ? 'text-orange-600 dark:text-orange-400' :
+                    feature.color === 'yellow' ? 'text-yellow-600 dark:text-yellow-400' :
+                    feature.color === 'indigo' ? 'text-indigo-600 dark:text-indigo-400' :
+                    'text-gray-600 dark:text-gray-400'
+                  } />
+                </div>
+                <h3 className={getTextClasses('primary', 'text-lg font-semibold mb-2')}>{feature.title}</h3>
+                <p className={getTextClasses('secondary', 'text-sm leading-relaxed')}>{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Coverage Section */}
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-gray-50 dark:bg-dark-bg-secondary">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
+              Comprehensive Legislative Coverage
+            </h2>
+            <p className={getTextClasses('secondary', 'text-xl max-w-3xl mx-auto')}>
+              Track legislation across multiple jurisdictions and practice areas 
+              with our comprehensive monitoring system.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 items-start">
+            {/* Federal Coverage */}
+            <div className={getCardClasses('rounded-2xl p-8 shadow-lg h-full')}>
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
+                  <ScrollText size={32} className="text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <h3 className={getTextClasses('primary', 'text-2xl font-bold')}>Federal Executive Orders</h3>
+                  <p className={getTextClasses('secondary')}>Complete coverage of presidential directives</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className={getTextClasses('secondary')}>Real-time monitoring of new orders</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className={getTextClasses('secondary')}>Historical archive access</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className={getTextClasses('secondary')}>Impact analysis and summaries</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* State Coverage */}
+            <div className={getCardClasses('rounded-2xl p-8 shadow-lg h-full')}>
+              <div className="flex items-center gap-4 mb-6">
+                <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl">
+                  <FileText size={32} className="text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <h3 className={getTextClasses('primary', 'text-2xl font-bold')}>State Legislation</h3>
+                  <p className={getTextClasses('secondary')}>Session tracking and bill progress monitoring</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className={getTextClasses('secondary')}>Multi-state legislative tracking</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className={getTextClasses('secondary')}>Bill progress monitoring</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckCircle size={20} className="text-green-500" />
+                  <span className={getTextClasses('secondary')}>Visual status updates</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Highlights Feature Section */}
+      <section className="py-16 sm:py-20 px-4 sm:px-6 bg-white dark:bg-dark-bg">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 items-center">
+            <div>
+              
+              <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-6')}>
+                Highlight What Matters Most
+              </h2>
+              
+              <p className={getTextClasses('secondary', 'text-xl mb-8 leading-relaxed')}>
+                Highlight important items directly on Executive Orders and State Legislation pages 
+                for easier recall and tracking. Combined with other filters, it makes tracking 
+                those important items a breeze.
+              </p>
+              
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center mt-1">
+                    <Star size={16} className="text-yellow-600" />
+                  </div>
+                  <div>
+                    <h3 className={getTextClasses('primary', 'font-semibold mb-1')}>One-Click Highlighting</h3>
+                    <p className={getTextClasses('secondary', 'text-sm')}>Instantly mark executive orders and legislation that require leadership attention</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center mt-1">
+                    <Users size={16} className="text-yellow-600" />
+                  </div>
+                  <div>
+                    <h3 className={getTextClasses('primary', 'font-semibold mb-1')}>Smart Filtering</h3>
+                    <p className={getTextClasses('secondary', 'text-sm')}>Use highlight filters on respective pages to quickly find your marked items</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center mt-1">
+                    <Target size={16} className="text-yellow-600" />
+                  </div>
+                  <div>
+                    <h3 className={getTextClasses('primary', 'font-semibold mb-1')}>Priority Focus</h3>
+                    <p className={getTextClasses('secondary', 'text-sm')}>Keep the most critical regulatory changes at your fingertips for strategic discussions</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className={getCardClasses('rounded-2xl p-8 shadow-xl')}>
+              <div className="bg-gradient-to-r from-gray-900 to-gray-800 dark:from-dark-bg-tertiary dark:to-dark-bg-secondary px-4 py-3 rounded-t-lg flex items-center gap-3 -mx-8 -mt-8 mb-6">
+                <div className="flex gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                  <div className="w-3 h-3 rounded-full bg-green-400"></div>
+                </div>
+                <div className="text-gray-300 dark:text-dark-text-secondary text-sm font-medium">Executive Orders - Smart Filtering</div>
+              </div>
+              
+              {/* Filter Controls */}
+              <div className="mb-4 p-3 bg-gray-50 dark:bg-dark-bg-tertiary rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Search size={14} className="text-gray-500" />
+                  <span className={getTextClasses('secondary', 'text-xs font-medium')}>Active Filters:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs border border-yellow-200">
+                    <Star size={10} />
+                    Highlighted Only
+                  </div>
+                  <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs border border-blue-200">
+                    <Building size={10} />
+                    Civic
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="border border-gray-200 dark:border-dark-border rounded-lg p-3 hover:border-yellow-300 dark:hover:border-yellow-400 transition-colors">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className={getTextClasses('primary', 'font-semibold text-xs')}>Executive Order #14028</h3>
+                    <Star size={14} className="text-yellow-500 fill-current" />
+                  </div>
+                  <p className={getTextClasses('secondary', 'text-xs mb-2')}>Cybersecurity Requirements for Federal Agencies</p>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                      <Building size={8} />
+                      Civic
+                    </div>
+                    <button className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-xs">View Details</button>
+                  </div>
+                </div>
+                
+                <div className="border border-gray-200 dark:border-dark-border rounded-lg p-3 hover:border-yellow-300 dark:hover:border-yellow-400 transition-colors">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className={getTextClasses('primary', 'font-semibold text-xs')}>Executive Order #14029</h3>
+                    <Star size={14} className="text-yellow-500 fill-current" />
+                  </div>
+                  <p className={getTextClasses('secondary', 'text-xs mb-2')}>Infrastructure Security Enhancement</p>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                      <Building size={8} />
+                      Civic
+                    </div>
+                    <button className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-xs">View Details</button>
+                  </div>
+                </div>
+                
+                <div className="border border-gray-200 dark:border-dark-border rounded-lg p-3 hover:border-yellow-300 dark:hover:border-yellow-400 transition-colors">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className={getTextClasses('primary', 'font-semibold text-xs')}>Executive Order #14030</h3>
+                    <Star size={14} className="text-yellow-500 fill-current" />
+                  </div>
+                  <p className={getTextClasses('secondary', 'text-xs mb-2')}>Federal Building Standards Update</p>
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                      <Building size={8} />
+                      Civic
+                    </div>
+                    <button className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-xs">View Details</button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-6 pt-4 border-t border-gray-200 dark:border-dark-border">
+                <p className={getTextClasses('muted', 'text-xs text-center')}>3 highlighted items found • Filter applied</p>
+                <button 
+                  onClick={() => {
+                    navigate('/executive-orders');
+                    window.scrollTo(0, 0);
+                  }}
+                  className="w-full mt-4 bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 transform hover:scale-105 flex items-center justify-center gap-2"
+                >
+                  <ScrollText size={16} />
+                  Try Executive Orders
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Practice Areas */}
+      <section className="py-16 sm:py-20 bg-white dark:bg-dark-bg">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className={getTextClasses('primary', 'text-4xl font-bold mb-4')}>
+              Organized by Practice Areas
+            </h2>
+            <p className={getTextClasses('secondary', 'text-xl max-w-3xl mx-auto')}>
+              Filter and organize legislation by relevant practice areas 
+              to focus on what matters most to your organization.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {[
+              {
+                icon: Building,
+                title: "Civic & Government",
+                description: "Public policy, municipal regulations, and government operations",
+                color: "blue"
+              },
+              {
+                icon: GraduationCap,
+                title: "Education",
+                description: "School policies, university regulations, and educational funding",
+                color: "orange"
+              },
+              {
+                icon: Wrench,
+                title: "Engineering & Infrastructure",
+                description: "Construction, technology standards, and infrastructure projects",
+                color: "green"
+              },
+              {
+                icon: HeartPulse,
+                title: "Healthcare",
+                description: "Medical regulations, public health policies, and healthcare funding",
+                color: "red"
+              }
+            ].map((area, index) => (
+              <div key={index} className={getCardClasses('border-2 border-gray-200 rounded-xl p-6 hover:border-gray-300 dark:hover:border-dark-border transition-all duration-300 hover:shadow-lg')}>
+                <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
+                  area.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                  area.color === 'orange' ? 'bg-orange-100 dark:bg-orange-900/30' :
+                  area.color === 'green' ? 'bg-green-100 dark:bg-green-900/30' :
+                  area.color === 'red' ? 'bg-red-100 dark:bg-red-900/30' :
+                  'bg-gray-100 dark:bg-gray-900/30'
+                }`}>
+                  <area.icon size={24} className={
+                    area.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
+                    area.color === 'orange' ? 'text-orange-600 dark:text-orange-400' :
+                    area.color === 'green' ? 'text-green-600 dark:text-green-400' :
+                    area.color === 'red' ? 'text-red-600 dark:text-red-400' :
+                    'text-gray-600 dark:text-gray-400'
+                  } />
+                </div>
+                <h3 className={getTextClasses('primary', 'text-lg font-semibold mb-2')}>{area.title}</h3>
+                <p className={getTextClasses('secondary', 'text-sm leading-relaxed')}>{area.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* PWA Installation Modal */}
+      <PWAInstallModal 
+        isOpen={showPWAModal}
+        onClose={() => setShowPWAModal(false)}
+      />
+      
+      {/* Global Search Modal */}
+      <GlobalSearch 
+        isOpen={showGlobalSearch}
+        onClose={() => setShowGlobalSearch(false)}
+      />
+    </div>
+  );
+};
+
+export default Homepage;

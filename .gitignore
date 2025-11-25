@@ -1,0 +1,105 @@
+# Python
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/*.so
+backend/.Python
+backend/venv/
+backend/env/
+backend/*.env
+backend/.env
+backend/*.db
+backend/executive_orders.db
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/env/
+frontend/*.env
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Azure specific (don't commit sensitive info)
+backend/.azure/
+frontend/.azure/
+*.PublishSettings
+
+# Add these lines to your .gitignore file to keep credentials secure
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Database credentials
+database.config
+config.json
+
+# Azure credentials
+azure.config
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Playwright Test Artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
+frontend/tests/screenshots/
+frontend/tests/videos/
+frontend/tests/traces/
+
+# Auto-generated version files
+frontend/src/version.json
+
+# Documentation and commit message files
+AZURE_DEVOPS_COMMANDS.md
+AZURE_DEVOPS_COMMIT.txt
+AZURE_DEVOPS_PR.md
+COMMIT_MESSAGE.txt
+GIT_COMMANDS.md
+PR_DESCRIPTION.md

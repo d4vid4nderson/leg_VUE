@@ -1,0 +1,34 @@
+python-dotenv==1.0.0
+python-multipart==0.0.6
+loguru==0.7.2
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy==2.0.23
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==5.1.0
+openai==1.3.7
+# Pin httpx to version that works with openai==1.3.7
+httpx==0.24.1
+pandas==2.2.2
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pyodbc>=4.0.35
+urllib3>=1.26.0
+cryptography>=3.4.8
+asyncio
+aiofiles
+aiohttp>=3.8.0
+PyJWT>=2.6.0
+
+# Azure SDK dependencies for Managed Identity
+azure-identity>=1.15.0
+azure-mgmt-app>=1.0.0b2
+azure-core>=1.30.0
+
+# Additional SQL Server dependencies
+pymssql>=2.2.7
+sqlalchemy-pytds>=0.3.4
+
+# PostgreSQL dependencies for development
+psycopg2-binary>=2.9.0

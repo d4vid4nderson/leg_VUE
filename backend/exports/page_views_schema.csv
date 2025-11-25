@@ -1,0 +1,11 @@
+COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH,IS_NULLABLE,COLUMN_DEFAULT
+id,int,,NO,
+user_id,nvarchar,100,NO,
+page_name,nvarchar,255,NO,
+page_path,nvarchar,500,NO,
+session_id,nvarchar,100,YES,
+ip_address,nvarchar,45,YES,
+user_agent,nvarchar,500,YES,
+viewed_at,datetime2,,YES,(getdate())
+duration_seconds,int,,YES,
+left_at,datetime2,,YES,

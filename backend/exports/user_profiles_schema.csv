@@ -1,0 +1,15 @@
+COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH,IS_NULLABLE,COLUMN_DEFAULT
+user_id,nvarchar,50,NO,
+msi_email,nvarchar,255,NO,
+display_name,nvarchar,255,YES,
+given_name,nvarchar,100,YES,
+surname,nvarchar,100,YES,
+msi_object_id,nvarchar,100,YES,
+created_at,datetime2,,YES,(getdate())
+last_login,datetime2,,YES,(getdate())
+is_active,bit,,YES,((1))
+login_count,int,,YES,((0))
+email,nvarchar,255,YES,
+first_name,nvarchar,100,YES,
+last_name,nvarchar,100,YES,
+department,nvarchar,100,YES,

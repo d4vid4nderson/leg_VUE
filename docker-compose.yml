@@ -1,0 +1,59 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+    env_file:
+      - ./backend/.env
+    environment:
+      - ENVIRONMENT=development
+      - PYTHONUNBUFFERED=1  
+    depends_on:
+      - db
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file:
+      - ./frontend/.env
+    environment:
+      - BROWSER=none
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  db:
+    image: postgres:15
+    container_name: db
+    environment:
+      POSTGRES_DB: political_vue
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secure_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: legislation-network

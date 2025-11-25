@@ -1,0 +1,33 @@
+{
+  "name": "LegislationVUE",
+  "short_name": "LegislationVUE",
+  "description": "Political legislation tracking and analysis application",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#1f2937",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16 32x32 48x48",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH,IS_NULLABLE,COLUMN_DEFAULT
+id,int,,NO,
+user_id,nvarchar,100,NO,
+session_id,nvarchar,100,YES,
+event_type,nvarchar,50,NO,
+event_category,nvarchar,50,YES,
+page_name,nvarchar,255,YES,
+page_path,nvarchar,500,YES,
+event_data,nvarchar,-1,YES,
+duration_seconds,int,,YES,
+created_at,datetime2,,YES,(getdate())

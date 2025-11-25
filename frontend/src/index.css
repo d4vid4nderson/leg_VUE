@@ -1,0 +1,879 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark Mode Base Styles */
+.dark {
+  color-scheme: dark;
+}
+
+/* Ensure smooth transitions for dark mode */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+/* Dark mode specific overrides */
+.dark body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+/* Dark mode shimmer animations */
+.dark .animate-shimmer {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+}
+
+.dark .shimmer-enhanced {
+  background: linear-gradient(
+    90deg,
+    #1e293b 0%,
+    #1e293b 40%,
+    #334155 50%,
+    #1e293b 60%,
+    #1e293b 100%
+  );
+}
+
+/* Optimized dark mode transitions */
+.dark-mode-transition {
+  transition: 
+    background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .dark-mode-transition {
+    transition: none;
+  }
+}
+
+/* Search modal bounce-in animation */
+@keyframes bounce-in {
+  0% {
+    transform: scale(0.8) translateY(-20px);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05) translateY(-5px);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Reduce bounce animation for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-bounce-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sparkle {
+  0% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1) rotate(180deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+.animate-sparkle {
+  animation: sparkle 1.5s ease-out infinite;
+}
+
+/* Add these styles to your index.css or OrderCard.css */
+
+.ai-numbered-list {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+    list-style-type: decimal;
+}
+.ai-bullet-list {
+    margin: 0.5em 0 0.5em 0;
+    padding-left: 1.5em;
+    list-style-type: disc;
+}
+.ai-numbered-list > li {
+    margin-bottom: 1em;
+    line-height: 1.5;
+}
+.ai-bullet-list > li {
+    margin-bottom: 0.25em;
+    line-height: 1.4;
+}
+.ai-numbered-list strong {
+    font-weight: 600;
+}
+.ai-content p {
+    margin: 0.5em 0;
+}
+
+/* Ensure proper spacing in AI content */
+.ai-content p {
+  margin-bottom: 0.5em;
+}
+
+.ai-content ol,
+.ai-content ul {
+  margin-bottom: 1em;
+}
+
+/* Specific styling for Key Points */
+.ai-content .ai-numbered-list:not(:has(.ai-bullet-list)) > li {
+  padding-left: 2em;
+  margin-bottom: 0.5em;
+}
+
+/* Ensure violet color is preserved in lists */
+.text-violet-900 .ai-numbered-list li::before,
+.text-violet-900 .ai-bullet-list li::before {
+  color: #4C1D95; /* Darker violet for contrast */
+}
+ol {
+  padding-left: 20px; /* Reduces the overall list indentation */
+}
+
+ol li {
+  margin-left: 0; /* Removes any extra margin on list items */
+  padding-left: 5px; /* Adds a small space after the number */
+}
+
+
+/* Enhanced AI Content Styling - Add to index.css */
+
+/* Base AI content styling */
+.ai-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.6;
+}
+
+/* Executive Summary - Clean paragraph format */
+.ai-content p {
+  margin-bottom: 0.75em;
+  line-height: 1.5;
+}
+
+.ai-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Talking Points - Enhanced numbered list */
+.ai-content .talking-points,
+.ai-content ol {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: talking-point;
+}
+
+.ai-content .talking-points li,
+.ai-content ol li {
+  margin-bottom: 0.75em;
+  padding-left: 0;
+  counter-increment: talking-point;
+  position: relative;
+  line-height: 1.4;
+}
+
+.ai-content .talking-points li:last-child,
+.ai-content ol li:last-child {
+  margin-bottom: 0;
+}
+
+/* Remove the default strong numbering and use our custom counter */
+.ai-content .talking-points li strong,
+.ai-content ol li strong {
+  display: none;
+}
+
+.ai-content .talking-points li:before,
+.ai-content ol li:before {
+  content: counter(talking-point) ".";
+  font-weight: 600;
+  color: currentColor;
+  margin-right: 0.5em;
+}
+
+/* Business Impact Sections */
+.ai-content .business-impact-section {
+  margin-bottom: 1em;
+  padding: 0.75em;
+  border-radius: 0.375rem;
+  border: 1px solid;
+}
+
+.ai-content .business-impact-section:last-child {
+  margin-bottom: 0;
+}
+
+.ai-content .business-impact-section h4 {
+  margin: 0 0 0.5em 0;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.ai-content .business-impact-section ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.ai-content .business-impact-section li {
+  margin-bottom: 0.5em;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+}
+
+.ai-content .business-impact-section li:last-child {
+  margin-bottom: 0;
+}
+
+/* Ensure bullet points are preserved in business impact */
+.ai-content .business-impact-section li {
+  position: relative;
+}
+
+/* Color variants for business impact sections */
+.business-impact-section.bg-red-50 {
+  background-color: #fef2f2;
+}
+
+.business-impact-section.border-red-200 {
+  border-color: #fecaca;
+}
+
+.business-impact-section.text-red-800 {
+  color: #991b1b;
+}
+
+.business-impact-section.bg-green-50 {
+  background-color: #f0fdf4;
+}
+
+.business-impact-section.border-green-200 {
+  border-color: #bbf7d0;
+}
+
+.business-impact-section.text-green-800 {
+  color: #166534;
+}
+
+.business-impact-section.bg-blue-50 {
+  background-color: #eff6ff;
+}
+
+.business-impact-section.border-blue-200 {
+  border-color: #bfdbfe;
+}
+
+.business-impact-section.text-blue-800 {
+  color: #1e40af;
+}
+
+/* Strong text styling */
+.ai-content strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+/* Clean up any unwanted spacing */
+.ai-content * {
+  max-width: 100%;
+  word-wrap: break-word;
+}
+
+.ai-content > *:first-child {
+  margin-top: 0;
+}
+
+.ai-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Preserve violet color inheritance */
+.text-violet-900 .ai-content,
+.text-violet-900 .ai-content *,
+.text-blue-800 .ai-content,
+.text-blue-800 .ai-content *,
+.text-green-800 .ai-content,
+.text-green-800 .ai-content *,
+.text-orange-600 .ai-content,
+.text-orange-600 .ai-content * {
+  color: inherit;
+}
+
+/* Specific overrides for different content areas */
+.text-violet-800 .ai-content .business-impact-section.text-red-800 {
+  color: #991b1b !important;
+}
+
+.text-violet-800 .ai-content .business-impact-section.text-green-800 {
+  color: #166534 !important;
+}
+
+.text-violet-800 .ai-content .business-impact-section.text-blue-800 {
+  color: #1e40af !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .ai-content .business-impact-section {
+    padding: 0.5em;
+    margin-bottom: 0.75em;
+  }
+  
+  .ai-content .talking-points li,
+  .ai-content ol li {
+    margin-bottom: 0.5em;
+  }
+}
+
+/* Add to your CSS file */
+.eo-metadata {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.eo-number {
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.eo-date {
+  color: #6b7280;
+  font-size: 14px;
+  background: #f9fafb;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.ai-badge {
+  background: #8b5cf6;
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-right: 8px;
+}
+
+/* Executive Orders Page Styles */
+.executive-orders-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.page-header h1 {
+  color: #1f2937;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Order Cards */
+.orders-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: 1fr;
+}
+
+.order-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.order-card:hover {
+  box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.order-number h3 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.category-badge {
+  display: inline-block;
+  background: #3b82f6;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.order-dates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.signing-date {
+  font-weight: 600;
+  color: #374151;
+}
+
+.pub-date {
+  margin-top: 4px;
+}
+
+.order-title {
+  margin: 0 0 24px 0;
+  color: #1f2937;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* Content Sections */
+.content-section {
+  margin-bottom: 24px;
+  border-left: 4px solid #e5e7eb;
+  padding-left: 16px;
+}
+
+.content-section h5 {
+  margin: 0 0 12px 0;
+  color: #374151;
+  font-size: 1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.content-body {
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+/* Specific section styling */
+.summary-section {
+  border-left-color: #10b981;
+}
+
+.talking-points-section {
+  border-left-color: #f59e0b;
+}
+
+.business-impact-section {
+  border-left-color: #ef4444;
+}
+
+.long-term-impact-section {
+  border-left-color: #8b5cf6;
+}
+
+/* Formatted Content Styles */
+.formatted-content p {
+  margin: 0 0 12px 0;
+}
+
+.formatted-content p:last-child {
+  margin-bottom: 0;
+}
+
+.formatted-content ol {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: decimal;
+}
+
+.formatted-content ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.formatted-content li {
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.formatted-content li:last-child {
+  margin-bottom: 0;
+}
+
+.formatted-content strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+/* Business Impact Specific Formatting */
+.business-impact-formatted {
+  margin: 0;
+}
+
+.impact-section {
+  margin-bottom: 16px;
+}
+
+.impact-section:last-child {
+  margin-bottom: 0;
+}
+
+.impact-section h4 {
+  margin: 0 0 8px 0;
+  color: #1f2937;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.impact-section ul {
+  margin: 0;
+  padding-left: 16px;
+  list-style-type: disc;
+}
+
+.impact-section li {
+  margin-bottom: 6px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+/* Action Links */
+.order-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+  flex-wrap: wrap;
+}
+
+.action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.action-link.primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.action-link.primary:hover {
+  background: #2563eb;
+}
+
+.action-link.secondary {
+  background: #10b981;
+  color: white;
+}
+
+.action-link.secondary:hover {
+  background: #059669;
+}
+
+.action-link.tertiary {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.action-link.tertiary:hover {
+  background: #e5e7eb;
+}
+
+/* Loading and Error States */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+}
+
+.error-message {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  color: #dc2626;
+}
+
+.no-results {
+  text-align: center;
+  padding: 40px;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .executive-orders-page {
+    padding: 16px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .page-header h1 {
+    font-size: 2em;
+  }
+  
+  .order-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .order-dates {
+    align-items: flex-start;
+  }
+  
+  .action-link {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+  }
+}
+
+/* Animation for spinning refresh icon */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Add this CSS to your main CSS file or as a <style> tag */
+
+/* Consistent formatting for all AI-generated content sections */
+.ai-content-section {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.ai-content-section .formatted-content {
+  line-height: 1.6;
+}
+
+.ai-content-section .formatted-content p {
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.ai-content-section .formatted-content p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-content-section .formatted-content ol {
+  margin: 8px 0;
+  padding-left: 24px;
+  list-style-type: decimal;
+}
+
+.ai-content-section .formatted-content ul {
+  margin: 8px 0;
+  padding-left: 24px;
+  list-style-type: disc;
+}
+
+.ai-content-section .formatted-content li {
+  margin-bottom: 6px;
+  padding-left: 4px;
+  line-height: 1.5;
+  color: inherit;
+}
+
+.ai-content-section .formatted-content li:last-child {
+  margin-bottom: 0;
+}
+
+.ai-content-section .formatted-content strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+.ai-content-section .formatted-content ol li::marker {
+  font-weight: 600;
+  color: inherit;
+}
+
+.ai-content-section .formatted-content ul li::marker {
+  color: currentColor;
+}
+
+/* Consistent bullet point styling for manual bullets */
+.bullet-list {
+  margin: 8px 0;
+}
+
+.bullet-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.bullet-item:last-child {
+  margin-bottom: 0;
+}
+
+.bullet-symbol {
+  font-weight: 600;
+  font-size: 14px;
+  margin-top: 2px;
+  color: currentColor;
+  min-width: 8px;
+}
+
+.bullet-content {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+}
+
+/* Structured sections for business impact */
+.impact-section {
+  margin-bottom: 16px;
+  border-left: 3px solid currentColor;
+  padding-left: 12px;
+  opacity: 0.8;
+}
+
+.impact-section:last-child {
+  margin-bottom: 0;
+}
+
+.impact-section-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: inherit;
+  text-transform: none;
+}
+
+.impact-section .bullet-list {
+  margin: 0;
+}
+
+/* =====================================
+   SHIMMER ANIMATION CSS STYLES
+   Add this to your index.css or App.css file
+   ===================================== */
+
+/* Shimmer animation keyframes */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Shimmer animation class */
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+  background-size: 200% 100%;
+}
+
+/* Background size utility for shimmer */
+.bg-size-200 {
+  background-size: 200% 100%;
+}
+
+/* Alternative shimmer styles for different effects */
+.shimmer-fast {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.shimmer-slow {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Shimmer variants with different colors */
+.shimmer-blue {
+  background: linear-gradient(90deg, #e2e8f0 25%, #cbd5e1 50%, #e2e8f0 75%);
+}
+
+.shimmer-purple {
+  background: linear-gradient(90deg, #f3e8ff 25%, #e9d5ff 50%, #f3e8ff 75%);
+}
+
+/* Enhanced shimmer with more realistic effect */
+.shimmer-enhanced {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #f1f5f9 40%,
+    #e2e8f0 50%,
+    #f1f5f9 60%,
+    #f1f5f9 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
