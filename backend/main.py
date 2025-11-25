@@ -1946,9 +1946,15 @@ frontend_url = os.getenv("FRONTEND_URL", "")
 # CORS setup based solely on environment
 if environment == "production":
     cors_origins = [
+        # Vercel deployments
+        "https://leg-vue.vercel.app",
+        # Azure (legacy)
         "https://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io",
         "http://legis-vue-frontend.jollyocean-a8149425.centralus.azurecontainerapps.io"
     ]
+    # Also allow custom frontend URL from environment
+    if frontend_url:
+        cors_origins.append(frontend_url)
     allow_headers = ["Content-Type", "Authorization", "X-Requested-With"]
     print(f"✅ CORS configured for production with specific origins: {cors_origins}")
 else:
