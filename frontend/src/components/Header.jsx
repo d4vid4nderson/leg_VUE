@@ -17,8 +17,6 @@ import {
 import { SUPPORTED_STATES } from '../utils/constants';
 import { InformationModal } from './CommonComponents';
 import { useDarkMode } from '../context/DarkModeContext';
-import byMOREgroupLogo from './byMOREgroup.PNG';
-import byMOREgroupLogoDark from './byMOREgroup_drk.png';
 
 // Mobile Navigation Components
 const MobileMenuItem = ({ icon: Icon, label, badge, onClick, active = false, className = "" }) => {
@@ -299,13 +297,6 @@ const Header = ({
                                 <h1 className="text-lg sm:text-xl lg:text-3xl font-bold bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent leading-none">
                                     LegislativeVUE
                                 </h1>
-                                <div className="flex justify-end mb-1">
-                                    <img 
-                                        src={isDarkMode ? byMOREgroupLogoDark : byMOREgroupLogo} 
-                                        alt="byMOREgroup Logo" 
-                                        className="h-3 sm:h-4 w-auto"
-                                    />
-                                </div>
                             </div>
                         </div>
 
