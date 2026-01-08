@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDarkMode } from '../context/DarkModeContext';
 import { Heart } from 'lucide-react';
@@ -20,6 +20,11 @@ const formatBuildDate = (isoString) => {
 const Footer = ({ appVersion }) => {
   const navigate = useNavigate();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+
+  useEffect(() => {
+    setCurrentYear(new Date().getFullYear());
+  }, []);
 
   // Use Git commit hash as version, with fallback to package.json version
   const displayVersion = gitCommit !== 'dev' && gitCommit !== 'unknown'
@@ -57,7 +62,7 @@ const Footer = ({ appVersion }) => {
                   }
                 `}
               </style>
-              &copy; 2026 Built with{' '}
+              &copy; {currentYear} Built with{' '}
               <Heart className="w-4 h-4 heart-pulse" />
               {' '}by <a href="https://fullstackvibes.io" target="_blank" rel="noopener noreferrer" className="text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors">Full Stack Vibes</a>.
             </p>
