@@ -57,7 +57,7 @@ const Footer = ({ appVersion }) => {
                   }
                 `}
               </style>
-              &copy; 2025 Built with{' '}
+              &copy; 2026 Built with{' '}
               <Heart className="w-4 h-4 heart-pulse" />
               {' '}by <a href="https://fullstackvibes.io" target="_blank" rel="noopener noreferrer" className="text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors">Full Stack Vibes</a>.
             </p>
